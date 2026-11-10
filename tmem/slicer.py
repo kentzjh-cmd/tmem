@@ -33,6 +33,7 @@ TOOLCHAIN_INSTALL_RE = re.compile(
 
 VERIFY_WHITELIST_RE = re.compile(
     r"\b(?:pytest|unittest|tox|nox|coverage|mypy|ruff|flake8|black|isort|pylint|"
+    r"runtests(?:\.py)?|manage\.py\s+test|"
     r"npm\s+(?:test|run\s+\w+)|pnpm\s+(?:test|run\s+\w+)|yarn\s+(?:test|run\s+\w+)|bun\s+test|"
     r"cargo\s+(?:test|check|build|clippy)|go\s+(?:test|build|vet)|"
     r"tsc|eslint|vitest|jest|mocha|make|cmake|gradle|mvn|"
@@ -175,9 +176,12 @@ class BackwardTraceSlicer:
         else:
             # Verify file still exists on disk (eliminate temporary scratch files that were deleted)
             ws = Path(session.workspace_root)
-            effective_files = {
+            existing_on_disk = {
                 f for f in session_mutated_files if f and (ws / f).exists()
             }
+            # In live repos, keep existing files; in offline/benchmark evaluation where the repo is not on disk,
+            # fall back to session mutated files.
+            effective_files = existing_on_disk if existing_on_disk else set(session_mutated_files)
 
         # 2. Extract Error -> Fix Causal Pairs (L2 Universal Invariants)
         causal_repairs = self._extract_causal_repairs(raw_actions, effective_files)
@@ -291,6 +295,8 @@ class BackwardTraceSlicer:
             raw_steps_count=len(raw_actions),
             sliced_steps_count=len(sliced_steps),
         )
+
+    slice = slice_session
 
     def _extract_causal_repairs(
         self, actions: List[ActionNode], effective_files: Set[str]

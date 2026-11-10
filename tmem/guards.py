@@ -64,7 +64,7 @@ def evaluate_guards(playbook: TracePlaybook, workspace_root: str) -> EvaluatedPl
                 except Exception:
                     failed.append(f"unreadable:{g.target}")
 
-    if not failed:
+    if not failed and playbook.guards:
         return EvaluatedPlaybook(
             playbook=playbook,
             l0_valid=True,
@@ -101,8 +101,6 @@ def format_injected_context(evaluated_list: List[EvaluatedPlaybook]) -> str:
             f"\n[Trace {pb.trace_id} | Scope: {pb.scope.upper()} | Tier: {ev.effective_tier} | Confidence: {pb.confidence:.2f}]"
         )
         lines.append(f"- Historical Intent: {pb.problem_intent}")
-        if getattr(pb, "semantic_summary", ""):
-            lines.append(f"- Semantic Summary: {pb.semantic_summary}")
         if pb.semantic_summary:
             lines.append(f"- Semantic Summary: {pb.semantic_summary}")
 

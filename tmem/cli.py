@@ -865,7 +865,11 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     # 3. capture
     p_cap = sub.add_parser("capture", help="Compile a session transcript + git diff into .tmem/ and/or ~/.tmem/")
-    p_cap.add_argument("--agent", default="agy", choices=["agy", "codex", "opencode", "pi", "dsh"])
+    p_cap.add_argument(
+        "--agent",
+        default="agy",
+        choices=["agy", "codex", "opencode", "pi", "dsh", "swe_bench", "swe_agent", "atif"],
+    )
     p_cap.add_argument(
         "--scope",
         default="auto",
@@ -903,6 +907,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     p_forget = sub.add_parser("forget", help="Delete a trace by ID or prefix from project/global stores")
     p_forget.add_argument("trace_id", help="Trace ID or prefix (e.g. tr_acd0dc0ff0)")
     p_forget.add_argument("--workspace", default=os.getcwd(), help="Workspace root directory")
+
+    # 9. evaluate
+    p_eval = sub.add_parser("evaluate", help="Run benchmark evaluation on public/local agent trajectories")
+    p_eval.add_argument("--data-dir", default=None, help="Directory containing .traj / .atif.json / .jsonl files")
+    p_eval.add_argument("--json", action="store_true", help="Output raw JSON summary")
+    p_eval.add_argument("--quiet", action="store_true", help="Suppress output")
 
     args = parser.parse_args(argv)
 
@@ -1002,6 +1012,17 @@ def main(argv: Optional[List[str]] = None) -> int:
         res = store.delete_playbook(args.trace_id)
         print(json.dumps(res, indent=2, ensure_ascii=False))
         return 0
+
+    if args.subcommand == "evaluate":
+        from tmem.evaluate import BenchmarkEvaluator, format_markdown_report
+        evaluator = BenchmarkEvaluator(args.data_dir)
+        summary = evaluator.run_evaluation()
+        if args.json:
+            from dataclasses import asdict
+            print(json.dumps(asdict(summary), indent=2, ensure_ascii=False))
+        elif not args.quiet:
+            print(format_markdown_report(summary))
+        return 0 if summary.all_passed else 1
 
     parser.print_help()
     return 0

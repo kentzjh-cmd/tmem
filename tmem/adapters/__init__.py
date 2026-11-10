@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 
 from tmem.adapters.agy import AgyAdapter
 from tmem.adapters.dsh import DshAdapter
+from tmem.adapters.swe_bench import SweBenchAdapter
 from tmem.adapters.base import (
     AgentAdapter,
     ParsedSession,
@@ -174,8 +175,9 @@ class GenericJsonlAgentAdapter(AgentAdapter):
 
 
 def get_adapter(agent_name: str = "agy") -> AgentAdapter:
-    """Factory returning the adapter for agy, codex, opencode, pi, or dsh."""
+    """Factory returning the adapter for agy, codex, opencode, pi, dsh, or swe_bench/atif."""
     home = Path.home()
+    swe_adapter = SweBenchAdapter()
     adapters: Dict[str, AgentAdapter] = {
         "agy": AgyAdapter(),
         "codex": GenericJsonlAgentAdapter("codex", [home / ".codex" / "sessions"]),
@@ -184,5 +186,9 @@ def get_adapter(agent_name: str = "agy") -> AgentAdapter:
             "opencode", [home / ".local" / "share" / "opencode", Path(".opencode")]
         ),
         "dsh": DshAdapter(),
+        "swe_bench": swe_adapter,
+        "swe_agent": swe_adapter,
+        "sweagent": swe_adapter,
+        "atif": swe_adapter,
     }
     return adapters.get(agent_name.lower(), AgyAdapter())

@@ -289,7 +289,7 @@ class DualTierMemoryStore:
         Stage 3: Pre-flight Guard Evaluation & L0->L1->L2 Progressive Degradation
         """
         self.sync_project_index_if_needed()
-        candidates: Dict[str, TracePlaybook] = {}
+        candidates: Dict[str, Tuple[TracePlaybook, float]] = {}
 
         # Search Project DB first (higher priority), then Global DB
         # Deduplicate global clones that were distilled from the current project's own traces
@@ -301,28 +301,29 @@ class DualTierMemoryStore:
             db_list.append((self.global_db_path, "global"))
 
         for db_path, tier_name in db_list:
-            for pb in self._query_single_db(
+            for pb, score in self._query_single_db(
                 db_path, query_text, file_paths or [], error_signatures or []
             ):
                 dedup_sig = f"{pb.problem_intent}|{'|'.join(pb.error_signatures)}"
                 if pb.trace_id not in candidates and dedup_sig not in seen_signatures and pb.status != "invalidated":
-                    candidates[pb.trace_id] = pb
+                    candidates[pb.trace_id] = (pb, score)
                     seen_signatures.add(dedup_sig)
 
         # Evaluate pre-flight guards on every matched candidate
-        evaluated: List[EvaluatedPlaybook] = []
-        for pb in candidates.values():
+        evaluated_pairs: List[Tuple[EvaluatedPlaybook, float]] = []
+        for pb, score in candidates.values():
             ev = evaluate_guards(pb, self.workspace_root)
-            evaluated.append(ev)
+            evaluated_pairs.append((ev, score))
 
-        # Rank: Project L0_FULL > Project L1/L2 > Global L2, then by confidence
-        def _rank_key(ev: EvaluatedPlaybook) -> Tuple[int, int, float]:
+        # Rank: Project vs Global > Relevance Score (exact match + BM25) > L0 Guard Validity > Confidence
+        def _rank_key(item: Tuple[EvaluatedPlaybook, float]) -> Tuple[int, float, int, float]:
+            ev, rel_score = item
             is_proj = 1 if ev.playbook.scope == "project" else 0
             l0_ok = 1 if ev.l0_valid else 0
-            return (is_proj, l0_ok, ev.playbook.confidence)
+            return (is_proj, round(rel_score, 2), l0_ok, ev.playbook.confidence)
 
-        evaluated.sort(key=_rank_key, reverse=True)
-        return evaluated[:limit]
+        evaluated_pairs.sort(key=_rank_key, reverse=True)
+        return [ev for ev, _ in evaluated_pairs[:limit]]
 
     def _query_single_db(
         self,
@@ -330,31 +331,30 @@ class DualTierMemoryStore:
         query_text: str,
         file_paths: List[str],
         error_signatures: List[str],
-    ) -> List[TracePlaybook]:
-        matched_ids: List[str] = []
-        results: List[TracePlaybook] = []
+    ) -> List[Tuple[TracePlaybook, float]]:
+        scores: Dict[str, float] = {}
 
         with sqlite3.connect(str(db_path)) as conn:
-            # 1. Exact Error / File triggers
+            # 1. Exact Error triggers
             for err in error_signatures:
                 cur = conn.execute(
-                    "SELECT trace_id FROM exact_triggers WHERE trigger_type = 'error' AND (? LIKE '%' || trigger_key || '%' OR trigger_key LIKE '%' || ? || '%')",
+                    "SELECT trace_id, trigger_key FROM exact_triggers WHERE trigger_type = 'error' AND (? LIKE '%' || trigger_key || '%' OR trigger_key LIKE '%' || ? || '%')",
                     (err.lower(), err.lower()),
                 )
-                for (tid,) in cur.fetchall():
-                    if tid not in matched_ids:
-                        matched_ids.append(tid)
+                for (tid, tkey) in cur.fetchall():
+                    boost = 10.0 if tkey == err.lower() else 5.0
+                    scores[tid] = scores.get(tid, 0.0) + boost
 
+            # 2. File triggers
             for fp in file_paths:
                 cur = conn.execute(
                     "SELECT trace_id FROM exact_triggers WHERE trigger_type = 'file' AND trigger_key = ?",
                     (fp.lower(),),
                 )
                 for (tid,) in cur.fetchall():
-                    if tid not in matched_ids:
-                        matched_ids.append(tid)
+                    scores[tid] = scores.get(tid, 0.0) + 12.0
 
-            # Check if query_text directly mentions any indexed file, symbol, or error
+            # 3. Direct mention in query_text
             if query_text:
                 q_low = query_text.lower()
                 cur = conn.execute(
@@ -362,10 +362,9 @@ class DualTierMemoryStore:
                     (q_low,),
                 )
                 for (tid,) in cur.fetchall():
-                    if tid not in matched_ids:
-                        matched_ids.append(tid)
+                    scores[tid] = scores.get(tid, 0.0) + 6.0
 
-                # 2. FTS5 BM25 keyword fallback
+                # 4. FTS5 BM25 keyword fallback
                 tokens = [
                     t for t in re.findall(r"[A-Za-z0-9_]+|[\u4e00-\u9fff]+", query_text)
                     if len(t) >= 2
@@ -374,26 +373,28 @@ class DualTierMemoryStore:
                     fts_query = " OR ".join(f'"{t}"' for t in tokens[:12])
                     try:
                         cur = conn.execute(
-                            "SELECT trace_id FROM playbooks_fts WHERE playbooks_fts MATCH ? ORDER BY rank LIMIT 5",
+                            "SELECT trace_id, rank FROM playbooks_fts WHERE playbooks_fts MATCH ? ORDER BY rank LIMIT 10",
                             (fts_query,),
                         )
-                        for (tid,) in cur.fetchall():
-                            if tid not in matched_ids:
-                                matched_ids.append(tid)
+                        for (tid, rank_val) in cur.fetchall():
+                            bm25_score = max(0.1, -float(rank_val))
+                            scores[tid] = scores.get(tid, 0.0) + bm25_score
                     except sqlite3.OperationalError:
                         pass
 
-            for tid in matched_ids:
+            results: List[Tuple[TracePlaybook, float]] = []
+            for tid, score in scores.items():
                 cur = conn.execute(
                     "SELECT payload_json FROM playbooks WHERE trace_id = ?", (tid,)
                 )
                 row = cur.fetchone()
                 if row:
                     try:
-                        results.append(TracePlaybook.from_dict(json.loads(row[0])))
+                        results.append((TracePlaybook.from_dict(json.loads(row[0])), score))
                     except Exception:
                         pass
 
+        results.sort(key=lambda x: x[1], reverse=True)
         return results
 
     def run_metabolism_gc(self) -> Dict[str, int]:

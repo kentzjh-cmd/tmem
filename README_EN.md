@@ -23,3 +23,25 @@ Instead of storing raw conversational summaries, `tmem` performs **Git Ground-Tr
    - **Antigravity (`agy`)**: `.agents/plugins/tmem/` (`hooks.json` `PreInvocation` + `PostToolUse`, `rules/AGENTS.md`, `skills/tmem/SKILL.md`).
    - **DeepSeek Harness (`@deepseek-ai/dsh`)**: `.dsh/plugins/tmem-dsh-plugin.mjs` Cordis plugin (`agent/pre-step`, `tools/post-execute`, native `/tmem` slash command in `dsh-commands`), `.dsh/tmem.patch.yml`, `~/.dsh/cordis.patch.yml`, `.agents/skills/tmem/SKILL.md`, and `AGENTS.md`.
    - **Git Hook**: `.git/hooks/post-commit` automatic background trace compilation.
+
+## Public Trajectory Datasets & Benchmark Evaluation
+
+`tmem` natively supports ingesting, compiling, and validating public coding agent trajectories:
+- **SWE-bench Experiments ([`SWE-bench/experiments`](https://github.com/SWE-bench/experiments)) & SWE-agent (`.traj`)**
+- **ATIF (Agent Trajectory Interchange Format / Harbor `trajectory.json`)**
+- **DeepSeek Harness (`session.v4.jsonl`)**
+
+### Benchmark Results (`python3 -m tmem.cli evaluate`)
+
+| Trajectory Instance | Format | Raw | L0 Path | Compression Ratio | Noise Filtered | L2 Repairs | Top-1 Recall | Slicing Latency |
+|---|---|---|---|---|---|---|---|---|
+| `django__django-11099` | `SWE-bench (.traj)` | 8 | 3 | **62.5%** | **100.0%** (4 -> 0) | 1 pair | **#1** | 0.19 ms |
+| `sympy__sympy-20590` | `ATIF (trajectory.json)` | 6 | 4 | **33.3%** | **100.0%** (3 -> 0) | 0 pair | **#1** | 0.18 ms |
+| `flask__flask-5014` | `SWE-bench (.traj)` | 6 | 3 | **50.0%** | **100.0%** (3 -> 0) | 1 pair | **#1** | 0.19 ms |
+| `dsh_e2e_session` | `dsh (session.v4.jsonl)` | 9 | 4 | **55.6%** | **100.0%** (3 -> 0) | 1 pair | **#1** | 0.49 ms |
+| **Overall Average** | **Multi-Format** | **7.25** | **3.5** | **50.35%** | **100.0%** | **3 pairs** | **100% (MRR: 1.0)** | **0.26 ms** |
+
+Run evaluation locally:
+```bash
+python3 -m tmem.cli evaluate
+```

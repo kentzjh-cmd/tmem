@@ -23,7 +23,7 @@ from tmem.models import ActionKind, ActionNode
 
 DSH_EXIT_CODE_RE = re.compile(r"\[exit code:\s*(-?\d+)\]", re.IGNORECASE)
 APPLY_PATCH_FILE_RE = re.compile(
-    r"^\*\*\*\s+(?:Update|Add|Move to)\s+File:\s+([^\r\n]+)", re.MULTILINE
+    r"^\*\*\*\s+(?:(?:Update|Add|Move to)\s+File:\s+)?([^\r\n]+)", re.MULTILINE
 )
 
 
