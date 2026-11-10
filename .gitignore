@@ -14,8 +14,9 @@ wheels/
 .coverage
 htmlcov/
 
-# Ignore .tmem/ in the tmem plugin repository itself
-.tmem/
+# Ignore local SQLite FTS5 cache & runtime state, while keeping .tmem/traces/ git-tracked
+.tmem/.cache/
+.tmem/runtime_state.json
 *.db
 *.db-journal
 *.db-wal
