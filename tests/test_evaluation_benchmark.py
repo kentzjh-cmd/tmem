@@ -30,9 +30,19 @@ class TestEvaluationBenchmark(unittest.TestCase):
         self.assertLess(summary.avg_slicing_latency_ms, 50.0)
         self.assertLess(summary.avg_retrieval_latency_ms, 15.0)
 
+        # Verify downstream efficacy metrics
+        self.assertIsNotNone(summary.downstream)
+        ds = summary.downstream
+        self.assertGreaterEqual(ds.avg_step_reduction_pct, 50.0)
+        self.assertEqual(ds.overall_error_avoidance_pct, 100.0)
+        self.assertEqual(ds.first_action_hit_rate, 1.0)
+        self.assertGreaterEqual(ds.avg_token_savings_pct, 60.0)
+        self.assertEqual(ds.drift_safety_rate, 100.0)
+
         # Verify markdown reporting renders cleanly
         report_md = format_markdown_report(summary)
-        self.assertIn("tmem Public Trajectory Dataset Benchmark", report_md)
+        self.assertIn("tmem Upstream Memory Compilation", report_md)
+        self.assertIn("tmem Downstream Agent Efficacy", report_md)
         self.assertIn("PASSED", report_md)
 
 

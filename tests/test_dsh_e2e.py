@@ -573,7 +573,8 @@ console.log(JSON.stringify({{
         self.assertIn("1 trace(s)", payload["statusText"])
 
         # Verify `/tmem bench` executed and returned benchmark report
-        self.assertIn("tmem Public Trajectory Dataset Benchmark", payload["benchText"])
+        self.assertIn("tmem Upstream Memory Compilation", payload["benchText"])
+        self.assertIn("tmem Downstream Agent Efficacy", payload["benchText"])
 
         # Verify `tools/post-execute` injected `<tmem_milestone_reached>` after `edit` -> `bash(pytest)`
         self.assertEqual(len(payload["milestoneContexts"]), 1)

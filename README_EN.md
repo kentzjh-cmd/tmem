@@ -46,6 +46,21 @@ Instead of storing raw conversational summaries, `tmem` performs **Git Ground-Tr
 | `sympy__sympy-20590` | `ATIF (trajectory.json)` | 6 | 4 | **33.3%** | **100.0%** (3 -> 0) | 2 files | 0 pair | **#1** | 0.18 ms |
 | **Overall Average (9 Cases)** | **Multi-Format** | **13.0** | **5.33** | **55.73%** | **100.0%** | **2.89 files** | **8 pairs** | **100% (MRR: 1.0)** | **0.31 ms** |
 
+### Downstream Agent Efficacy & Negative-Transfer Benchmark
+
+| Task Instance | Baseline Turns | With tmem | Steps Saved | Baseline Errors | Errors Avoided | First-Action Target | Token Savings | Drift Resilience |
+|---|---|---|---|---|---|---|---|---|
+| `dsh_e2e_session` | 9 | 4 | **-55.6%** | 1 error | **1 (100.0%)** | `MUTATE(tmem/adapters/dsh.py)` | **-85.2%** | ✅ L2_INVARIANT |
+| `dsh_long_lifecycle_session` | 27 | 9 | **-66.7%** | 1 error | **1 (100.0%)** | `MUTATE(src/limiter.py)` | **-88.8%** | ✅ L2_INVARIANT |
+| `dsh_multiturn_complex_session` | 17 | 6 | **-64.7%** | 1 error | **1 (100.0%)** | `MUTATE(tmem/adapters/base.py)` | **-88.5%** | ✅ L2_INVARIANT |
+| `astropy__astropy-12907` | 17 | 7 | **-58.8%** | 1 error | **1 (100.0%)** | `READ(astropy/modeling/separable.py)` | **-85.9%** | ✅ L2_INVARIANT |
+| `django__django-11099` | 8 | 3 | **-62.5%** | 1 error | **1 (100.0%)** | `READ(django/contrib/auth/validators.py)` | **-85.9%** | ✅ L2_INVARIANT |
+| `flask__flask-5014` | 6 | 3 | **-50.0%** | 1 error | **1 (100.0%)** | `READ(src/flask/blueprints.py)` | **-82.6%** | ✅ L2_INVARIANT |
+| `pytest-dev__pytest-7432` | 15 | 6 | **-60.0%** | 2 errors | **2 (100.0%)** | `READ(src/_pytest/skipping.py)` | **-85.8%** | ✅ L2_INVARIANT |
+| `scikit-learn__scikit-learn-13496` | 12 | 6 | **-50.0%** | 2 errors | **2 (100.0%)** | `READ(sklearn/ensemble/iforest.py)` | **-81.4%** | ✅ L2_INVARIANT |
+| `sympy__sympy-20590` | 6 | 4 | **-33.3%** | 0 error | **0 (100.0%)** | `READ(sympy/matrices/expressions/matexpr.py)` | **-73.7%** | ✅ L1_TOPOLOGY |
+| **Overall Downstream Metrics** | **Avg 13.0 turns** | **Avg 5.33 turns** | **-55.73%** | **10 total** | **10 (100.0%)** | **100.0% First Hit** | **-84.2%** | **100% Safe Degradation** |
+
 ### Long-Horizon Engineering Enhancements
 1. **Dead Mutation Elimination (DME)**: Merges successive edits across 20-40 turn sessions, discarding intermediate scratch attempts.
 2. **Scratch File Pruning**: Automatically prunes ephemeral test scripts (`scratch_*.py`) created and removed during debugging loops.

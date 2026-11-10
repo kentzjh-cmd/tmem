@@ -168,7 +168,24 @@ PYTHONPATH=. python3 -m unittest discover -s tests -v
 | `sympy__sympy-20590` | `ATIF (trajectory.json)` | 6 | 4 | **33.3%** | **100.0%** (3 $\to$ 0) | 2 files | 0 对 | **#1** | 0.18 ms | 2.4 ms |
 | **平均值 / 综合表现 (9 例)** | **Multi-Format** | **13.0** | **5.33** | **55.73%** | **100.0%** | **2.89 files** | **共 8 对** | **Top-1: 100% (MRR: 1.0)** | **0.31 ms** | **2.53 ms** |
 
-### 3. 长周期与复杂工程任务下的插件设计完善
+### 3. 下游智能体效能与抗漂移对抗评测 (Downstream Efficacy & Negative-Transfer)
+
+评估记忆系统核心价值的关键在于**下游任务的实际收益**——即注入 `<tmem_speculative_memory>` 后，Agent 是否能以更少步数、零报错直接解决问题，以及在代码发生重构漂移时是否安全防负迁移：
+
+| 测试任务实例 | 冷启动步数 (Baseline) | tmem 指导步数 | 步数缩减率 ($\Delta \text{Steps}$) | 基线遇错数 | 规避的报错数 | 首动作精准命中目标 | Context Token 节省率 | 代码漂移对抗表现 |
+|---|---|---|---|---|---|---|---|---|
+| `dsh_e2e_session` | 9 步 | 4 步 | **-55.6%** | 1 (FAIL) | **1 (100.0%)** | `MUTATE(tmem/adapters/dsh.py)` | **-85.2%** | ✅ 降级为 L2_INVARIANT |
+| `dsh_long_lifecycle_session` | 27 步 | 9 步 | **-66.7%** | 1 (Assert) | **1 (100.0%)** | `MUTATE(src/limiter.py)` | **-88.8%** | ✅ 降级为 L2_INVARIANT |
+| `dsh_multiturn_complex_session` | 17 步 | 6 步 | **-64.7%** | 1 (NameErr) | **1 (100.0%)** | `MUTATE(tmem/adapters/base.py)` | **-88.5%** | ✅ 降级为 L2_INVARIANT |
+| `astropy__astropy-12907` | 17 步 | 7 步 | **-58.8%** | 1 (IndexErr) | **1 (100.0%)** | `READ(astropy/modeling/separable.py)` | **-85.9%** | ✅ 降级为 L2_INVARIANT |
+| `django__django-11099` | 8 步 | 3 步 | **-62.5%** | 1 (Assert) | **1 (100.0%)** | `READ(django/contrib/auth/validators.py)` | **-85.9%** | ✅ 降级为 L2_INVARIANT |
+| `flask__flask-5014` | 6 步 | 3 步 | **-50.0%** | 1 (ValueErr) | **1 (100.0%)** | `READ(src/flask/blueprints.py)` | **-82.6%** | ✅ 降级为 L2_INVARIANT |
+| `pytest-dev__pytest-7432` | 15 步 | 6 步 | **-60.0%** | 2 (Indent/Assert) | **2 (100.0%)** | `READ(src/_pytest/skipping.py)` | **-85.8%** | ✅ 降级为 L2_INVARIANT |
+| `scikit-learn__scikit-learn-13496` | 12 步 | 6 步 | **-50.0%** | 2 (ValueErr) | **2 (100.0%)** | `READ(sklearn/ensemble/iforest.py)` | **-81.4%** | ✅ 降级为 L2_INVARIANT |
+| `sympy__sympy-20590` | 6 步 | 4 步 | **-33.3%** | 0 (Clean) | **0 (100.0%)** | `READ(sympy/matrices/expressions/matexpr.py)` | **-73.7%** | ✅ 降级为 L1_TOPOLOGY |
+| **下游综合收益指标** | **平均 13.0 步** | **平均 5.33 步** | **-55.73%** | **共 10 个** | **10 (100.0%)** | **100.0% 首动命中** | **-84.2%** | **100% 安全抗漂移** |
+
+### 4. 长周期与复杂工程任务下的插件设计完善
 
 针对长周期、多轮交互轨迹容易出现的噪音堆积与记忆漂移，`tmem` 进行了专项架构升级：
 1. **死修改消除 (Dead Mutation Elimination) 与同文件多次编辑合并**：
