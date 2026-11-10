@@ -2,8 +2,8 @@
   "trace_id": "tr_30fa71c60d",
   "agent_source": "agy",
   "scope": "project",
-  "created_at": "2026-11-10T08:21:15.749023+00:00",
-  "git_commit": "98335ad",
+  "created_at": "2026-11-10T08:22:21.541523+00:00",
+  "git_commit": "be15cd3",
   "problem_intent": "我如何在本机创建git登录",
   "error_signatures": [
     "Command failed (exit 1): git config --global --list 2>/dev/null; ls -la ~/.ssh 2>/dev/null; which gh 2>/dev/null",
@@ -51,6 +51,7 @@
     "extract_error_signature",
     "for",
     "from_dict",
+    "or",
     "parse_transcript",
     "save_global_playbook",
     "save_playbook",
@@ -447,6 +448,6 @@
   "confidence": 1.0,
   "hit_count": 0,
   "status": "active",
-  "raw_steps_count": 166,
+  "raw_steps_count": 169,
   "sliced_steps_count": 48
 }
