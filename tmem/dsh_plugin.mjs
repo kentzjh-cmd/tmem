@@ -1,0 +1,241 @@
+/**
+ * @tmem/dsh-plugin — Invisible Execution Trace Memory Plugin for DeepSeek Harness (@deepseek-ai/dsh)
+ *
+ * Capabilities:
+ * 1. Pre-Step Speculative Memory Recall (`agent/pre-step`):
+ *    Silently queries Project (`.tmem/`) + Global (`~/.tmem/`) memory tiers on new user turns or
+ *    after tool errors, injecting `<tmem_speculative_memory>` (L0_FULL / L1_TOPOLOGY / L2_INVARIANT).
+ * 2. Post-Tool Execution Observation & Milestone Detection (`tools/post-execute`):
+ *    Tracks file mutations (`write`, `edit`, `str_replace_editor`, `apply_patch`) and verification commands
+ *    (`bash`, `pwsh`). Injects L2 repair hints on errors and `<tmem_milestone_reached>` when `MUTATE -> VERIFY(0)` completes.
+ * 3. Native `/tmem` Slash Command (`commands.register`):
+ *    Registers `/tmem [project|global|both|status|gc] [<intent>]` directly in `dsh-commands`.
+ */
+
+import { spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { resolve } from "node:path";
+
+export const name = "tmem";
+
+function extractTextFromContent(content) {
+  if (!content) return "";
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === "string") return part;
+        if (part && typeof part === "object" && part.type === "text" && typeof part.text === "string") {
+          return part.text;
+        }
+        return "";
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+  return "";
+}
+
+function invokeTmemHook(event, payload, options = {}) {
+  const workspaceRoot = resolve(options.workspaceRoot || process.cwd());
+  const pythonBin = options.pythonBin || process.env.TMEM_PYTHON || "python3";
+  const pythonPathRoot = resolve(options.tmemRoot || workspaceRoot);
+  const env = {
+    ...process.env,
+    PYTHONPATH: process.env.PYTHONPATH
+      ? `${pythonPathRoot}:${process.env.PYTHONPATH}`
+      : pythonPathRoot,
+  };
+
+  try {
+    const res = spawnSync(pythonBin, ["-m", "tmem.cli", "hook", "dsh", event], {
+      cwd: workspaceRoot,
+      env,
+      input: JSON.stringify({ workspaceRoot, ...payload }),
+      encoding: "utf-8",
+      timeout: 5000,
+    });
+    if (res.status === 0 && res.stdout) {
+      const trimmed = res.stdout.trim();
+      if (trimmed) {
+        return JSON.parse(trimmed);
+      }
+    }
+  } catch (_err) {
+    // Fail-open: never disrupt the host dsh agent loop
+  }
+  return {};
+}
+
+function createNoticeMessage(text, summary = "tmem") {
+  return {
+    id: `tmem_${randomUUID()}`,
+    role: "user",
+    content: [{ type: "text", text }],
+    source: {
+      kind: "tmem",
+      form: "notice",
+      summary,
+    },
+  };
+}
+
+export function apply(ctx, config = {}) {
+  const workspaceRoot = resolve(config.workspaceRoot || process.cwd());
+  const tmemRoot = resolve(config.tmemRoot || workspaceRoot);
+  const pythonBin = config.pythonBin || process.env.TMEM_PYTHON || "python3";
+  const hookOpts = { workspaceRoot, tmemRoot, pythonBin };
+
+  // 1. Register `/tmem` slash command whenever `dsh-commands` service is available
+  const registerSlashCommand = (commandService) => {
+    if (!commandService || typeof commandService.register !== "function") return;
+    try {
+      commandService.register({
+        definitionId: "@tmem/dsh-command-tmem",
+        name: "tmem",
+        description:
+          "Capture, slice, or manage execution trace memory (project | global | both | status | gc)",
+        input: {
+          hint: "[project|global|both|status|gc] [<intent>]",
+        },
+        handler: async (invocation) => {
+          const out = invokeTmemHook(
+            "command",
+            {
+              sessionId:
+                invocation?.agent?.session?.id || invocation?.sessionId || "default",
+              commandId: invocation?.commandId || "",
+              args: invocation?.rawInput ?? invocation?.args ?? "",
+            },
+            hookOpts
+          );
+          if (out && (out.kind === "error" || out.kind === "failure")) {
+            return {
+              kind: "error",
+              text: out.text || out.error || "tmem command failed",
+            };
+          }
+          return {
+            kind: "success",
+            text: out?.text || "tmem command completed.",
+          };
+        },
+      });
+    } catch (_err) {
+      // Ignore duplicate registration in hot-reload contexts
+    }
+  };
+
+  if (typeof ctx.inject === "function") {
+    ctx.inject(["commands"], (innerCtx) => {
+      registerSlashCommand(innerCtx.commands);
+    });
+  }
+
+  // 2. Pre-Step Hook: Inject speculative execution memory (`<tmem_speculative_memory>`)
+  ctx.on("agent/pre-step", async ({ agent, messages, step, signal }, next) => {
+    const decision = await next();
+    if (decision?.action === "abort") return decision;
+
+    const currentMessages = Array.isArray(decision?.messages)
+      ? [...decision.messages]
+      : Array.isArray(messages)
+        ? [...messages]
+        : [];
+
+    // Find latest real user message
+    let lastUserInput = "";
+    let lastUserIndex = -1;
+    for (let i = currentMessages.length - 1; i >= 0; i--) {
+      const m = currentMessages[i];
+      if (m && m.role === "user" && (!m.source || m.source.kind === "user")) {
+        lastUserInput = extractTextFromContent(m.content).trim();
+        lastUserIndex = i;
+        break;
+      }
+    }
+
+    const sessionId = agent?.session?.id || "default";
+    const out = invokeTmemHook(
+      "pre_invocation",
+      {
+        sessionId,
+        step,
+        lastUserInput,
+      },
+      hookOpts
+    );
+
+    if (out && typeof out.injectedContext === "string" && out.injectedContext.trim()) {
+      const noticeMsg = createNoticeMessage(out.injectedContext.trim(), "tmem-speculative-memory");
+      if (lastUserIndex >= 0) {
+        currentMessages.splice(lastUserIndex, 0, noticeMsg);
+      } else {
+        currentMessages.push(noticeMsg);
+      }
+      return {
+        ...decision,
+        action: "continue",
+        messages: currentMessages,
+      };
+    }
+
+    return decision;
+  });
+
+  // 3. Post-Tool Hook: Track mutations, errors (L2 repair), and `MUTATE -> VERIFY(0)` milestones
+  ctx.on("tools/post-execute", async (exec, result, next) => {
+    const downstream = await next();
+
+    let parsedArgs = {};
+    if (exec?.arguments && typeof exec.arguments === "object") {
+      parsedArgs = exec.arguments;
+    } else if (typeof exec?.arguments === "string" && exec.arguments.trim()) {
+      try {
+        parsedArgs = JSON.parse(exec.arguments);
+      } catch (_e) {
+        parsedArgs = { raw: exec.arguments };
+      }
+    }
+
+    const resultText = extractTextFromContent(result?.content);
+    const isError = Boolean(result?.isError);
+    const exitCode =
+      typeof result?.meta?.exitCode === "number"
+        ? result.meta.exitCode
+        : typeof result?.value?.exitCode === "number"
+          ? result.value.exitCode
+          : null;
+
+    const sessionId = exec?.agent?.session?.id || "default";
+    const out = invokeTmemHook(
+      "post_tool_use",
+      {
+        sessionId,
+        toolCall: {
+          name: exec?.name || "",
+          args: parsedArgs,
+        },
+        resultText,
+        isError,
+        exitCode,
+      },
+      hookOpts
+    );
+
+    if (out && typeof out.additionalContext === "string" && out.additionalContext.trim()) {
+      const notice = createNoticeMessage(out.additionalContext.trim(), "tmem-milestone");
+      return {
+        ...downstream,
+        additionalContexts: [notice, ...(downstream?.additionalContexts || [])],
+      };
+    }
+
+    return downstream;
+  });
+}
+
+export default {
+  name,
+  apply,
+};
