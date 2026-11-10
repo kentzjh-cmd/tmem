@@ -101,6 +101,10 @@ def format_injected_context(evaluated_list: List[EvaluatedPlaybook]) -> str:
             f"\n[Trace {pb.trace_id} | Scope: {pb.scope.upper()} | Tier: {ev.effective_tier} | Confidence: {pb.confidence:.2f}]"
         )
         lines.append(f"- Historical Intent: {pb.problem_intent}")
+        if getattr(pb, "semantic_summary", ""):
+            lines.append(f"- Semantic Summary: {pb.semantic_summary}")
+        if pb.semantic_summary:
+            lines.append(f"- Semantic Summary: {pb.semantic_summary}")
 
         if ev.l0_valid and pb.l0_critical_path:
             # L0 Full Concrete Path

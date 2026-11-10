@@ -12,8 +12,10 @@ from typing import Any, Dict, List, Optional, Tuple
 from tmem.adapters.base import (
     AgentAdapter,
     ParsedSession,
+    extract_assistant_conclusion,
     extract_error_signature,
     extract_symbols_from_text,
+    is_filler_user_intent,
     normalize_rel_path,
     scrub_secrets,
 )
@@ -172,9 +174,24 @@ class DshAdapter(AgentAdapter):
                         and not text.startswith("/")
                         and not text.startswith("<tmem_")
                         and text != "[REDACTED_SECRET]"
+                        and not is_filler_user_intent(text)
                     ):
                         session.user_intents.append(text[:500])
                     continue
+
+                # 1b. Native dsh `assistant/message` or generic `assistant` role
+                if event_type in ("assistant/message", "assistant"):
+                    msg_obj = data.get("message") if isinstance(data.get("message"), dict) else data
+                    asst_text = _extract_dsh_text(
+                        msg_obj.get("content")
+                        if isinstance(msg_obj, dict) and "content" in msg_obj
+                        else entry.get("content") or ""
+                    )
+                    conclusion = extract_assistant_conclusion(asst_text)
+                    if conclusion:
+                        session.assistant_conclusions.append(conclusion)
+                    if event_type == "assistant/message":
+                        continue
 
                 # 2. Native dsh `tool/call` event
                 if event_type == "tool/call":

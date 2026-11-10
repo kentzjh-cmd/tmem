@@ -258,6 +258,7 @@ class DualTierMemoryStore:
         repairs_text = " ".join(
             f"{r.error_signature} {r.repair_action}" for r in pb.l2_causal_repairs
         )
+        intent_and_summary = f"{pb.problem_intent} {pb.semantic_summary}".strip()
         conn.execute(
             """
             INSERT INTO playbooks_fts
@@ -266,7 +267,7 @@ class DualTierMemoryStore:
             """,
             (
                 pb.trace_id,
-                pb.problem_intent,
+                intent_and_summary,
                 " ".join(pb.error_signatures),
                 " ".join(pb.touched_files),
                 " ".join(pb.touched_symbols),
@@ -450,6 +451,7 @@ class DualTierMemoryStore:
                             "scope": tier_name,
                             "effective_tier": ev.effective_tier,
                             "problem_intent": pb.problem_intent,
+                            "semantic_summary": pb.semantic_summary,
                             "touched_files": pb.touched_files,
                             "l2_repairs_count": len(pb.l2_causal_repairs),
                             "status": pb.status,

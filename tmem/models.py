@@ -81,6 +81,7 @@ class TracePlaybook:
 
     # Trigger anchors for deterministic recall funnel
     problem_intent: str = ""
+    semantic_summary: str = ""
     error_signatures: List[str] = field(default_factory=list)
     touched_files: List[str] = field(default_factory=list)
     touched_symbols: List[str] = field(default_factory=list)
@@ -118,4 +119,5 @@ class TracePlaybook:
         copied["l2_causal_repairs"] = [
             CausalRepairPair.from_dict(r) for r in copied.get("l2_causal_repairs", [])
         ]
+        copied.setdefault("semantic_summary", "")
         return cls(**copied)

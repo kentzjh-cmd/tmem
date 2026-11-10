@@ -32,18 +32,22 @@ TOOLCHAIN_CMD_RE = re.compile(
 )
 
 
-def get_git_ground_truth(workspace_root: str) -> Tuple[Optional[str], Set[str], Dict[str, List[str]]]:
+def get_git_ground_truth(
+    workspace_root: str,
+) -> Tuple[Optional[str], Set[str], Dict[str, List[str]], Optional[str]]:
     """
     Inspect Git repository to obtain:
     - current HEAD commit hash
     - set of actually modified/committed files (Ground Truth Sink)
     - touched symbols per file from git diff
+    - commit subject line if working tree is clean (e.g. post-commit hook)
     """
     ws = Path(workspace_root)
     if not (ws / ".git").exists():
-        return None, set(), {}
+        return None, set(), {}, None
 
     commit_hash = None
+    commit_subject: Optional[str] = None
     modified_files: Set[str] = set()
     file_symbols: Dict[str, List[str]] = {}
 
@@ -77,7 +81,17 @@ def get_git_ground_truth(workspace_root: str) -> Tuple[Optional[str], Set[str], 
                         modified_files.add(path_str)
         else:
             # Post-commit hook case: working tree is clean, inspect last commit
-            diff_target = ["git", " show", "--format=", "HEAD"]
+            subj_res = subprocess.run(
+                ["git", "log", "-1", "--pretty=%s"],
+                cwd=workspace_root,
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
+            if subj_res.returncode == 0 and subj_res.stdout.strip():
+                subj = subj_res.stdout.strip()
+                if not subj.startswith("chore(tmem):"):
+                    commit_subject = subj
             names_res = subprocess.run(
                 ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"],
                 cwd=workspace_root,
@@ -112,7 +126,7 @@ def get_git_ground_truth(workspace_root: str) -> Tuple[Optional[str], Set[str], 
     except Exception:
         pass
 
-    return commit_hash, modified_files, file_symbols
+    return commit_hash, modified_files, file_symbols, commit_subject
 
 
 class BackwardTraceSlicer:
@@ -127,10 +141,10 @@ class BackwardTraceSlicer:
         if not raw_actions:
             return None
 
-        commit_hash, git_files, git_symbols = (
+        commit_hash, git_files, git_symbols, commit_subject = (
             get_git_ground_truth(session.workspace_root)
             if use_git_ground_truth
-            else (None, set(), {})
+            else (None, set(), {}, None)
         )
 
         # 1. Determine Ground Truth Mutated Files (Sink)
@@ -223,10 +237,11 @@ class BackwardTraceSlicer:
         elif len(sorted_files) == 1:
             cochange_topology.append(f"Primary target module: {sorted_files[0]}")
 
-        problem_intent = (
-            session.user_intents[-1]
-            if session.user_intents
-            else f"Modify {', '.join(sorted_files[:3])}"
+        problem_intent, semantic_summary = self._synthesize_semantic_topic(
+            session=session,
+            sorted_files=sorted_files,
+            sorted_symbols=sorted(touched_symbols),
+            commit_subject=commit_subject,
         )
         error_sigs = sorted(
             {r.error_signature for r in causal_repairs if r.error_signature}
@@ -244,6 +259,7 @@ class BackwardTraceSlicer:
             created_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
             git_commit=commit_hash,
             problem_intent=problem_intent[:300],
+            semantic_summary=semantic_summary[:350],
             error_signatures=error_sigs,
             touched_files=sorted_files,
             touched_symbols=sorted(touched_symbols),
@@ -331,10 +347,64 @@ class BackwardTraceSlicer:
                     pass
         return guards
 
+    def _synthesize_semantic_topic(
+        self,
+        session: ParsedSession,
+        sorted_files: List[str],
+        sorted_symbols: List[str],
+        commit_subject: Optional[str],
+    ) -> Tuple[str, str]:
+        """
+        Synthesize both:
+        1. `problem_intent` (Semantic Topic): High-signal task title combining the most informative
+           user goal and/or Git commit subject rather than raw short conversational replies.
+        2. `semantic_summary` (Semantic Resolution Summary): Concise explanation of what was solved,
+           combining the assistant's final conclusion and key touched modules/symbols.
+        """
+        # Pick the most informative user intent from the session
+        raw_user = ""
+        if session.user_intents:
+            last_u = session.user_intents[-1].strip()
+            if len(last_u) >= 18:
+                raw_user = last_u
+            else:
+                # Look back for a more descriptive task prompt if the last turn was short
+                longer = [u.strip() for u in session.user_intents if len(u.strip()) >= 18]
+                if longer:
+                    raw_user = f"{longer[-1]} ({last_u})"
+                else:
+                    raw_user = last_u
+
+        if commit_subject and raw_user:
+            if len(raw_user) < 24 and commit_subject not in raw_user:
+                problem_intent = f"{commit_subject} — {raw_user}"
+            else:
+                problem_intent = raw_user
+        elif commit_subject:
+            problem_intent = commit_subject
+        elif raw_user:
+            problem_intent = raw_user
+        else:
+            problem_intent = f"Modify {', '.join(sorted_files[:3])}"
+
+        # Build semantic resolution summary from assistant conclusion + commit subject + scope
+        summary_parts: List[str] = []
+        if commit_subject and commit_subject != problem_intent:
+            summary_parts.append(commit_subject)
+        if session.assistant_conclusions:
+            summary_parts.append(session.assistant_conclusions[-1])
+        if sorted_symbols:
+            summary_parts.append(f"Key symbols: {', '.join(sorted_symbols[:6])}")
+        elif sorted_files:
+            summary_parts.append(f"Key modules: {', '.join(sorted_files[:4])}")
+
+        semantic_summary = " | ".join(summary_parts)
+        return problem_intent, semantic_summary
+
     def _is_meaningful_command(self, cmd: str) -> bool:
         """
         Keep only repeatable verification, test, build, lint, or dependency installation commands;
-        filter out exploratory shell noise and one-off git commit/push/curl plumbing.
+        filter out exploratory shell noise, inline scratch scripts, and git commit/push/curl plumbing.
         """
         noisy_prefixes = (
             "ls",
@@ -359,6 +429,10 @@ class BackwardTraceSlicer:
             "rg ",
             "sed ",
             "awk ",
+            "python3 -c",
+            "python -c",
+            "node -e",
+            "node --input-type=module -e",
         )
         stripped = cmd.strip()
         if any(stripped == p.strip() or stripped.startswith(p) for p in noisy_prefixes):

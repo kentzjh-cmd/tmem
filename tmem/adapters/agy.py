@@ -11,8 +11,10 @@ from typing import Any, Dict, List, Optional
 from tmem.adapters.base import (
     AgentAdapter,
     ParsedSession,
+    extract_assistant_conclusion,
     extract_error_signature,
     extract_symbols_from_text,
+    is_filler_user_intent,
     normalize_rel_path,
     scrub_secrets,
 )
@@ -76,10 +78,19 @@ class AgyAdapter(AgentAdapter):
                 if step_type == "USER_INPUT":
                     m = USER_REQ_RE.search(content)
                     user_text = scrub_secrets(m.group(1).strip() if m else content.strip())
-                    if user_text and not user_text.startswith("/") and user_text != "[REDACTED_SECRET]":
+                    if (
+                        user_text
+                        and not user_text.startswith("/")
+                        and user_text != "[REDACTED_SECRET]"
+                        and not is_filler_user_intent(user_text)
+                    ):
                         session.user_intents.append(user_text)
 
                 elif step_type == "PLANNER_RESPONSE":
+                    if content.strip():
+                        conclusion = extract_assistant_conclusion(content)
+                        if conclusion:
+                            session.assistant_conclusions.append(conclusion)
                     pending_nodes = []
                     for tc in entry.get("tool_calls", []) or []:
                         t_name = tc.get("name", "")

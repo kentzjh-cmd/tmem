@@ -39,8 +39,68 @@ class ParsedSession:
     session_id: str
     workspace_root: str
     user_intents: List[str] = field(default_factory=list)
+    assistant_conclusions: List[str] = field(default_factory=list)
     actions: List[ActionNode] = field(default_factory=list)
     active_errors: List[str] = field(default_factory=list)
+
+
+FILLER_INTENT_SET = {
+    "done",
+    "ok",
+    "okay",
+    "yes",
+    "y",
+    "go",
+    "continue",
+    "继续",
+    "可以",
+    "好的",
+    "好",
+    "行",
+    "确认",
+    "没问题",
+}
+
+
+def is_filler_user_intent(text: str) -> bool:
+    """Return True if a user message is purely conversational confirmation without task semantics."""
+    s = (text or "").strip().lower().rstrip(".!！。，,")
+    if not s:
+        return True
+    return s in FILLER_INTENT_SET
+
+
+def extract_assistant_conclusion(text: str) -> Optional[str]:
+    """
+    Extract a concise 1-2 line semantic summary from an assistant's response text
+    (stripping markdown links, code blocks, and milestone prompt footers).
+    """
+    if not text:
+        return None
+    # Strip fenced code blocks and HTML comments
+    cleaned = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
+    cleaned = re.sub(r"<!--.*?-->", "", cleaned, flags=re.DOTALL)
+    # Convert markdown links `[label](url)` to `label`
+    cleaned = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", cleaned)
+
+    meaningful_lines: List[str] = []
+    for raw_line in cleaned.splitlines():
+        ln = raw_line.strip()
+        if not ln or ln.startswith(("> 💡", "---", "```", "<tmem_")):
+            continue
+        if "是否需要将本次有效执行路径沉淀为记忆" in ln:
+            continue
+        # Strip leading markdown heading or bullet markers
+        ln = re.sub(r"^(?:#+\s*|\d+\.\s*|[-*]\s*)", "", ln).strip()
+        if len(ln) >= 12:
+            meaningful_lines.append(ln)
+            if len(meaningful_lines) >= 2:
+                break
+
+    if not meaningful_lines:
+        return None
+    summary = scrub_secrets("；".join(meaningful_lines))
+    return summary[:240]
 
 
 def normalize_rel_path(raw_path: Optional[str], workspace_root: str) -> Optional[str]:
