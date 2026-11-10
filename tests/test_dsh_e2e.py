@@ -318,6 +318,39 @@ class TestDshPluginEndToEnd(unittest.TestCase):
                     },
                 },
             },
+            {
+                "type": "assistant/message",
+                "seq": 13,
+                "time": 1731225613000,
+                "data": {
+                    "turn": 1,
+                    "step": 5,
+                    "message": {
+                        "id": "msg_asst_1",
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": (
+                                    "Fixed ZeroDivisionError in [src/billing.py](file:///src/billing.py) by guarding `units == 0` "
+                                    "and normalizing tax rates via `normalize_rate` in [src/tax_rules.py](file:///src/tax_rules.py)."
+                                ),
+                            }
+                        ],
+                    },
+                },
+            },
+            {
+                "type": "user/message",
+                "seq": 14,
+                "time": 1731225614000,
+                "data": {
+                    "id": "msg_u_filler",
+                    "role": "user",
+                    "content": [{"type": "text", "text": "done"}],
+                    "source": {"kind": "user"},
+                },
+            },
         ]
 
         with v4_path.open("w", encoding="utf-8") as f:
@@ -350,7 +383,9 @@ class TestDshPluginEndToEnd(unittest.TestCase):
             self.assertNotIn("src/dead_experiment.py", playbook.touched_files)
             self.assertLess(playbook.sliced_steps_count, playbook.raw_steps_count)
 
-            # Verify L1 co-change topology & L2 error-to-fix invariant
+            # Verify L1 co-change topology, semantic summary & L2 error-to-fix invariant
+            self.assertIn("Fixed ZeroDivisionError in src/billing.py", playbook.semantic_summary)
+            self.assertIn("Key symbols: calculate_unit_tax, normalize_rate", playbook.semantic_summary)
             self.assertTrue(
                 any(
                     "src/billing.py" in c and "src/tax_rules.py" in c
