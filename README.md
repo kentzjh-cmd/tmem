@@ -75,11 +75,15 @@ flowchart LR
   - [`skills/tmem/SKILL.md`](file:///home/ubuntu/proj/.agents/plugins/tmem/skills/tmem/SKILL.md)：支持自然语言请求沉淀记忆。
 
 ### 2. DeepSeek Harness (`@deepseek-ai/dsh`) 原生接入
-- **Cordis 运行时插件**：[`.dsh/plugins/tmem-dsh-plugin.mjs`](file:///home/ubuntu/proj/.dsh/plugins/tmem-dsh-plugin.mjs)（源码位于 [`tmem/dsh_plugin.mjs`](file:///home/ubuntu/proj/tmem/dsh_plugin.mjs)）
-  - **自动 Patch 挂载**：自动生成工作区 [`.dsh/tmem.patch.yml`](file:///home/ubuntu/proj/.dsh/tmem.patch.yml) 与全局 `~/.dsh/cordis.patch.yml`，`dsh` 启动时由 `dsh-app-boot` 原生合入 Cordis 插件树。
+- **支持 `dsh plugin add` 官方协议一键安装**：
+  ```bash
+  dsh plugin add github:kentzjh-cmd/tmem
+  ```
+- **Cordis 运行时插件**：[`tmem/dsh_plugin.mjs`](file:///home/ubuntu/proj/tmem/dsh_plugin.mjs)（通过 [`package.json`](file:///home/ubuntu/proj/package.json) `dsh.bundle` 与 [`cordis.patch.yml`](file:///home/ubuntu/proj/cordis.patch.yml) 自动导出）
+  - **动态工作区感知**：自动通过 `@deepseek-ai/dsh-working-directory` 服务或 `session.header.cwd` 解析当前会话所属项目根目录，无需硬编码路径。
   - **`agent/pre-step` 钩子**：在每轮推理前静默召回 `<tmem_speculative_memory>` 并注入消息上下文。
   - **`tools/post-execute` 钩子**：追踪 `read`、`write`、`edit`、`str_replace_editor`、`apply_patch` 及 `bash`/`pwsh` 的 `[exit code: N]`，在报错时即时通过 `additionalContexts` 注入 L2 修复提示，在 `修改 -> 测试通过` 时注入 `<tmem_milestone_reached>`。
-  - **原生 `/tmem` 命令注册**：通过 `@deepseek-ai/dsh-commands` 的 `commands.register` 原生注册 `/tmem` 命令。
+  - **原生 `/tmem` 命令注册**：通过 `@deepseek-ai/dsh-commands` 的 `commands.register` 原生注册 `/tmem [project|global|both|status|list|forget|gc]` 命令。
 - **会话日志解析 ([`tmem/adapters/dsh.py`](file:///home/ubuntu/proj/tmem/adapters/dsh.py))**：原生解析 `$DSH_HOME/sessions/<id>/session.v4.jsonl`（兼容 `v3` 与 `session.jsonl`），支持多文件 `apply_patch` 补丁拆解。
 
 ---
@@ -94,6 +98,8 @@ flowchart LR
    - `/tmem global [可选备注]`：切片并蒸馏保存至全局级 `~/.tmem/playbooks/`。
    - `/tmem both [可选备注]`：同时保存至项目级与全局级。
    - `/tmem status`：查看当前项目级与全局级记忆库统计。
+   - `/tmem list [project|global|both]`：列出所有已沉淀轨迹及其当前探针生效层级（`L0_FULL` / `L1_TOPOLOGY` / `L2_INVARIANT`）。
+   - `/tmem forget <trace_id>`：按 ID 或前缀一键删除指定记忆轨迹。
    - `/tmem gc`：运行预检探针代谢检查，自动标记失效的 L0 路径。
 3. **Git 提交自动兜底（`.git/hooks/post-commit`）**
    每次执行 `git commit` 时，后台静默触发 `tmem capture --scope auto --quiet`，自动完成增量轨迹切片与落盘。

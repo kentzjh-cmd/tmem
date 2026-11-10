@@ -1,0 +1,4 @@
+# DeepSeek Harness (dsh) bundle patch for tmem
+- insert:
+    - id: tmem
+      name: ./tmem/dsh_plugin.mjs

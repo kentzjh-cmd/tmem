@@ -18,7 +18,7 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
-from tmem.adapters.base import ParsedSession, extract_symbols_from_text
+from tmem.adapters.base import ParsedSession, extract_symbols_from_text, is_code_file
 from tmem.models import (
     ActionKind,
     ActionNode,
@@ -104,7 +104,7 @@ def get_git_ground_truth(workspace_root: str) -> Tuple[Optional[str], Set[str], 
                 if line.startswith("+++ b/"):
                     current_file = line[6:].strip()
                 elif current_file and (line.startswith("+") or line.startswith("@@")):
-                    syms = extract_symbols_from_text(line)
+                    syms = extract_symbols_from_text(line, current_file)
                     if syms:
                         existing = set(file_symbols.get(current_file, []))
                         existing.update(syms)
@@ -311,6 +311,8 @@ class BackwardTraceSlicer:
         ws = Path(workspace_root)
         for f in files[:5]:
             guards.append(GuardProbe(probe_type="file_exists", target=f))
+            if not is_code_file(f):
+                continue
             full_path = ws / f
             if full_path.exists() and full_path.is_file():
                 try:
@@ -330,7 +332,10 @@ class BackwardTraceSlicer:
         return guards
 
     def _is_meaningful_command(self, cmd: str) -> bool:
-        """Filter out pure exploratory shell noise (ls, pwd, cat, git status)."""
+        """
+        Keep only repeatable verification, test, build, lint, or dependency installation commands;
+        filter out exploratory shell noise and one-off git commit/push/curl plumbing.
+        """
         noisy_prefixes = (
             "ls",
             "pwd",
@@ -339,12 +344,32 @@ class BackwardTraceSlicer:
             "head ",
             "tail ",
             "echo ",
-            "git status",
-            "git log",
-            "git diff",
+            "rm ",
+            "mv ",
+            "cp ",
+            "mkdir ",
+            "ln ",
+            "chmod ",
+            "curl ",
+            "wget ",
+            "TOKEN=",
+            "git ",
             "find ",
             "grep ",
             "rg ",
+            "sed ",
+            "awk ",
         )
         stripped = cmd.strip()
-        return not any(stripped == p.strip() or stripped.startswith(p) for p in noisy_prefixes)
+        if any(stripped == p.strip() or stripped.startswith(p) for p in noisy_prefixes):
+            return False
+        # Also filter compound `cd ... && git commit/push/status` or `TOKEN=...` commands
+        lower = stripped.lower()
+        if any(
+            g in lower
+            for g in ("git push", "git commit", "git remote", "git status", "curl -s")
+        ) and not any(
+            v in lower for v in ("pytest", "unittest", "npm test", "cargo test", "go test")
+        ):
+            return False
+        return True

@@ -151,7 +151,7 @@ class GenericJsonlAgentAdapter(AgentAdapter):
                 kind=ActionKind.MUTATE,
                 tool_name=t_name,
                 target_file=normalize_rel_path(file_arg, workspace_root),
-                symbols_touched=extract_symbols_from_text(body),
+                symbols_touched=extract_symbols_from_text(body, str(file_arg or "")),
             )
         if cmd_arg or any(k in low for k in ("bash", "exec", "shell", "run", "command", "terminal")):
             return ActionNode(

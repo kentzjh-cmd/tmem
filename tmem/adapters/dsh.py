@@ -323,7 +323,7 @@ class DshAdapter(AgentAdapter):
                             kind=ActionKind.MUTATE,
                             tool_name=tool_name,
                             target_file=normalize_rel_path(raw_path, workspace_root),
-                            symbols_touched=extract_symbols_from_text(added_body),
+                            symbols_touched=extract_symbols_from_text(added_body, raw_path),
                             timestamp=timestamp,
                         )
                     )
@@ -369,7 +369,7 @@ class DshAdapter(AgentAdapter):
                     kind=ActionKind.MUTATE,
                     tool_name=tool_name,
                     target_file=normalize_rel_path(file_arg, workspace_root),
-                    symbols_touched=extract_symbols_from_text(code_body),
+                    symbols_touched=extract_symbols_from_text(code_body, str(file_arg or "")),
                     timestamp=timestamp,
                 )
             ]

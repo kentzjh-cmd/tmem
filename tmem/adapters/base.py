@@ -82,16 +82,87 @@ def extract_error_signature(text: str) -> Optional[str]:
     return None
 
 
-def extract_symbols_from_text(text: str) -> List[str]:
+NON_CODE_EXTENSIONS = {
+    ".md",
+    ".markdown",
+    ".txt",
+    ".rst",
+    ".json",
+    ".jsonl",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".ini",
+    ".cfg",
+    ".lock",
+    ".csv",
+    ".svg",
+    ".html",
+    ".css",
+}
+
+SYMBOL_STOPWORDS = {
+    "for",
+    "if",
+    "else",
+    "elif",
+    "while",
+    "return",
+    "in",
+    "to",
+    "of",
+    "on",
+    "from",
+    "with",
+    "by",
+    "as",
+    "is",
+    "at",
+    "be",
+    "or",
+    "and",
+    "not",
+    "the",
+    "that",
+    "this",
+    "self",
+    "super",
+    "new",
+    "var",
+    "let",
+    "const",
+    "async",
+    "await",
+    "true",
+    "false",
+    "null",
+    "none",
+}
+
+
+def is_code_file(file_path: Optional[str]) -> bool:
+    """Return True if file_path represents a source code file suitable for AST/symbol guards."""
+    if not file_path:
+        return True
+    p = Path(file_path)
+    if p.name.startswith(".") and p.suffix == "":
+        return False
+    return p.suffix.lower() not in NON_CODE_EXTENSIONS
+
+
+def extract_symbols_from_text(text: str, file_path: Optional[str] = None) -> List[str]:
     """Extract defined/modified function or class names from code snippets via regex."""
-    if not text:
+    if not text or not is_code_file(file_path):
         return []
     symbols = set()
     for m in re.finditer(
-        r"\b(?:def|class|fn|func|function|interface|struct)\s+([A-Za-z_][A-Za-z0-9_]*)",
+        r"(?:^|[\s;{}()])(?:def|class|fn|func|function|interface|struct)\s+([A-Za-z_][A-Za-z0-9_]{2,})\s*(?:[\(<:{]|$)",
         text,
+        re.MULTILINE,
     ):
-        symbols.add(m.group(1))
+        cand = m.group(1)
+        if cand.lower() not in SYMBOL_STOPWORDS:
+            symbols.add(cand)
     return sorted(symbols)
 
 

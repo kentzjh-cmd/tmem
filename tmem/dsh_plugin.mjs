@@ -9,14 +9,51 @@
  *    Tracks file mutations (`write`, `edit`, `str_replace_editor`, `apply_patch`) and verification commands
  *    (`bash`, `pwsh`). Injects L2 repair hints on errors and `<tmem_milestone_reached>` when `MUTATE -> VERIFY(0)` completes.
  * 3. Native `/tmem` Slash Command (`commands.register`):
- *    Registers `/tmem [project|global|both|status|gc] [<intent>]` directly in `dsh-commands`.
+ *    Registers `/tmem [project|global|both|status|list|forget|gc] [<intent|trace_id>]` directly in `dsh-commands`.
  */
 
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export const name = "tmem";
+
+const SELF_DIR = dirname(fileURLToPath(import.meta.url));
+
+function resolveDefaultTmemRoot(fallbackDir) {
+  const oneUp = resolve(SELF_DIR, "..");
+  if (existsSync(join(oneUp, "tmem", "cli.py"))) {
+    return oneUp;
+  }
+  const twoUp = resolve(SELF_DIR, "../..");
+  if (existsSync(join(twoUp, "tmem", "cli.py"))) {
+    return twoUp;
+  }
+  return resolve(fallbackDir || process.cwd());
+}
+
+function resolveSessionWorkspace(ctx, agent, configuredWorkspace) {
+  if (configuredWorkspace) {
+    return resolve(configuredWorkspace);
+  }
+  try {
+    const wdService = typeof ctx?.get === "function" ? ctx.get("workingDirectory") : null;
+    if (wdService && typeof wdService.get === "function" && agent?.session) {
+      const sessDir = wdService.get(agent.session);
+      if (typeof sessDir === "string" && sessDir.trim()) {
+        return resolve(sessDir);
+      }
+    }
+  } catch (_err) {
+    // Ignore reflection errors
+  }
+  if (typeof agent?.session?.header?.cwd === "string" && agent.session.header.cwd.trim()) {
+    return resolve(agent.session.header.cwd);
+  }
+  return resolve(process.cwd());
+}
 
 function extractTextFromContent(content) {
   if (!content) return "";
@@ -39,7 +76,7 @@ function extractTextFromContent(content) {
 function invokeTmemHook(event, payload, options = {}) {
   const workspaceRoot = resolve(options.workspaceRoot || process.cwd());
   const pythonBin = options.pythonBin || process.env.TMEM_PYTHON || "python3";
-  const pythonPathRoot = resolve(options.tmemRoot || workspaceRoot);
+  const pythonPathRoot = resolve(options.tmemRoot || resolveDefaultTmemRoot(workspaceRoot));
   const env = {
     ...process.env,
     PYTHONPATH: process.env.PYTHONPATH
@@ -81,10 +118,9 @@ function createNoticeMessage(text, summary = "tmem") {
 }
 
 export function apply(ctx, config = {}) {
-  const workspaceRoot = resolve(config.workspaceRoot || process.cwd());
-  const tmemRoot = resolve(config.tmemRoot || workspaceRoot);
+  const configuredWorkspace = config.workspaceRoot ? resolve(config.workspaceRoot) : "";
+  const tmemRoot = resolve(config.tmemRoot || resolveDefaultTmemRoot(configuredWorkspace || process.cwd()));
   const pythonBin = config.pythonBin || process.env.TMEM_PYTHON || "python3";
-  const hookOpts = { workspaceRoot, tmemRoot, pythonBin };
 
   // 1. Register `/tmem` slash command whenever `dsh-commands` service is available
   const registerSlashCommand = (commandService) => {
@@ -94,11 +130,16 @@ export function apply(ctx, config = {}) {
         definitionId: "@tmem/dsh-command-tmem",
         name: "tmem",
         description:
-          "Capture, slice, or manage execution trace memory (project | global | both | status | gc)",
+          "Capture, slice, list, or manage execution trace memory (project | global | both | status | list | forget | gc)",
         input: {
-          hint: "[project|global|both|status|gc] [<intent>]",
+          hint: "[project|global|both|status|list|forget|gc] [<intent|trace_id>]",
         },
         handler: async (invocation) => {
+          const workspaceRoot = resolveSessionWorkspace(
+            ctx,
+            invocation?.agent,
+            configuredWorkspace
+          );
           const out = invokeTmemHook(
             "command",
             {
@@ -107,7 +148,7 @@ export function apply(ctx, config = {}) {
               commandId: invocation?.commandId || "",
               args: invocation?.rawInput ?? invocation?.args ?? "",
             },
-            hookOpts
+            { workspaceRoot, tmemRoot, pythonBin }
           );
           if (out && (out.kind === "error" || out.kind === "failure")) {
             return {
@@ -155,6 +196,7 @@ export function apply(ctx, config = {}) {
       }
     }
 
+    const workspaceRoot = resolveSessionWorkspace(ctx, agent, configuredWorkspace);
     const sessionId = agent?.session?.id || "default";
     const out = invokeTmemHook(
       "pre_invocation",
@@ -163,7 +205,7 @@ export function apply(ctx, config = {}) {
         step,
         lastUserInput,
       },
-      hookOpts
+      { workspaceRoot, tmemRoot, pythonBin }
     );
 
     if (out && typeof out.injectedContext === "string" && out.injectedContext.trim()) {
@@ -207,6 +249,7 @@ export function apply(ctx, config = {}) {
           ? result.value.exitCode
           : null;
 
+    const workspaceRoot = resolveSessionWorkspace(ctx, exec?.agent, configuredWorkspace);
     const sessionId = exec?.agent?.session?.id || "default";
     const out = invokeTmemHook(
       "post_tool_use",
@@ -220,7 +263,7 @@ export function apply(ctx, config = {}) {
         isError,
         exitCode,
       },
-      hookOpts
+      { workspaceRoot, tmemRoot, pythonBin }
     );
 
     if (out && typeof out.additionalContext === "string" && out.additionalContext.trim()) {

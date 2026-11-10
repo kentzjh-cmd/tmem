@@ -427,3 +427,66 @@ class DualTierMemoryStore:
             except Exception:
                 continue
         return stats
+
+    def list_playbooks(self, scope: str = "both") -> List[Dict[str, object]]:
+        """List summary entries of stored traces across project and/or global tiers."""
+        items: List[Dict[str, object]] = []
+        dirs: List[Tuple[str, Path]] = []
+        if scope in ("project", "both"):
+            dirs.append(("project", self.project_traces_dir))
+        if scope in ("global", "both"):
+            dirs.append(("global", self.global_traces_dir))
+
+        for tier_name, t_dir in dirs:
+            if not t_dir.exists():
+                continue
+            for jf in sorted(t_dir.glob("*.json")):
+                try:
+                    pb = TracePlaybook.from_dict(json.loads(jf.read_text(encoding="utf-8")))
+                    ev = evaluate_guards(pb, self.workspace_root)
+                    items.append(
+                        {
+                            "trace_id": pb.trace_id,
+                            "scope": tier_name,
+                            "effective_tier": ev.effective_tier,
+                            "problem_intent": pb.problem_intent,
+                            "touched_files": pb.touched_files,
+                            "l2_repairs_count": len(pb.l2_causal_repairs),
+                            "status": pb.status,
+                            "created_at": pb.created_at,
+                        }
+                    )
+                except Exception:
+                    continue
+        return items
+
+    def delete_playbook(self, trace_id: str) -> Dict[str, object]:
+        """Remove a trace by ID (or prefix) from project and/or global stores."""
+        removed_from: List[str] = []
+        tid = trace_id.strip()
+        if not tid:
+            return {"deleted": False, "removed_from": []}
+
+        for tier_name, t_dir, db_path in [
+            ("project", self.project_traces_dir, self.project_db_path),
+            ("global", self.global_traces_dir, self.global_db_path),
+        ]:
+            if not t_dir.exists():
+                continue
+            for jf in list(t_dir.glob("*.json")):
+                if jf.stem == tid or jf.stem.startswith(tid):
+                    matched_id = jf.stem
+                    try:
+                        jf.unlink()
+                        removed_from.append(f"{tier_name}:{matched_id}")
+                    except Exception:
+                        pass
+                    if db_path.exists():
+                        try:
+                            with sqlite3.connect(str(db_path)) as conn:
+                                conn.execute("DELETE FROM playbooks WHERE trace_id = ?", (matched_id,))
+                                conn.execute("DELETE FROM exact_triggers WHERE trace_id = ?", (matched_id,))
+                                conn.execute("DELETE FROM playbooks_fts WHERE trace_id = ?", (matched_id,))
+                        except Exception:
+                            pass
+        return {"deleted": bool(removed_from), "removed_from": removed_from}

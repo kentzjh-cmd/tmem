@@ -21,6 +21,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tmem.adapters import get_adapter
+from tmem.adapters.base import extract_symbols_from_text
 from tmem.adapters.dsh import DshAdapter
 from tmem.cli import handle_dsh_hook, install_invisible_integration
 from tmem.slicer import BackwardTraceSlicer
@@ -571,6 +572,31 @@ console.log(JSON.stringify({{
         self.assertIn("- L1 Topology:", err_out["additionalContext"])
         self.assertIn("L2 Causal Repair:", err_out["additionalContext"])
         self.assertIn("ZeroDivisionError", err_out["additionalContext"])
+
+        # 4. Verify `/tmem list` and `/tmem forget <trace_id>` + non-code file guard filtering
+        self.assertEqual(extract_symbols_from_text("function for the system", "README.md"), [])
+        with patch.dict(os.environ, env_patch):
+            list_out = handle_dsh_hook(
+                "command",
+                {
+                    "workspaceRoot": str(self.workspace),
+                    "sessionId": "sess_dsh_live",
+                    "args": "list project",
+                },
+            )
+            self.assertEqual(list_out["kind"], "success")
+            self.assertIn("tr_", list_out["text"])
+
+            forget_out = handle_dsh_hook(
+                "command",
+                {
+                    "workspaceRoot": str(self.workspace),
+                    "sessionId": "sess_dsh_live",
+                    "args": "forget tr_",
+                },
+            )
+            self.assertEqual(forget_out["kind"], "success")
+            self.assertIn('"deleted": true', forget_out["text"])
 
 
 if __name__ == "__main__":

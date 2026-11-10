@@ -30,7 +30,7 @@ from tmem.slicer import BackwardTraceSlicer
 from tmem.store import DualTierMemoryStore
 
 SLASH_TMEM_RE = re.compile(
-    r"^/(?:tmem|remember|trace)(?:\s+(project|global|both|status|gc))?(?:\s+(.+))?$",
+    r"^/(?:tmem|remember|trace)(?:\s+(project|global|both|status|list|forget|gc))?(?:\s+(.+))?$",
     re.IGNORECASE | re.DOTALL,
 )
 
@@ -219,6 +219,27 @@ def handle_agy_hook(event: str, payload: Dict[str, Any]) -> Dict[str, Any]:
                 )
                 return {"injectSteps": [{"systemMessage": {"systemMessage": msg}}]}
 
+            if action_mode == "list":
+                items = store.list_playbooks(scope=custom_intent.lower() if custom_intent.lower() in ("project", "global", "both") else "both")
+                msg = (
+                    "<tmem_command_executed>\n"
+                    f"Command `/tmem list` executed ({len(items)} trace(s)):\n"
+                    f"{json.dumps(items, indent=2, ensure_ascii=False)}\n"
+                    "Please summarize the stored traces concisely for the user.\n"
+                    "</tmem_command_executed>"
+                )
+                return {"injectSteps": [{"systemMessage": {"systemMessage": msg}}]}
+
+            if action_mode == "forget":
+                del_res = store.delete_playbook(custom_intent)
+                msg = (
+                    "<tmem_command_executed>\n"
+                    f"Command `/tmem forget {custom_intent}` executed: {json.dumps(del_res, ensure_ascii=False)}\n"
+                    "Please report the deletion result to the user.\n"
+                    "</tmem_command_executed>"
+                )
+                return {"injectSteps": [{"systemMessage": {"systemMessage": msg}}]}
+
             # Otherwise action_mode is 'project', 'global', or 'both'
             res = execute_capture(
                 workspace_root=workspace_root,
@@ -381,6 +402,26 @@ def handle_dsh_hook(event: str, payload: Dict[str, Any]) -> Dict[str, Any]:
             return {
                 "kind": "success",
                 "text": f"[tmem gc] Guard metabolism completed: {json.dumps(stats, ensure_ascii=False)}",
+            }
+
+        if action_mode == "list":
+            target_s = custom_intent.lower() if custom_intent.lower() in ("project", "global", "both") else "both"
+            items = store.list_playbooks(scope=target_s)
+            return {
+                "kind": "success",
+                "text": f"[tmem list ({len(items)})]\n{json.dumps(items, indent=2, ensure_ascii=False)}",
+            }
+
+        if action_mode == "forget":
+            if not custom_intent.strip():
+                return {
+                    "kind": "error",
+                    "text": "Usage: /tmem forget <trace_id>",
+                }
+            del_res = store.delete_playbook(custom_intent)
+            return {
+                "kind": "success",
+                "text": f"[tmem forget] {json.dumps(del_res, ensure_ascii=False)}",
             }
 
         res = execute_capture(
@@ -853,6 +894,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     p_stat = sub.add_parser("status", help="Show Project and Global trace memory counts")
     p_stat.add_argument("--workspace", default=os.getcwd(), help="Workspace root directory")
 
+    # 7. list
+    p_list = sub.add_parser("list", help="List stored traces with live guard evaluation tier")
+    p_list.add_argument("--scope", choices=["project", "global", "both"], default="both")
+    p_list.add_argument("--workspace", default=os.getcwd(), help="Workspace root directory")
+
+    # 8. forget
+    p_forget = sub.add_parser("forget", help="Delete a trace by ID or prefix from project/global stores")
+    p_forget.add_argument("trace_id", help="Trace ID or prefix (e.g. tr_acd0dc0ff0)")
+    p_forget.add_argument("--workspace", default=os.getcwd(), help="Workspace root directory")
+
     args = parser.parse_args(argv)
 
     if args.subcommand == "init":
@@ -938,6 +989,18 @@ def main(argv: Optional[List[str]] = None) -> int:
                 ensure_ascii=False,
             )
         )
+        return 0
+
+    if args.subcommand == "list":
+        store = DualTierMemoryStore(args.workspace)
+        items = store.list_playbooks(scope=args.scope)
+        print(json.dumps(items, indent=2, ensure_ascii=False))
+        return 0
+
+    if args.subcommand == "forget":
+        store = DualTierMemoryStore(args.workspace)
+        res = store.delete_playbook(args.trace_id)
+        print(json.dumps(res, indent=2, ensure_ascii=False))
         return 0
 
     parser.print_help()
