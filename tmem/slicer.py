@@ -27,8 +27,24 @@ from tmem.models import (
     TracePlaybook,
 )
 
-TOOLCHAIN_CMD_RE = re.compile(
-    r"\b(pip|pip3|uv|poetry|npm|pnpm|yarn|bun|cargo|go\s+get|go\s+mod|apt|apt-get|brew|docker|export|sysctl)\b"
+TOOLCHAIN_INSTALL_RE = re.compile(
+    r"\b(?:pip|pip3|uv\s+pip|uv|poetry|npm|pnpm|yarn|bun|cargo|go|apt|apt-get|brew)\s+(?:install|add|get|mod\s+tidy)\b|\bcorepack\s+enable\b"
+)
+
+VERIFY_WHITELIST_RE = re.compile(
+    r"\b(?:pytest|unittest|tox|nox|coverage|mypy|ruff|flake8|black|isort|pylint|"
+    r"npm\s+(?:test|run\s+\w+)|pnpm\s+(?:test|run\s+\w+)|yarn\s+(?:test|run\s+\w+)|bun\s+test|"
+    r"cargo\s+(?:test|check|build|clippy)|go\s+(?:test|build|vet)|"
+    r"tsc|eslint|vitest|jest|mocha|make|cmake|gradle|mvn|"
+    r"dsh\s+plugin\s+\S+)\b"
+)
+
+EXPLORATORY_CLAUSE_RE = re.compile(
+    r"^(?:sudo\s+)?(?:env\s+)?(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*"
+    r"(?:ls|pwd|cd|cat|head|tail|echo|rm|mv|cp|mkdir|ln|chmod|chown|curl|wget|"
+    r"find|grep|rg|sed|awk|which|whoami|id|uname|ps|kill|sleep|true|false|"
+    r"git\s+(?:status|log|diff|add|commit|push|pull|fetch|remote|branch|checkout|config|clone|show|rev-parse|diff-tree)|"
+    r"npm\s+view)\b"
 )
 
 
@@ -167,7 +183,9 @@ class BackwardTraceSlicer:
         causal_repairs = self._extract_causal_repairs(raw_actions, effective_files)
 
         # 3. Backward Slicing: Filter READ, MUTATE, ENV_EXEC into minimal critical path
-        sliced_steps: List[Dict[str, object]] = []
+        read_steps: List[Dict[str, object]] = []
+        mutate_steps: List[Dict[str, object]] = []
+        env_steps: List[Dict[str, object]] = []
         seen_reads: Set[str] = set()
         seen_mutations: Set[str] = set()
         verification_cmds: List[str] = []
@@ -181,7 +199,7 @@ class BackwardTraceSlicer:
                 # Read Shrinking: only keep first READ of a file that is in effective_files
                 if action.target_file in effective_files and action.target_file not in seen_reads:
                     seen_reads.add(action.target_file)
-                    sliced_steps.append(
+                    read_steps.append(
                         {
                             "action": ActionKind.READ.value,
                             "target": action.target_file,
@@ -203,21 +221,23 @@ class BackwardTraceSlicer:
                         }
                         if file_syms:
                             step_entry["symbols"] = file_syms
-                        sliced_steps.append(step_entry)
+                        mutate_steps.append(step_entry)
 
             elif action.kind == ActionKind.ENV_EXEC and action.command:
-                # Keep successful verification or environment installation commands
+                # Keep only canonical verification or toolchain install commands (deduplicated)
                 if action.exit_code in (0, None) and not action.error_signature:
-                    cmd = action.command.strip()
-                    if self._is_meaningful_command(cmd):
-                        if cmd not in verification_cmds:
-                            verification_cmds.append(cmd)
-                        sliced_steps.append(
+                    canonical_cmd = self._extract_canonical_verification_cmd(action.command)
+                    if canonical_cmd and canonical_cmd not in verification_cmds:
+                        verification_cmds.append(canonical_cmd)
+                        env_steps.append(
                             {
                                 "action": ActionKind.ENV_EXEC.value,
-                                "command": cmd,
+                                "command": canonical_cmd,
                             }
                         )
+
+        # Keep at most the last 2 canonical verification/toolchain commands in L0 critical path
+        sliced_steps: List[Dict[str, object]] = read_steps + mutate_steps + env_steps[-2:]
 
         if not sliced_steps and not causal_repairs:
             return None
@@ -276,15 +296,18 @@ class BackwardTraceSlicer:
         self, actions: List[ActionNode], effective_files: Set[str]
     ) -> List[CausalRepairPair]:
         """
-        Scan action trajectory for pattern:
-        [Failed ENV_EXEC with error_signature] -> [Intervening MUTATE or toolchain ENV_EXEC] -> [Succeeded ENV_EXEC]
+        Scan action trajectory within a bounded causal window for pattern:
+        [Failed canonical test/build/install ENV_EXEC] -> [Intervening MUTATE or toolchain install] -> [Succeeded verification ENV_EXEC]
         """
         repairs: List[CausalRepairPair] = []
         seen_sigs: Set[str] = set()
 
         for i, act in enumerate(actions):
-            if act.kind == ActionKind.ENV_EXEC and (act.exit_code not in (0, None) or act.error_signature):
-                err_sig = act.error_signature or f"Command failed (exit {act.exit_code}): {act.command}"
+            if act.kind == ActionKind.ENV_EXEC and act.exit_code not in (0, None):
+                failed_canonical = self._extract_canonical_verification_cmd(act.command or "")
+                if not failed_canonical:
+                    continue
+                err_sig = act.error_signature or f"Command failed (exit {act.exit_code}): {failed_canonical}"
                 if err_sig in seen_sigs:
                     continue
 
@@ -292,28 +315,33 @@ class BackwardTraceSlicer:
                 is_env = False
                 verified_cmd = ""
 
-                for j in range(i + 1, len(actions)):
+                for j in range(i + 1, min(len(actions), i + 16)):
                     nxt = actions[j]
                     if nxt.kind == ActionKind.MUTATE and nxt.target_file in effective_files:
-                        sym_note = f" ({', '.join(nxt.symbols_touched)})" if nxt.symbols_touched else ""
+                        sym_note = f" ({', '.join(nxt.symbols_touched[:3])})" if nxt.symbols_touched else ""
                         fix_desc = f"edit {nxt.target_file}{sym_note}"
                         if fix_desc not in intervening_fixes:
                             intervening_fixes.append(fix_desc)
                     elif nxt.kind == ActionKind.ENV_EXEC and nxt.command:
-                        if TOOLCHAIN_CMD_RE.search(nxt.command) and nxt.exit_code in (0, None):
-                            intervening_fixes.append(f"run `{nxt.command}`")
+                        install_clause = self._extract_toolchain_install_clause(nxt.command)
+                        if install_clause and nxt.exit_code in (0, None):
+                            fix_desc = f"run `{install_clause}`"
+                            if fix_desc not in intervening_fixes:
+                                intervening_fixes.append(fix_desc)
                             is_env = True
                         elif nxt.exit_code == 0 and not nxt.error_signature and intervening_fixes:
-                            verified_cmd = nxt.command
-                            break
+                            cand_verify = self._extract_canonical_verification_cmd(nxt.command)
+                            if cand_verify:
+                                verified_cmd = cand_verify
+                                break
 
                 if intervening_fixes and verified_cmd:
                     seen_sigs.add(err_sig)
                     repairs.append(
                         CausalRepairPair(
                             error_signature=err_sig,
-                            failed_command=act.command or "",
-                            repair_action=" -> ".join(intervening_fixes),
+                            failed_command=failed_canonical,
+                            repair_action=" -> ".join(intervening_fixes[:3]),
                             verification_cmd=verified_cmd,
                             is_env_or_toolchain=is_env,
                         )
@@ -401,49 +429,50 @@ class BackwardTraceSlicer:
         semantic_summary = " | ".join(summary_parts)
         return problem_intent, semantic_summary
 
-    def _is_meaningful_command(self, cmd: str) -> bool:
+    def _extract_toolchain_install_clause(self, cmd: str) -> Optional[str]:
+        """Extract clean package/toolchain installation sub-clause from a command string."""
+        if not cmd:
+            return None
+        for raw_part in re.split(r"&&|\n|;", cmd):
+            part = raw_part.strip()
+            if not part or "tmem.cli" in part:
+                continue
+            if TOOLCHAIN_INSTALL_RE.search(part):
+                return part
+        return None
+
+    def _extract_canonical_verification_cmd(self, cmd: str) -> Optional[str]:
         """
-        Keep only repeatable verification, test, build, lint, or dependency installation commands;
-        filter out exploratory shell noise, inline scratch scripts, and git commit/push/curl plumbing.
+        Extract only genuine, repeatable verification/test/build/install sub-clauses from a shell command,
+        stripping chained exploratory commands (`ls`, `find`, `cat`), inline one-liners (`python3 -c`, `node -e`),
+        git commit/push plumbing, and `tmem.cli` self-invocations.
         """
-        noisy_prefixes = (
-            "ls",
-            "pwd",
-            "cd ",
-            "cat ",
-            "head ",
-            "tail ",
-            "echo ",
-            "rm ",
-            "mv ",
-            "cp ",
-            "mkdir ",
-            "ln ",
-            "chmod ",
-            "curl ",
-            "wget ",
-            "TOKEN=",
-            "git ",
-            "find ",
-            "grep ",
-            "rg ",
-            "sed ",
-            "awk ",
-            "python3 -c",
-            "python -c",
-            "node -e",
-            "node --input-type=module -e",
-        )
+        if not cmd:
+            return None
         stripped = cmd.strip()
-        if any(stripped == p.strip() or stripped.startswith(p) for p in noisy_prefixes):
-            return False
-        # Also filter compound `cd ... && git commit/push/status` or `TOKEN=...` commands
-        lower = stripped.lower()
         if any(
-            g in lower
-            for g in ("git push", "git commit", "git remote", "git status", "curl -s")
-        ) and not any(
-            v in lower for v in ("pytest", "unittest", "npm test", "cargo test", "go test")
+            k in stripped
+            for k in ("python3 -c", "python -c", "node -e", "node --input-type=module -e", "for pkg in ")
         ):
-            return False
-        return True
+            return None
+
+        kept_clauses: List[str] = []
+        for raw_part in re.split(r"&&|\n|;", stripped):
+            part = raw_part.strip()
+            if not part:
+                continue
+            # Strip trailing pipe to grep/head/tail for config dumps
+            base_part = re.split(r"\|\s*(?:grep|head|tail|cat)\b", part)[0].strip()
+            if not base_part:
+                continue
+            if "tmem.cli" in base_part:
+                continue
+            if EXPLORATORY_CLAUSE_RE.match(base_part):
+                continue
+            if VERIFY_WHITELIST_RE.search(base_part) or TOOLCHAIN_INSTALL_RE.search(base_part):
+                if base_part not in kept_clauses:
+                    kept_clauses.append(base_part)
+
+        if not kept_clauses:
+            return None
+        return " && ".join(kept_clauses)

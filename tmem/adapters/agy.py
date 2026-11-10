@@ -107,9 +107,9 @@ class AgyAdapter(AgentAdapter):
                     exit_match = EXIT_CODE_RE.search(content)
                     if exit_match:
                         target_node.exit_code = int(exit_match.group(1))
-                    if target_node.exit_code not in (None, 0) or "Error" in content or "Exception" in content or "FAIL" in content:
+                    if target_node.exit_code not in (None, 0):
                         err_sig = extract_error_signature(content)
-                        if err_sig and (target_node.exit_code not in (None, 0) or target_node.kind == ActionKind.ENV_EXEC):
+                        if err_sig:
                             target_node.error_signature = err_sig
                             session.active_errors.append(err_sig)
                     target_node.output_snippet = content[:400]
