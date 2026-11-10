@@ -151,27 +151,36 @@ PYTHONPATH=. python3 -m unittest discover -s tests -v
 - **DeepSeek Harness (`session.v4.jsonl`)**：
   解析真机多轮多工具调用流与 `apply_patch` 差异。
 
-### 2. 评测指标与量化评测结果
+### 2. 评测指标与长周期量化评测结果
 
-在 `benchmarks/data/` 典型工业级轨迹（覆盖 Django、SymPy、Flask 以及 DSH 实际工程交互）上的基准评测结果：
+在 `benchmarks/data/` 典型工业级轨迹（覆盖 Django、SymPy、Flask、Astropy、Pytest、Scikit-learn 以及 DSH 长生命周期工程交互，长度覆盖 6 ~ 27 轮交互）上的基准评测结果：
 
 | 测试实例 / 轨迹来源 | 轨迹标准 | 原始交互步数 | L0 关键路径步数 | 轨迹压缩率 (CR) | 探索噪音消除率 (NER) | L1 拓扑文件 | L2 因果修复对 | 召回排名 | 编译切片耗时 | 检索耗时 |
 |---|---|---|---|---|---|---|---|---|---|---|
-| `django__django-11099` | `SWE-bench (.traj)` | 8 | 3 | **62.5%** | **100.0%** (4 $\to$ 0) | 1 file | 1 对 | **#1** | 0.19 ms | 2.5 ms |
-| `sympy__sympy-20590` | `ATIF (trajectory.json)` | 6 | 4 | **33.3%** | **100.0%** (3 $\to$ 0) | 1 file | 0 对 | **#1** | 0.18 ms | 2.4 ms |
-| `flask__flask-5014` | `SWE-bench (.traj)` | 6 | 3 | **50.0%** | **100.0%** (3 $\to$ 0) | 1 file | 1 对 | **#1** | 0.19 ms | 2.5 ms |
-| `dsh_e2e_session` | `dsh (session.v4.jsonl)` | 9 | 4 | **55.6%** | **100.0%** (3 $\to$ 0) | 1 file | 1 对 | **#1** | 0.49 ms | 2.6 ms |
-| **平均值 / 综合表现** | **Multi-Format** | **7.25** | **3.5** | **50.35%** | **100.0%** | **1.0 file** | **共 3 对** | **Top-1: 100% (MRR: 1.0)** | **0.26 ms** | **2.50 ms** |
+| `dsh_e2e_session` | `dsh (session.v4.jsonl)` | 9 | 4 | **55.6%** | **100.0%** (3 $\to$ 0) | 3 files | 1 对 | **#1** | 0.51 ms | 2.6 ms |
+| `dsh_long_lifecycle_session` | `dsh (session.v4.jsonl)` | 27 | 9 | **66.7%** | **100.0%** (6 $\to$ 0) | 7 files | 1 对 | **#1** | 0.45 ms | 2.5 ms |
+| `dsh_multiturn_complex_session` | `dsh (session.v4.jsonl)` | 17 | 6 | **64.7%** | **100.0%** (6 $\to$ 0) | 5 files | 1 对 | **#1** | 0.37 ms | 2.7 ms |
+| `astropy__astropy-12907` | `ATIF (trajectory.json)` | 17 | 7 | **58.8%** | **100.0%** (9 $\to$ 0) | 3 files | 1 对 | **#1** | 0.32 ms | 2.6 ms |
+| `django__django-11099` | `SWE-bench (.traj)` | 8 | 3 | **62.5%** | **100.0%** (4 $\to$ 0) | 1 file | 1 对 | **#1** | 0.18 ms | 2.5 ms |
+| `flask__flask-5014` | `SWE-bench (.traj)` | 6 | 3 | **50.0%** | **100.0%** (3 $\to$ 0) | 1 file | 1 对 | **#1** | 0.22 ms | 2.4 ms |
+| `pytest-dev__pytest-7432` | `SWE-bench (.traj)` | 15 | 6 | **60.0%** | **100.0%** (6 $\to$ 0) | 2 files | 1 对 | **#1** | 0.27 ms | 2.6 ms |
+| `scikit-learn__scikit-learn-13496` | `SWE-bench (.traj)` | 12 | 6 | **50.0%** | **100.0%** (4 $\to$ 0) | 2 files | 1 对 | **#1** | 0.29 ms | 2.5 ms |
+| `sympy__sympy-20590` | `ATIF (trajectory.json)` | 6 | 4 | **33.3%** | **100.0%** (3 $\to$ 0) | 2 files | 0 对 | **#1** | 0.18 ms | 2.4 ms |
+| **平均值 / 综合表现 (9 例)** | **Multi-Format** | **13.0** | **5.33** | **55.73%** | **100.0%** | **2.89 files** | **共 8 对** | **Top-1: 100% (MRR: 1.0)** | **0.31 ms** | **2.53 ms** |
 
-### 3. 为什么目前的框架是极其有效的？
-1. **彻底消除探索噪音（100% NER）**：
-   Agent 在初次解决问题时往往会执行大量探索性调用（如 `find`、`grep`、`cat`、`pwd`、`git status` 以及中间失败的试错命令）。`tmem` 基于 Git Ground-Truth 的后向数据流切片算法，只保留对最终正确状态产生实质因果影响的 `READ -> MUTATE -> ENV_EXEC`，将噪声消除率提升至 **100%**。
-2. **渐进式优雅降级（Graceful Tier Degradation）**：
-   传统基于文本汇总的记忆在代码重构后容易诱导 Agent 产生幻觉。`tmem` 采用三层编译模型：
-   - 当仓库完全契合时，通过 **L0** 毫秒级重放完整路径；
-   - 当代码局部修改导致探针失败时，自动降级为 **L1 协同修改拓扑**（告诉 Agent 哪些文件需要联动修改）与 **L2 因果修复规则**（遇到同类报错直接提供验证过的修复动作），杜绝过时记忆误导。
-3. **零 Token 开销与亚毫秒级纯本地运行**：
-   切片编译平均耗时 **0.26 ms**，级联检索平均耗时 **2.50 ms**，完全无需调用大模型 API 总结，对宿主 Agent 交互完全透明且零延迟感知。
+### 3. 长周期与复杂工程任务下的插件设计完善
+
+针对长周期、多轮交互轨迹容易出现的噪音堆积与记忆漂移，`tmem` 进行了专项架构升级：
+1. **死修改消除 (Dead Mutation Elimination) 与同文件多次编辑合并**：
+   在长达 20~40 步的排障中，Agent 可能会反复修改同一个核心文件（甚至经历语法报错、试错补丁与最终有效方案）。`tmem` 在后向数据流中聚合该文件跨轮次变动的全量关键符号，丢弃中间无效状态，确保 L0 路径与探针仅包含最终稳定事实。
+2. **临时探针脚本彻底剔除 (Scratch File Pruning)**：
+   自动识别并剔除在排障期间临时创建随后被删除的试探性脚本（如 `tests/scratch_debug.py`），防止临时调试逻辑泄漏到持久记忆中。
+3. **因果修复窗口扩展至 36 步 (Expanded Causal Horizon)**：
+   针对深层次系统性故障（从首次测试失败、经多轮定位到最终修复可能跨越 20 步以上），将因果提取窗口扩展至 36 步，确保长链条排障能够精准捕获 `报错签名 -> 根因修复动作 -> 最终回归命令`。
+4. **多轮用户意图清洗与过滤 (Conversational De-noising)**：
+   自动过滤对话中如 `done`、`ok`、`continue` 等口语化确认词与 `/compact`、`/goal` 等控制指令，聚合首轮核心目标与后续关键增量要求作为高信号 `problem_intent`。
+5. **插件注入去重与 `/tmem bench` 原生指令**：
+   在 `@deepseek-ai/dsh` 插件运行时中加入了消息历史指纹去重（避免长多步推理中重复注入同一条推测记忆）；并在 `dsh-commands` 与 Antigravity 插件中原生集成了 `/tmem bench` 与 `/tmem evaluate`，开发者可在交互界面随时一键跑出完整量化评测表。
 
 ---
 

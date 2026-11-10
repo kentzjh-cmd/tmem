@@ -33,13 +33,25 @@ Instead of storing raw conversational summaries, `tmem` performs **Git Ground-Tr
 
 ### Benchmark Results (`python3 -m tmem.cli evaluate`)
 
-| Trajectory Instance | Format | Raw | L0 Path | Compression Ratio | Noise Filtered | L2 Repairs | Top-1 Recall | Slicing Latency |
-|---|---|---|---|---|---|---|---|---|
-| `django__django-11099` | `SWE-bench (.traj)` | 8 | 3 | **62.5%** | **100.0%** (4 -> 0) | 1 pair | **#1** | 0.19 ms |
-| `sympy__sympy-20590` | `ATIF (trajectory.json)` | 6 | 4 | **33.3%** | **100.0%** (3 -> 0) | 0 pair | **#1** | 0.18 ms |
-| `flask__flask-5014` | `SWE-bench (.traj)` | 6 | 3 | **50.0%** | **100.0%** (3 -> 0) | 1 pair | **#1** | 0.19 ms |
-| `dsh_e2e_session` | `dsh (session.v4.jsonl)` | 9 | 4 | **55.6%** | **100.0%** (3 -> 0) | 1 pair | **#1** | 0.49 ms |
-| **Overall Average** | **Multi-Format** | **7.25** | **3.5** | **50.35%** | **100.0%** | **3 pairs** | **100% (MRR: 1.0)** | **0.26 ms** |
+| Trajectory Instance | Format | Raw | L0 Path | Compression Ratio | Noise Filtered | L1 Files | L2 Repairs | Top-1 Recall | Slicing Latency |
+|---|---|---|---|---|---|---|---|---|---|
+| `dsh_e2e_session` | `dsh (session.v4.jsonl)` | 9 | 4 | **55.6%** | **100.0%** (3 -> 0) | 3 files | 1 pair | **#1** | 0.51 ms |
+| `dsh_long_lifecycle_session` | `dsh (session.v4.jsonl)` | 27 | 9 | **66.7%** | **100.0%** (6 -> 0) | 7 files | 1 pair | **#1** | 0.45 ms |
+| `dsh_multiturn_complex_session` | `dsh (session.v4.jsonl)` | 17 | 6 | **64.7%** | **100.0%** (6 -> 0) | 5 files | 1 pair | **#1** | 0.37 ms |
+| `astropy__astropy-12907` | `ATIF (trajectory.json)` | 17 | 7 | **58.8%** | **100.0%** (9 -> 0) | 3 files | 1 pair | **#1** | 0.32 ms |
+| `django__django-11099` | `SWE-bench (.traj)` | 8 | 3 | **62.5%** | **100.0%** (4 -> 0) | 1 file | 1 pair | **#1** | 0.18 ms |
+| `flask__flask-5014` | `SWE-bench (.traj)` | 6 | 3 | **50.0%** | **100.0%** (3 -> 0) | 1 file | 1 pair | **#1** | 0.22 ms |
+| `pytest-dev__pytest-7432` | `SWE-bench (.traj)` | 15 | 6 | **60.0%** | **100.0%** (6 -> 0) | 2 files | 1 pair | **#1** | 0.27 ms |
+| `scikit-learn__scikit-learn-13496` | `SWE-bench (.traj)` | 12 | 6 | **50.0%** | **100.0%** (4 -> 0) | 2 files | 1 pair | **#1** | 0.29 ms |
+| `sympy__sympy-20590` | `ATIF (trajectory.json)` | 6 | 4 | **33.3%** | **100.0%** (3 -> 0) | 2 files | 0 pair | **#1** | 0.18 ms |
+| **Overall Average (9 Cases)** | **Multi-Format** | **13.0** | **5.33** | **55.73%** | **100.0%** | **2.89 files** | **8 pairs** | **100% (MRR: 1.0)** | **0.31 ms** |
+
+### Long-Horizon Engineering Enhancements
+1. **Dead Mutation Elimination (DME)**: Merges successive edits across 20-40 turn sessions, discarding intermediate scratch attempts.
+2. **Scratch File Pruning**: Automatically prunes ephemeral test scripts (`scratch_*.py`) created and removed during debugging loops.
+3. **36-Step Expanded Causal Horizon**: Links early test failures to root-cause repairs across deep investigative loops.
+4. **Context Injection Deduplication**: Suppresses repeated prompt injections during long multi-step agent actions.
+5. **Interactive Benchmarking**: Supports `/tmem bench` and `/tmem evaluate` in both DSH and Antigravity.
 
 Run evaluation locally:
 ```bash

@@ -30,7 +30,7 @@ from tmem.slicer import BackwardTraceSlicer
 from tmem.store import DualTierMemoryStore
 
 SLASH_TMEM_RE = re.compile(
-    r"^/(?:tmem|remember|trace)(?:\s+(project|global|both|status|list|forget|gc))?(?:\s+(.+))?$",
+    r"^/(?:tmem|remember|trace)(?:\s+(project|global|both|status|list|forget|gc|bench|evaluate))?(?:\s+(.+))?$",
     re.IGNORECASE | re.DOTALL,
 )
 
@@ -230,6 +230,17 @@ def handle_agy_hook(event: str, payload: Dict[str, Any]) -> Dict[str, Any]:
                 )
                 return {"injectSteps": [{"systemMessage": {"systemMessage": msg}}]}
 
+            if action_mode in ("bench", "evaluate"):
+                from tmem.evaluate import BenchmarkEvaluator, format_markdown_report
+                evaluator = BenchmarkEvaluator()
+                summary = evaluator.run_evaluation()
+                msg = (
+                    "<tmem_command_executed>\n"
+                    f"{format_markdown_report(summary)}\n"
+                    "</tmem_command_executed>"
+                )
+                return {"injectSteps": [{"systemMessage": {"systemMessage": msg}}]}
+
             if action_mode == "forget":
                 del_res = store.delete_playbook(custom_intent)
                 msg = (
@@ -410,6 +421,15 @@ def handle_dsh_hook(event: str, payload: Dict[str, Any]) -> Dict[str, Any]:
             return {
                 "kind": "success",
                 "text": f"[tmem list ({len(items)})]\n{json.dumps(items, indent=2, ensure_ascii=False)}",
+            }
+
+        if action_mode in ("bench", "evaluate"):
+            from tmem.evaluate import BenchmarkEvaluator, format_markdown_report
+            evaluator = BenchmarkEvaluator()
+            summary = evaluator.run_evaluation()
+            return {
+                "kind": "success",
+                "text": format_markdown_report(summary),
             }
 
         if action_mode == "forget":

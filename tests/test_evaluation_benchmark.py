@@ -17,14 +17,14 @@ class TestEvaluationBenchmark(unittest.TestCase):
 
         # Assert evaluation passed
         self.assertTrue(summary.all_passed)
-        self.assertGreaterEqual(summary.total_trajectories, 4)
+        self.assertGreaterEqual(summary.total_trajectories, 8)
 
         # Assert key performance and quality metrics
         self.assertGreaterEqual(summary.avg_compression_ratio, 50.0)
         self.assertEqual(summary.avg_noise_elimination_rate, 100.0)
         self.assertEqual(summary.top1_retrieval_accuracy, 1.0)
         self.assertEqual(summary.mean_reciprocal_rank, 1.0)
-        self.assertGreaterEqual(summary.total_l2_invariants_extracted, 2)
+        self.assertGreaterEqual(summary.total_l2_invariants_extracted, 6)
 
         # Assert latency SLAs (<50ms per trajectory slicing, <10ms retrieval)
         self.assertLess(summary.avg_slicing_latency_ms, 50.0)

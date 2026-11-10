@@ -132,7 +132,7 @@ export function apply(ctx, config = {}) {
         description:
           "Capture, slice, list, or manage execution trace memory (project | global | both | status | list | forget | gc)",
         input: {
-          hint: "[project|global|both|status|list|forget|gc] [<intent|trace_id>]",
+          hint: "[project|global|both|status|list|forget|gc|bench|evaluate] [<intent|trace_id>]",
         },
         handler: async (invocation) => {
           const workspaceRoot = resolveSessionWorkspace(
@@ -209,7 +209,18 @@ export function apply(ctx, config = {}) {
     );
 
     if (out && typeof out.injectedContext === "string" && out.injectedContext.trim()) {
-      const noticeMsg = createNoticeMessage(out.injectedContext.trim(), "tmem-speculative-memory");
+      const injectedText = out.injectedContext.trim();
+      const alreadyInjected = currentMessages.some(
+        (m) =>
+          m &&
+          m.source?.kind === "tmem" &&
+          extractTextFromContent(m.content).trim() === injectedText
+      );
+      if (alreadyInjected) {
+        return decision;
+      }
+
+      const noticeMsg = createNoticeMessage(injectedText, "tmem-speculative-memory");
       if (lastUserIndex >= 0) {
         currentMessages.splice(lastUserIndex, 0, noticeMsg);
       } else {

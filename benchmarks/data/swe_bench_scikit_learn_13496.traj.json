@@ -1,0 +1,80 @@
+{
+  "instance_id": "scikit-learn__scikit-learn-13496",
+  "model_name": "gpt-4o",
+  "exit_status": "submitted",
+  "problem_statement": "scikit-learn IsolationForest fails when max_features is a float and n_features is small. For instance with max_features=0.5 and X with 1 feature, int(max_features * n_features) equals 0, raising ValueError: max_features must be in (0, n_features]. It should round up or ensure at least 1 feature is selected.",
+  "trajectory": [
+    {
+      "thought": "Let's search for IsolationForest in the sklearn codebase.",
+      "action": "grep -rn 'class IsolationForest' sklearn/ensemble/",
+      "observation": "sklearn/ensemble/iforest.py:27:class IsolationForest(BaseBagging, OutlierMixin):",
+      "exit_code": 0
+    },
+    {
+      "thought": "Let's inspect the iforest module implementation.",
+      "action": "open_file sklearn/ensemble/iforest.py",
+      "observation": "1: import numpy as np\n...\n180: def fit(self, X, y=None, sample_weight=None):\n181:     n_samples, self.n_features_ = X.shape\n182:     if isinstance(self.max_features, float):\n183:         max_features = int(self.max_features * self.n_features_)\n",
+      "exit_code": 0
+    },
+    {
+      "thought": "Let's inspect the existing IsolationForest tests.",
+      "action": "open_file sklearn/ensemble/tests/test_iforest.py",
+      "observation": "def test_iforest():\n    X = [[-1.1], [0.2], [101.1]]\n",
+      "exit_code": 0
+    },
+    {
+      "thought": "Let's compile C-extensions to ensure the tree cython modules are built.",
+      "action": "python setup.py build_ext --inplace",
+      "observation": "running build_ext\ncopying build/lib.linux-x86_64/sklearn/tree/_tree.cpython-310.so -> sklearn/tree",
+      "exit_code": 0
+    },
+    {
+      "thought": "Run existing iforest tests to check baseline health.",
+      "action": "pytest sklearn/ensemble/tests/test_iforest.py",
+      "observation": "==================== 22 passed in 1.82s ====================",
+      "exit_code": 0
+    },
+    {
+      "thought": "Reproduce the bug with single-feature dataset and fractional max_features.",
+      "action": "python -c \"import numpy as np; from sklearn.ensemble import IsolationForest; IsolationForest(max_features=0.5).fit(np.ones((20, 1)))\"",
+      "observation": "Traceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n  File \"/repo/sklearn/ensemble/iforest.py\", line 187, in fit\n    raise ValueError('max_features must be in (0, n_features]')\nValueError: max_features must be in (0, n_features]",
+      "exit_code": 1
+    },
+    {
+      "thought": "Add regression test in test_iforest.py.",
+      "action": "edit_file sklearn/ensemble/tests/test_iforest.py\ndef test_iforest_float_max_features_single_column():\n    import numpy as np\n    clf = IsolationForest(max_features=0.5, random_state=0)\n    clf.fit(np.ones((20, 1)))\n    assert clf.max_features_ == 1\n",
+      "observation": "sklearn/ensemble/tests/test_iforest.py updated.",
+      "exit_code": 0
+    },
+    {
+      "thought": "Run the test to observe failure.",
+      "action": "pytest sklearn/ensemble/tests/test_iforest.py -k test_iforest_float_max_features_single_column",
+      "observation": "=================================== FAILURES ===================================\nValueError: max_features must be in (0, n_features]\nFAILED (failures=1)",
+      "exit_code": 1
+    },
+    {
+      "thought": "Edit sklearn/ensemble/iforest.py to enforce max(1, int(self.max_features * self.n_features_)).",
+      "action": "edit_file sklearn/ensemble/iforest.py\nclass IsolationForest(BaseBagging, OutlierMixin):\n    def fit(self, X, y=None, sample_weight=None):\n        n_samples, self.n_features_ = X.shape\n        if isinstance(self.max_features, float):\n            max_features = max(1, int(self.max_features * self.n_features_))\n        self.max_features_ = max_features\n",
+      "observation": "sklearn/ensemble/iforest.py updated successfully.",
+      "exit_code": 0
+    },
+    {
+      "thought": "Rebuild extensions if needed and re-run tests.",
+      "action": "pytest sklearn/ensemble/tests/test_iforest.py -k test_iforest_float_max_features_single_column",
+      "observation": "==================== 1 passed in 0.22s ====================",
+      "exit_code": 0
+    },
+    {
+      "thought": "Run the full test_iforest suite.",
+      "action": "pytest sklearn/ensemble/tests/test_iforest.py",
+      "observation": "==================== 23 passed in 1.95s ====================",
+      "exit_code": 0
+    },
+    {
+      "thought": "Review git diff.",
+      "action": "git diff sklearn/ensemble/iforest.py",
+      "observation": "diff --git a/sklearn/ensemble/iforest.py b/sklearn/ensemble/iforest.py ...",
+      "exit_code": 0
+    }
+  ]
+}

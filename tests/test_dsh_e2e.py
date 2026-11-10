@@ -473,9 +473,12 @@ const ac = new AbortController();
 const captureExec = await commandsSvc.execute(mockAgent, "/tmem both", [], ac.signal);
 const captureRes = captureExec.result;
 
-// B. Execute `/tmem status` via dsh-commands CommandRuntime
+// B. Execute `/tmem status` and `/tmem bench` via dsh-commands CommandRuntime
 const statusExec = await commandsSvc.execute(mockAgent, "/tmem status", [], ac.signal);
 const statusRes = statusExec.result;
+
+const benchExec = await commandsSvc.execute(mockAgent, "/tmem bench", [], ac.signal);
+const benchRes = benchExec.result;
 
 // C. Simulate `tools/post-execute` for `edit` -> `bash (pytest -q)` to trigger `<tmem_milestone_reached>`
 const runPostTool = async (exec, result) => {{
@@ -545,6 +548,7 @@ console.log(JSON.stringify({{
   captureKind: captureRes.kind,
   captureText: captureRes.text,
   statusText: statusRes.text,
+  benchText: benchRes.text,
   milestoneContexts: postVerify.additionalContexts || [],
   preStepMessages: preStepDecision.messages
 }}));
@@ -567,6 +571,9 @@ console.log(JSON.stringify({{
         # Verify `/tmem status` reported the project trace
         self.assertIn("Project Tier", payload["statusText"])
         self.assertIn("1 trace(s)", payload["statusText"])
+
+        # Verify `/tmem bench` executed and returned benchmark report
+        self.assertIn("tmem Public Trajectory Dataset Benchmark", payload["benchText"])
 
         # Verify `tools/post-execute` injected `<tmem_milestone_reached>` after `edit` -> `bash(pytest)`
         self.assertEqual(len(payload["milestoneContexts"]), 1)

@@ -18,7 +18,12 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
-from tmem.adapters.base import ParsedSession, extract_symbols_from_text, is_code_file
+from tmem.adapters.base import (
+    ParsedSession,
+    extract_symbols_from_text,
+    is_code_file,
+    is_filler_user_intent,
+)
 from tmem.models import (
     ActionKind,
     ActionNode,
@@ -28,13 +33,17 @@ from tmem.models import (
 )
 
 TOOLCHAIN_INSTALL_RE = re.compile(
-    r"\b(?:pip|pip3|uv\s+pip|uv|poetry|npm|pnpm|yarn|bun|cargo|go|apt|apt-get|brew)\s+(?:install|add|get|mod\s+tidy)\b|\bcorepack\s+enable\b"
+    r"\b(?:pip|pip3|uv\s+pip|uv|poetry|npm|pnpm|yarn|bun|cargo|go|apt|apt-get|brew)\s+(?:install|add|get|mod\s+tidy)\b|"
+    r"\bcorepack\s+enable\b|"
+    r"\bpython(?:3)?\s+setup\.py\s+(?:build|develop|build_ext|install)\b"
 )
 
 VERIFY_WHITELIST_RE = re.compile(
     r"\b(?:pytest|unittest|tox|nox|coverage|mypy|ruff|flake8|black|isort|pylint|"
     r"runtests(?:\.py)?|manage\.py\s+test|"
-    r"npm\s+(?:test|run\s+\w+)|pnpm\s+(?:test|run\s+\w+)|yarn\s+(?:test|run\s+\w+)|bun\s+test|"
+    r"python(?:3)?\s+setup\.py\s+build_ext\b|"
+    r"npm\s+(?:test|run\s+(?:test|build|check|lint)\w*)|pnpm\s+(?:test|run\s+(?:test|build|check|lint)\w*)|"
+    r"yarn\s+(?:test|run\s+(?:test|build|check|lint)\w*)|bun\s+test|"
     r"cargo\s+(?:test|check|build|clippy)|go\s+(?:test|build|vet)|"
     r"tsc|eslint|vitest|jest|mocha|make|cmake|gradle|mvn|"
     r"dsh\s+plugin\s+\S+)\b"
@@ -321,7 +330,7 @@ class BackwardTraceSlicer:
                 is_env = False
                 verified_cmd = ""
 
-                for j in range(i + 1, min(len(actions), i + 16)):
+                for j in range(i + 1, min(len(actions), i + 36)):
                     nxt = actions[j]
                     if nxt.kind == ActionKind.MUTATE and nxt.target_file in effective_files:
                         sym_note = f" ({', '.join(nxt.symbols_touched[:3])})" if nxt.symbols_touched else ""
@@ -395,19 +404,25 @@ class BackwardTraceSlicer:
         2. `semantic_summary` (Semantic Resolution Summary): Concise explanation of what was solved,
            combining the assistant's final conclusion and key touched modules/symbols.
         """
-        # Pick the most informative user intent from the session
+        # Pick the most informative user intent from the session, filtering conversational filler
+        clean_intents = [
+            u.strip()
+            for u in session.user_intents
+            if not is_filler_user_intent(u) and not u.strip().startswith(("/", "<tmem"))
+        ]
         raw_user = ""
-        if session.user_intents:
-            last_u = session.user_intents[-1].strip()
-            if len(last_u) >= 18:
-                raw_user = last_u
+        if clean_intents:
+            if len(clean_intents) == 1:
+                raw_user = clean_intents[0]
             else:
-                # Look back for a more descriptive task prompt if the last turn was short
-                longer = [u.strip() for u in session.user_intents if len(u.strip()) >= 18]
-                if longer:
-                    raw_user = f"{longer[-1]} ({last_u})"
+                first_u = clean_intents[0]
+                last_u = clean_intents[-1]
+                if len(first_u) >= 20 and len(last_u) >= 20 and first_u != last_u:
+                    raw_user = f"{first_u} — {last_u}"
                 else:
-                    raw_user = last_u
+                    raw_user = max(clean_intents, key=len)
+        elif session.user_intents:
+            raw_user = session.user_intents[-1].strip()
 
         if commit_subject and raw_user:
             if len(raw_user) < 24 and commit_subject not in raw_user:
