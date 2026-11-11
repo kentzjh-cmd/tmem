@@ -23,12 +23,14 @@ from tmem.adapters.base import (
     extract_symbols_from_text,
     is_code_file,
     is_filler_user_intent,
+    scrub_secrets,
 )
 from tmem.models import (
     ActionKind,
     ActionNode,
     CausalRepairPair,
     GuardProbe,
+    RawExecutionTrace,
     TracePlaybook,
 )
 
@@ -155,8 +157,44 @@ def get_git_ground_truth(
     return commit_hash, modified_files, file_symbols, commit_subject
 
 
+def get_git_diff_patch(workspace_root: str) -> Optional[str]:
+    """Capture unified git diff of uncommitted changes or HEAD commit."""
+    ws = Path(workspace_root)
+    if not (ws / ".git").exists():
+        return None
+    try:
+        status_res = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=workspace_root,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        cmd = (
+            ["git", "diff", "HEAD~1", "HEAD"]
+            if not status_res.stdout.strip()
+            else ["git", "diff", "HEAD"]
+        )
+        diff_res = subprocess.run(
+            cmd,
+            cwd=workspace_root,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        if diff_res.returncode == 0 and diff_res.stdout.strip():
+            return scrub_secrets(diff_res.stdout.strip())
+    except Exception:
+        pass
+    return None
+
+
 class BackwardTraceSlicer:
     """Compiles a noisy agent session into a minimal, verifiable TracePlaybook."""
+
+    def __init__(self) -> None:
+        self.last_sliced_step_indices: List[int] = []
+        self.last_git_diff: Optional[str] = None
 
     def slice_session(
         self,
@@ -165,6 +203,8 @@ class BackwardTraceSlicer:
     ) -> Optional[TracePlaybook]:
         raw_actions = session.actions
         if not raw_actions:
+            self.last_sliced_step_indices = []
+            self.last_git_diff = None
             return None
 
         commit_hash, git_files, git_symbols, commit_subject = (
@@ -172,6 +212,12 @@ class BackwardTraceSlicer:
             if use_git_ground_truth
             else (None, set(), {}, None)
         )
+        git_diff_patch = (
+            get_git_diff_patch(session.workspace_root)
+            if use_git_ground_truth
+            else None
+        )
+        self.last_git_diff = git_diff_patch
 
         # 1. Determine Ground Truth Mutated Files (Sink)
         session_mutated_files = {
@@ -193,12 +239,17 @@ class BackwardTraceSlicer:
             effective_files = existing_on_disk if existing_on_disk else set(session_mutated_files)
 
         # 2. Extract Error -> Fix Causal Pairs (L2 Universal Invariants)
-        causal_repairs = self._extract_causal_repairs(raw_actions, effective_files)
+        causal_repairs, repair_step_indices = self._extract_causal_repairs_with_indices(
+            raw_actions, effective_files
+        )
 
         # 3. Backward Slicing: Filter READ, MUTATE, ENV_EXEC into minimal critical path
         read_steps: List[Dict[str, object]] = []
+        read_step_indices: List[int] = []
         mutate_steps: List[Dict[str, object]] = []
+        mutate_step_indices: List[int] = []
         env_steps: List[Dict[str, object]] = []
+        env_step_indices: List[int] = []
         seen_reads: Set[str] = set()
         seen_mutations: Set[str] = set()
         verification_cmds: List[str] = []
@@ -212,6 +263,7 @@ class BackwardTraceSlicer:
                 # Read Shrinking: only keep first READ of a file that is in effective_files
                 if action.target_file in effective_files and action.target_file not in seen_reads:
                     seen_reads.add(action.target_file)
+                    read_step_indices.append(action.step_idx)
                     read_steps.append(
                         {
                             "action": ActionKind.READ.value,
@@ -225,6 +277,7 @@ class BackwardTraceSlicer:
                     touched_symbols.update(action.symbols_touched)
                     if action.target_file not in seen_mutations:
                         seen_mutations.add(action.target_file)
+                        mutate_step_indices.append(action.step_idx)
                         file_syms = sorted(
                             set(action.symbols_touched) | set(git_symbols.get(action.target_file, []))
                         )
@@ -242,6 +295,7 @@ class BackwardTraceSlicer:
                     canonical_cmd = self._extract_canonical_verification_cmd(action.command)
                     if canonical_cmd and canonical_cmd not in verification_cmds:
                         verification_cmds.append(canonical_cmd)
+                        env_step_indices.append(action.step_idx)
                         env_steps.append(
                             {
                                 "action": ActionKind.ENV_EXEC.value,
@@ -251,8 +305,18 @@ class BackwardTraceSlicer:
 
         # Keep at most the last 2 canonical verification/toolchain commands in L0 critical path
         sliced_steps: List[Dict[str, object]] = read_steps + mutate_steps + env_steps[-2:]
+        sliced_env_indices = env_step_indices[-2:]
+
+        collected_indices = (
+            read_step_indices
+            + mutate_step_indices
+            + sliced_env_indices
+            + repair_step_indices
+        )
+        self.last_sliced_step_indices = sorted(set(collected_indices))
 
         if not sliced_steps and not causal_repairs:
+            return None
             return None
 
         # 4. Generate <5ms Pre-flight Speculative Guards
@@ -310,11 +374,18 @@ class BackwardTraceSlicer:
     def _extract_causal_repairs(
         self, actions: List[ActionNode], effective_files: Set[str]
     ) -> List[CausalRepairPair]:
+        repairs, _ = self._extract_causal_repairs_with_indices(actions, effective_files)
+        return repairs
+
+    def _extract_causal_repairs_with_indices(
+        self, actions: List[ActionNode], effective_files: Set[str]
+    ) -> Tuple[List[CausalRepairPair], List[int]]:
         """
         Scan action trajectory within a bounded causal window for pattern:
         [Failed canonical test/build/install ENV_EXEC] -> [Intervening MUTATE or toolchain install] -> [Succeeded verification ENV_EXEC]
         """
         repairs: List[CausalRepairPair] = []
+        step_indices: List[int] = []
         seen_sigs: Set[str] = set()
 
         for i, act in enumerate(actions):
@@ -327,8 +398,10 @@ class BackwardTraceSlicer:
                     continue
 
                 intervening_fixes: List[str] = []
+                intervening_indices: List[int] = []
                 is_env = False
                 verified_cmd = ""
+                verify_idx: Optional[int] = None
 
                 for j in range(i + 1, min(len(actions), i + 36)):
                     nxt = actions[j]
@@ -337,17 +410,20 @@ class BackwardTraceSlicer:
                         fix_desc = f"edit {nxt.target_file}{sym_note}"
                         if fix_desc not in intervening_fixes:
                             intervening_fixes.append(fix_desc)
+                            intervening_indices.append(nxt.step_idx)
                     elif nxt.kind == ActionKind.ENV_EXEC and nxt.command:
                         install_clause = self._extract_toolchain_install_clause(nxt.command)
                         if install_clause and nxt.exit_code in (0, None):
                             fix_desc = f"run `{install_clause}`"
                             if fix_desc not in intervening_fixes:
                                 intervening_fixes.append(fix_desc)
+                                intervening_indices.append(nxt.step_idx)
                             is_env = True
                         elif nxt.exit_code == 0 and not nxt.error_signature and intervening_fixes:
                             cand_verify = self._extract_canonical_verification_cmd(nxt.command)
                             if cand_verify:
                                 verified_cmd = cand_verify
+                                verify_idx = nxt.step_idx
                                 break
 
                 if intervening_fixes and verified_cmd:
@@ -361,7 +437,39 @@ class BackwardTraceSlicer:
                             is_env_or_toolchain=is_env,
                         )
                     )
-        return repairs
+                    step_indices.append(act.step_idx)
+                    step_indices.extend(intervening_indices)
+                    if verify_idx is not None:
+                        step_indices.append(verify_idx)
+        return repairs, step_indices
+
+    def build_raw_trace(
+        self,
+        session: ParsedSession,
+        playbook: TracePlaybook,
+        diff_patch: Optional[str] = None,
+    ) -> RawExecutionTrace:
+        """Construct full-fidelity RawExecutionTrace from a parsed session and its compiled playbook."""
+        patch = diff_patch or self.last_git_diff
+        return RawExecutionTrace(
+            trace_id=playbook.trace_id,
+            session_id=session.session_id,
+            agent_source=session.agent_name,
+            workspace_root=session.workspace_root,
+            created_at=playbook.created_at,
+            git_commit=playbook.git_commit,
+            user_intents=list(session.user_intents),
+            assistant_conclusions=list(session.assistant_conclusions),
+            total_steps=len(session.actions),
+            actions=[a.to_dict() for a in session.actions],
+            sliced_step_indices=list(self.last_sliced_step_indices),
+            diff_patch=patch,
+            metadata={
+                "raw_steps_count": len(session.actions),
+                "sliced_steps_count": len(playbook.l0_critical_path),
+                "causal_repairs_count": len(playbook.l2_causal_repairs),
+            },
+        )
 
     def _build_guards(
         self, workspace_root: str, files: List[str], symbols: List[str]

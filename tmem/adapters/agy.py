@@ -113,6 +113,7 @@ class AgyAdapter(AgentAdapter):
                             target_node.error_signature = err_sig
                             session.active_errors.append(err_sig)
                     target_node.output_snippet = content[:400]
+                    target_node.raw_output = scrub_secrets(content)
 
         return session
 
@@ -124,6 +125,13 @@ class AgyAdapter(AgentAdapter):
         workspace_root: str,
         timestamp: str,
     ) -> ActionNode:
+        cleaned_args = {}
+        for k, v in args.items():
+            if isinstance(v, str):
+                cleaned_args[k] = scrub_secrets(v)
+            else:
+                cleaned_args[k] = v
+
         if tool_name in ("read_file", "view_file", "grep_search", "find_by_name"):
             raw_path = _clean_agy_arg(args.get("Path") or args.get("SearchPath"))
             return ActionNode(
@@ -132,6 +140,7 @@ class AgyAdapter(AgentAdapter):
                 tool_name=tool_name,
                 target_file=normalize_rel_path(raw_path, workspace_root),
                 timestamp=timestamp,
+                raw_input=cleaned_args,
             )
         if tool_name in ("write_file", "edit_file", "replace_file_content", "multi_replace_file_content"):
             raw_path = _clean_agy_arg(args.get("Path") or args.get("TargetFile"))
@@ -145,6 +154,7 @@ class AgyAdapter(AgentAdapter):
                 target_file=normalize_rel_path(raw_path, workspace_root),
                 symbols_touched=extract_symbols_from_text(code_body, raw_path),
                 timestamp=timestamp,
+                raw_input=cleaned_args,
             )
         if tool_name in ("run_command", "bash"):
             cmd = scrub_secrets(_clean_agy_arg(args.get("CommandLine") or args.get("command")))
@@ -154,12 +164,14 @@ class AgyAdapter(AgentAdapter):
                 tool_name=tool_name,
                 command=cmd,
                 timestamp=timestamp,
+                raw_input=cleaned_args,
             )
         return ActionNode(
             step_idx=step_idx,
             kind=ActionKind.OTHER,
             tool_name=tool_name,
             timestamp=timestamp,
+            raw_input=cleaned_args,
         )
 
     def discover_latest_transcript(self, workspace_root: str) -> Optional[str]:

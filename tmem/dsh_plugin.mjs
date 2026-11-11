@@ -130,9 +130,9 @@ export function apply(ctx, config = {}) {
         definitionId: "@tmem/dsh-command-tmem",
         name: "tmem",
         description:
-          "Capture, slice, list, or manage execution trace memory (project | global | both | status | list | forget | gc)",
+          "Capture, slice, list, inspect, replay, or manage execution trace memory (project | global | both | status | list | forget | gc | inspect | replay | diff | sync)",
         input: {
-          hint: "[project|global|both|status|list|forget|gc|bench|evaluate] [<intent|trace_id>]",
+          hint: "[project|global|both|status|list|forget|gc|bench|evaluate|inspect|replay|diff|sync] [<intent|trace_id>]",
         },
         handler: async (invocation) => {
           const workspaceRoot = resolveSessionWorkspace(

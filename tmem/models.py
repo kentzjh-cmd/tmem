@@ -30,6 +30,34 @@ class ActionNode:
     error_signature: Optional[str] = None
     output_snippet: Optional[str] = None
     timestamp: str = ""
+    raw_input: Optional[Dict[str, Any]] = None
+    raw_output: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "step_idx": self.step_idx,
+            "kind": self.kind.value if isinstance(self.kind, ActionKind) else str(self.kind),
+            "tool_name": self.tool_name,
+            "target_file": self.target_file,
+            "command": self.command,
+            "symbols_touched": list(self.symbols_touched),
+            "exit_code": self.exit_code,
+            "error_signature": self.error_signature,
+            "output_snippet": self.output_snippet,
+            "timestamp": self.timestamp,
+            "raw_input": self.raw_input,
+            "raw_output": self.raw_output,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ActionNode":
+        copied = dict(data)
+        if "kind" in copied and isinstance(copied["kind"], str):
+            try:
+                copied["kind"] = ActionKind(copied["kind"])
+            except ValueError:
+                copied["kind"] = ActionKind.OTHER
+        return cls(**copied)
 
 
 @dataclass
@@ -105,6 +133,8 @@ class TracePlaybook:
     status: str = "active"             # "active" | "stale" | "invalidated"
     raw_steps_count: int = 0
     sliced_steps_count: int = 0
+    raw_trace_path: Optional[str] = None
+    raw_trace_hash: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)
@@ -120,4 +150,35 @@ class TracePlaybook:
             CausalRepairPair.from_dict(r) for r in copied.get("l2_causal_repairs", [])
         ]
         copied.setdefault("semantic_summary", "")
+        copied.setdefault("raw_trace_path", None)
+        copied.setdefault("raw_trace_hash", None)
         return cls(**copied)
+
+
+@dataclass
+class RawExecutionTrace:
+    """
+    Full-fidelity raw execution trace for forensic replay, deep progressive disclosure,
+    and auditing. Stored in .tmem/raw/<trace_id>.raw.json.
+    """
+
+    trace_id: str
+    session_id: str
+    agent_source: str
+    workspace_root: str
+    created_at: str
+    git_commit: Optional[str] = None
+    user_intents: List[str] = field(default_factory=list)
+    assistant_conclusions: List[str] = field(default_factory=list)
+    total_steps: int = 0
+    actions: List[Dict[str, Any]] = field(default_factory=list)
+    sliced_step_indices: List[int] = field(default_factory=list)
+    diff_patch: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "RawExecutionTrace":
+        return cls(**data)

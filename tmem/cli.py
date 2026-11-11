@@ -26,11 +26,17 @@ from tmem.adapters import get_adapter
 from tmem.adapters.base import extract_error_signature, normalize_rel_path
 from tmem.adapters.dsh import DSH_EXIT_CODE_RE, DshAdapter, parse_apply_patch_targets
 from tmem.guards import format_injected_context
+from tmem.raw_storage import (
+    RawTraceStore,
+    format_progressive_view,
+    format_raw_trace_diff,
+    format_raw_trace_replay,
+)
 from tmem.slicer import BackwardTraceSlicer
 from tmem.store import DualTierMemoryStore
 
 SLASH_TMEM_RE = re.compile(
-    r"^/(?:tmem|remember|trace)(?:\s+(project|global|both|status|list|forget|gc|bench|evaluate))?(?:\s+(.+))?$",
+    r"^/(?:tmem|remember|trace)(?:\s+(project|global|both|status|list|forget|gc|bench|evaluate|inspect|replay|diff|sync))?(?:\s+(.+))?$",
     re.IGNORECASE | re.DOTALL,
 )
 
@@ -132,6 +138,12 @@ def execute_capture(
         fingerprint = f"{pb.problem_intent}|{'|'.join(pb.touched_files)}|{'|'.join(pb.error_signatures)}"
         pb.trace_id = "tr_" + hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()[:10]
 
+    # Save full-fidelity raw execution trace for forensic replay & progressive disclosure
+    raw_store = RawTraceStore(workspace_root)
+    raw_trace = slicer.build_raw_trace(session, pb)
+    raw_store.save_raw_trace(raw_trace)
+    pb.raw_trace_path = f"raw/{pb.trace_id}.raw.json"
+
     store = DualTierMemoryStore(workspace_root)
     proj_id, glob_id = store.save_playbook(
         pb, auto_promote_global=(scope == "auto"), target_scope=scope
@@ -151,6 +163,7 @@ def execute_capture(
         "scope": scope,
         "project_trace_id": proj_id,
         "global_promoted_id": glob_id,
+        "raw_trace_path": pb.raw_trace_path,
         "problem_intent": pb.problem_intent,
         "touched_files": pb.touched_files,
         "raw_steps": pb.raw_steps_count,
@@ -247,6 +260,56 @@ def handle_agy_hook(event: str, payload: Dict[str, Any]) -> Dict[str, Any]:
                     "<tmem_command_executed>\n"
                     f"Command `/tmem forget {custom_intent}` executed: {json.dumps(del_res, ensure_ascii=False)}\n"
                     "Please report the deletion result to the user.\n"
+                    "</tmem_command_executed>"
+                )
+                return {"injectSteps": [{"systemMessage": {"systemMessage": msg}}]}
+
+            if action_mode == "inspect":
+                parts = (custom_intent or "").split()
+                tid = parts[0] if parts else ""
+                level = parts[1] if len(parts) > 1 else "playbook"
+                target_pb = None
+                for pb in store.get_all_project_playbooks() + store.get_all_global_playbooks():
+                    if pb.trace_id == tid or pb.trace_id.startswith(tid):
+                        target_pb = pb
+                        break
+                if not target_pb:
+                    msg = f"<tmem_command_executed>\nTrace '{tid}' not found in project or global memory.\n</tmem_command_executed>"
+                else:
+                    raw_tr = store.get_raw_trace(target_pb.trace_id)
+                    view_text = format_progressive_view(target_pb, raw_tr, level=level)
+                    msg = f"<tmem_command_executed>\n{view_text}\n</tmem_command_executed>"
+                return {"injectSteps": [{"systemMessage": {"systemMessage": msg}}]}
+
+            if action_mode == "replay":
+                tid = (custom_intent or "").strip()
+                raw_tr = store.get_raw_trace(tid)
+                if not raw_tr:
+                    msg = f"<tmem_command_executed>\nRaw execution trace for '{tid}' not found in .tmem/raw/.\n</tmem_command_executed>"
+                else:
+                    replay_text = format_raw_trace_replay(raw_tr)
+                    msg = f"<tmem_command_executed>\n{replay_text}\n</tmem_command_executed>"
+                return {"injectSteps": [{"systemMessage": {"systemMessage": msg}}]}
+
+            if action_mode == "diff":
+                tid = (custom_intent or "").strip()
+                raw_tr = store.get_raw_trace(tid)
+                if not raw_tr:
+                    msg = f"<tmem_command_executed>\nRaw execution trace for '{tid}' not found in .tmem/raw/.\n</tmem_command_executed>"
+                else:
+                    diff_text = format_raw_trace_diff(raw_tr)
+                    msg = f"<tmem_command_executed>\n```diff\n{diff_text}\n```\n</tmem_command_executed>"
+                return {"injectSteps": [{"systemMessage": {"systemMessage": msg}}]}
+
+            if action_mode == "sync":
+                store.sync_project_index_if_needed()
+                store.run_metabolism_gc()
+                doc_path = store.sync_memories_markdown()
+                msg = (
+                    "<tmem_command_executed>\n"
+                    f"Command `/tmem sync` completed successfully:\n"
+                    f"- Project & Global indexes synchronized\n"
+                    f"- Living index updated: `{doc_path.name}` and `MEM.md`\n"
                     "</tmem_command_executed>"
                 )
                 return {"injectSteps": [{"systemMessage": {"systemMessage": msg}}]}
@@ -442,6 +505,46 @@ def handle_dsh_hook(event: str, payload: Dict[str, Any]) -> Dict[str, Any]:
             return {
                 "kind": "success",
                 "text": f"[tmem forget] {json.dumps(del_res, ensure_ascii=False)}",
+            }
+
+        if action_mode == "inspect":
+            parts = (custom_intent or "").split()
+            tid = parts[0] if parts else ""
+            level = parts[1] if len(parts) > 1 else "playbook"
+            target_pb = None
+            for pb in store.get_all_project_playbooks() + store.get_all_global_playbooks():
+                if pb.trace_id == tid or pb.trace_id.startswith(tid):
+                    target_pb = pb
+                    break
+            if not target_pb:
+                return {"kind": "error", "text": f"Trace '{tid}' not found."}
+            raw_tr = store.get_raw_trace(target_pb.trace_id)
+            view_text = format_progressive_view(target_pb, raw_tr, level=level)
+            return {"kind": "success", "text": view_text}
+
+        if action_mode == "replay":
+            tid = (custom_intent or "").strip()
+            raw_tr = store.get_raw_trace(tid)
+            if not raw_tr:
+                return {"kind": "error", "text": f"Raw trace for '{tid}' not found in .tmem/raw/."}
+            replay_text = format_raw_trace_replay(raw_tr)
+            return {"kind": "success", "text": replay_text}
+
+        if action_mode == "diff":
+            tid = (custom_intent or "").strip()
+            raw_tr = store.get_raw_trace(tid)
+            if not raw_tr:
+                return {"kind": "error", "text": f"Raw trace for '{tid}' not found in .tmem/raw/."}
+            diff_text = format_raw_trace_diff(raw_tr)
+            return {"kind": "success", "text": f"```diff\n{diff_text}\n```"}
+
+        if action_mode == "sync":
+            store.sync_project_index_if_needed()
+            store.run_metabolism_gc()
+            doc_path = store.sync_memories_markdown()
+            return {
+                "kind": "success",
+                "text": f"[tmem sync] Synchronized indexes & updated {doc_path.name} and MEM.md",
             }
 
         res = execute_capture(
@@ -722,10 +825,12 @@ def install_invisible_integration(
 
         rules_md = (
             "# tmem Speculative Execution Memory & Milestone Protocol\n\n"
-            "## 1. Consuming Recalled Memory (`<tmem_speculative_memory>`)\n"
+            "## 1. Consuming Recalled Memory (`<tmem_speculative_memory>`) & `MEMORIES.md`\n"
+            "- **Living Memory Index (`MEMORIES.md`)**: When navigating or planning modifications in this repository, consult `MEMORIES.md` (or `MEM.md`) for verified execution paths, co-change rules, and known error repairs.\n"
             "- **L0_FULL (Guards Passed)**: Follow the verified `L0 Critical Path` directly instead of performing redundant exploratory `grep`/`find` scans.\n"
             "- **L1_TOPOLOGY**: Respect the co-change file contract and run the specified verification command before finishing.\n"
-            "- **L2_INVARIANT**: When encountering a matching error signature, apply the known causal repair action first.\n\n"
+            "- **L2_INVARIANT**: When encountering a matching error signature, apply the known causal repair action first.\n"
+            "- **Progressive Disclosure**: Detailed playbooks are in `.tmem/traces/*.json`; full forensic step replay is in `.tmem/raw/*.raw.json` (`python3 -m tmem.cli inspect <id> --level raw`).\n\n"
             "## 2. Goal Completion & `/tmem` Memory Persistence\n"
             "- **Proactive Milestone Prompt**: When you complete a non-trivial coding, debugging, or environment setup goal (or when `<tmem_milestone_reached>` is injected), append a concise one-line prompt at the end of your response asking whether to persist the memory trace:\n"
             "  > 💡 *是否需要将本次有效执行路径沉淀为记忆？（可输入 `/tmem project` 存项目级、`/tmem global` 存全局级、或 `/tmem both` 同时保存）*\n"
@@ -819,10 +924,12 @@ def install_invisible_integration(
         ws_agents_md = ws / "AGENTS.md"
         dsh_rules_section = (
             "# tmem Speculative Execution Memory & Milestone Protocol\n\n"
-            "## 1. Consuming Recalled Memory (`<tmem_speculative_memory>`)\n"
+            "## 1. Consuming Recalled Memory (`<tmem_speculative_memory>`) & `MEMORIES.md`\n"
+            "- **Living Memory Index (`MEMORIES.md`)**: When navigating or planning modifications in this repository, consult `MEMORIES.md` (or `MEM.md`) for verified execution paths, co-change rules, and known error repairs.\n"
             "- **L0_FULL (Guards Passed)**: Follow the verified `L0 Critical Path` directly instead of performing redundant exploratory `grep`/`find` scans.\n"
             "- **L1_TOPOLOGY**: Respect the co-change file contract and run the specified verification command before finishing.\n"
-            "- **L2_INVARIANT**: When encountering a matching error signature, apply the known causal repair action first.\n\n"
+            "- **L2_INVARIANT**: When encountering a matching error signature, apply the known causal repair action first.\n"
+            "- **Progressive Disclosure**: Detailed playbooks are in `.tmem/traces/*.json`; full forensic step replay is in `.tmem/raw/*.raw.json` (`python3 -m tmem.cli inspect <id> --level raw`).\n\n"
             "## 2. Goal Completion & `/tmem` Memory Persistence\n"
             "- **Proactive Milestone Prompt**: When you complete a non-trivial coding, debugging, or environment setup goal (or when `<tmem_milestone_reached>` is injected), append a concise one-line prompt at the end of your response asking whether to persist the memory trace:\n"
             "  > 💡 *是否需要将本次有效执行路径沉淀为记忆？（可输入 `/tmem project` 存项目级、`/tmem global` 存全局级、或 `/tmem both` 同时保存）*\n"
@@ -841,6 +948,12 @@ def install_invisible_integration(
         installed["agents"].append(
             "dsh (.dsh/plugins/tmem-dsh-plugin.mjs + .dsh/tmem.patch.yml + ~/.dsh/cordis.patch.yml + .agents/skills/tmem + AGENTS.md)"
         )
+
+    # Initialize store, raw archive, and living MEMORIES.md index
+    store = DualTierMemoryStore(str(ws))
+    store.ensure_initialized(init_project=True)
+    mem_file = store.sync_memories_markdown()
+    installed["memories_doc"] = str(mem_file)
 
     if install_git_hook and (ws / ".git").exists():
         hooks_dir = ws / ".git" / "hooks"
@@ -933,6 +1046,27 @@ def main(argv: Optional[List[str]] = None) -> int:
     p_eval.add_argument("--data-dir", default=None, help="Directory containing .traj / .atif.json / .jsonl files")
     p_eval.add_argument("--json", action="store_true", help="Output raw JSON summary")
     p_eval.add_argument("--quiet", action="store_true", help="Suppress output")
+
+    # 10. inspect
+    p_insp = sub.add_parser("inspect", help="Progressive disclosure: inspect at index, playbook, raw, or diff level")
+    p_insp.add_argument("trace_id", help="Trace ID or prefix (e.g. tr_acd0dc0ff0)")
+    p_insp.add_argument("--level", choices=["index", "playbook", "raw", "diff"], default="playbook", help="Disclosure level")
+    p_insp.add_argument("--workspace", default=os.getcwd(), help="Workspace root directory")
+    p_insp.add_argument("--json", action="store_true", help="Output raw JSON")
+
+    # 11. replay
+    p_rep = sub.add_parser("replay", help="Forensic chronological terminal replay of raw execution trace")
+    p_rep.add_argument("trace_id", help="Trace ID or prefix")
+    p_rep.add_argument("--workspace", default=os.getcwd(), help="Workspace root directory")
+
+    # 12. diff
+    p_diff = sub.add_parser("diff", help="View recorded unified git diff patch for a trace")
+    p_diff.add_argument("trace_id", help="Trace ID or prefix")
+    p_diff.add_argument("--workspace", default=os.getcwd(), help="Workspace root directory")
+
+    # 13. sync
+    p_sync = sub.add_parser("sync", help="Synchronize indexes, run GC, and regenerate MEMORIES.md living index")
+    p_sync.add_argument("--workspace", default=os.getcwd(), help="Workspace root directory")
 
     args = parser.parse_args(argv)
 
@@ -1043,6 +1177,64 @@ def main(argv: Optional[List[str]] = None) -> int:
         elif not args.quiet:
             print(format_markdown_report(summary))
         return 0 if summary.all_passed else 1
+
+    if args.subcommand == "inspect":
+        store = DualTierMemoryStore(args.workspace)
+        tid = args.trace_id.strip()
+        target_pb = None
+        for pb in store.get_all_project_playbooks() + store.get_all_global_playbooks():
+            if pb.trace_id == tid or pb.trace_id.startswith(tid):
+                target_pb = pb
+                break
+        if not target_pb:
+            print(f"Error: Trace '{tid}' not found in project or global memory.", file=sys.stderr)
+            return 1
+        raw_tr = store.get_raw_trace(target_pb.trace_id)
+        if args.json:
+            out_data = {
+                "playbook": target_pb.to_dict(),
+                "raw_trace": raw_tr.to_dict() if raw_tr else None,
+            }
+            print(json.dumps(out_data, indent=2, ensure_ascii=False))
+        else:
+            print(format_progressive_view(target_pb, raw_tr, level=args.level))
+        return 0
+
+    if args.subcommand == "replay":
+        store = DualTierMemoryStore(args.workspace)
+        raw_tr = store.get_raw_trace(args.trace_id)
+        if not raw_tr:
+            print(f"Error: Raw execution trace for '{args.trace_id}' not found in .tmem/raw/.", file=sys.stderr)
+            return 1
+        print(format_raw_trace_replay(raw_tr))
+        return 0
+
+    if args.subcommand == "diff":
+        store = DualTierMemoryStore(args.workspace)
+        raw_tr = store.get_raw_trace(args.trace_id)
+        if not raw_tr:
+            print(f"Error: Raw execution trace for '{args.trace_id}' not found in .tmem/raw/.", file=sys.stderr)
+            return 1
+        print(format_raw_trace_diff(raw_tr))
+        return 0
+
+    if args.subcommand == "sync":
+        store = DualTierMemoryStore(args.workspace)
+        store.sync_project_index_if_needed()
+        gc_stats = store.run_metabolism_gc()
+        doc_path = store.sync_memories_markdown()
+        print(
+            json.dumps(
+                {
+                    "status": "synchronized",
+                    "gc_stats": gc_stats,
+                    "living_index": str(doc_path),
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+        return 0
 
     parser.print_help()
     return 0

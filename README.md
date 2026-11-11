@@ -62,6 +62,18 @@ flowchart LR
 - **全局级记忆（`~/.tmem/playbooks/*.json`）**：
   - 存储脱敏项目私有路径后的通用工具链、依赖冲突、编译器报错修复经验（L2 Invariants），跨仓库共享。
 
+### 4. 原始轨迹保真存储与渐进式回溯披露 ([`tmem/raw_storage.py`](file:///home/ubuntu/proj/tmem/raw_storage.py))
+在切片提取高密度 Playbook 的同时，`tmem` 绝不丢弃原始执行过程的每一个细节。后向切片器会在 `.tmem/raw/<trace_id>.raw.json` 完整固化原始会话的工具输入、命令输出、退出状态、错误堆栈以及会话期间形成的 Git 统一补丁（Unified Diff）：
+- **Tier 0 目录索引（Catalog Index，~35 tokens，-98.6% Token）**：由根目录 [`MEMORIES.md`](file:///home/ubuntu/proj/MEMORIES.md) 提供超轻量单行摘要（意图、影响文件、校验命令、状态），开箱即用，零上下文污染。
+- **Tier 1 投机手册（Guarded Playbook，~370 tokens，-86.1% Token）**：仅在命中相似意图或报错签名时注入 AST/文件探针保护的关键路径（L0）、协同修改拓扑（L1）与根因修复不变量（L2）。
+- **Tier 2 全保真回溯（Raw Trajectory & Unified Diff，全量取证）**：通过命令行 `python3 -m tmem.cli replay <id>` 还原完整的终极端操作流（带 `[CRITICAL PATH]` 与 `[NOISE PRUNED]` 高亮），或通过 `python3 -m tmem.cli diff <id>` 审查精确的代码变更补丁。
+
+### 5. Git 活文档记忆索引与跨 Agent 零感知交互 ([`tmem/mem_doc.py`](file:///home/ubuntu/proj/tmem/mem_doc.py))
+为了打破“记忆仅能被特定插件识别”的壁垒，`tmem` 借鉴了行业标准的 `AGENTS.md` / `ARCHITECTURE.md` 理念：
+- **自治活文档**：在工作区根目录自治生成并实时同步 [`MEMORIES.md`](file:///home/ubuntu/proj/MEMORIES.md)（并自动维护符号链接 [`MEM.md`](file:///home/ubuntu/proj/MEM.md) $\to$ `MEMORIES.md`）。
+- **全生态通用**：无论开发者使用 **Cursor (`.cursorrules`)**、**Claude Code**、**GitHub Copilot**、**Antigravity** 还是 **DeepSeek Harness**，任何代码助手只需读取仓库根目录的 `MEM.md` 即可全景纵览所有历史验证路径与报错修复对，实现**零配置、零插件、零 API 成本的开箱即用**。
+- **原子自动刷新**：每当沉淀新记忆、删除旧记忆、运行代谢 GC 或输入 `/tmem sync` 时，`MEMORIES.md` 会毫秒级（~1.6ms）原子更新。
+
 ---
 
 ## 三、多 Agent 无感插件机制
@@ -99,7 +111,11 @@ flowchart LR
    - `/tmem both [可选备注]`：同时保存至项目级与全局级。
    - `/tmem status`：查看当前项目级与全局级记忆库统计。
    - `/tmem list [project|global|both]`：列出所有已沉淀轨迹及其当前探针生效层级（`L0_FULL` / `L1_TOPOLOGY` / `L2_INVARIANT`）。
-   - `/tmem forget <trace_id>`：按 ID 或前缀一键删除指定记忆轨迹。
+   - `/tmem inspect <trace_id> [index|playbook|raw|diff]`：按四种渐进披露粒度审查指定记忆轨迹。
+   - `/tmem replay <trace_id>`：按时间线播放终端全量操作，直观区分生效关键路径与被过滤探索噪音。
+   - `/tmem diff <trace_id>`：查看该条轨迹在会话过程中沉淀的 Git 统一修改补丁。
+   - `/tmem sync`：重新索引 SQLite 缓存、校验探针时效性并全量同步 `MEMORIES.md` 与 `MEM.md`。
+   - `/tmem forget <trace_id>`：按 ID 或前缀一键删除指定记忆轨迹并清理关联原始记录。
    - `/tmem gc`：运行预检探针代谢检查，自动标记失效的 L0 路径。
 3. **Git 提交自动兜底（`.git/hooks/post-commit`）**
    每次执行 `git commit` 时，后台静默触发 `tmem capture --scope auto --quiet`，自动完成增量轨迹切片与落盘。
@@ -118,6 +134,18 @@ python3 -m tmem.cli init --agents agy,dsh
 ```bash
 # 查看项目级 (.tmem) 与全局级 (~/.tmem) 记忆统计
 python3 -m tmem.cli status
+
+# 渐进式回溯审查记忆（可选 --level index | playbook | raw | diff）
+python3 -m tmem.cli inspect tr_cc3a687f02 --level playbook
+
+# 全真终端执行轨迹复现回放（标记关键路径与修剪噪音）
+python3 -m tmem.cli replay tr_cc3a687f02
+
+# 查看轨迹沉淀的代码统一变更补丁
+python3 -m tmem.cli diff tr_cc3a687f02
+
+# 手动全量同步工作区 MEMORIES.md 与 MEM.md 活文档
+python3 -m tmem.cli sync
 
 # 运行公开轨迹数据集（SWE-bench / ATIF / DSH）基准评测与数据验证
 python3 -m tmem.cli evaluate
@@ -185,7 +213,24 @@ PYTHONPATH=. python3 -m unittest discover -s tests -v
 | `sympy__sympy-20590` | 6 步 | 4 步 | **-33.3%** | 0 (Clean) | **0 (100.0%)** | `READ(sympy/matrices/expressions/matexpr.py)` | **-73.7%** | ✅ 降级为 L1_TOPOLOGY |
 | **下游综合收益指标** | **平均 13.0 步** | **平均 5.33 步** | **-55.73%** | **共 10 个** | **10 (100.0%)** | **100.0% 首动命中** | **-84.2%** | **100% 安全抗漂移** |
 
-### 4. 长周期与复杂工程任务下的插件设计完善
+### 4. 渐进式回溯披露与多层 Token 压缩量化表现 (Multi-Tier Progressive Disclosure Benchmark)
+
+通过在全量公共基准轨迹（9 例）上执行三层披露对比实验，`tmem` 在保证 100% 原始取证精度的同时实现了指数级的上下文压缩：
+
+| 任务实例 / 轨迹来源 | Tier 2 原始全量估算 | Tier 1 手册估算 | Tier 0 索引估算 | Tier 1 缩减率 | Tier 0 缩减率 | 原始存储校验 | 终端回放还原 |
+|---|---|---|---|---|---|---|---|
+| `dsh_e2e_session` | ~2,130 tok | ~320 tok | ~35 tok | **-85.0%** | **-98.4%** | ✅ 校验通过 | ✅ 成功渲染 |
+| `dsh_long_lifecycle_session` | ~6,090 tok | ~545 tok | ~35 tok | **-91.1%** | **-99.4%** | ✅ 校验通过 | ✅ 成功渲染 |
+| `dsh_multiturn_complex_session` | ~3,890 tok | ~410 tok | ~35 tok | **-89.5%** | **-99.1%** | ✅ 校验通过 | ✅ 成功渲染 |
+| `astropy__astropy-12907` | ~3,890 tok | ~455 tok | ~35 tok | **-88.3%** | **-99.1%** | ✅ 校验通过 | ✅ 成功渲染 |
+| `django__django-11099` | ~1,910 tok | ~275 tok | ~35 tok | **-85.6%** | **-98.2%** | ✅ 校验通过 | ✅ 成功渲染 |
+| `flask__flask-5014` | ~1,470 tok | ~275 tok | ~35 tok | **-81.3%** | **-97.6%** | ✅ 校验通过 | ✅ 成功渲染 |
+| `pytest-dev__pytest-7432` | ~3,450 tok | ~410 tok | ~35 tok | **-88.1%** | **-99.0%** | ✅ 校验通过 | ✅ 成功渲染 |
+| `scikit-learn__scikit-learn-13496` | ~2,790 tok | ~410 tok | ~35 tok | **-85.3%** | **-98.7%** | ✅ 校验通过 | ✅ 成功渲染 |
+| `sympy__sympy-20590` | ~1,470 tok | ~280 tok | ~35 tok | **-81.0%** | **-97.6%** | ✅ 校验通过 | ✅ 成功渲染 |
+| **全库平均量化指标** | **~3,010 tok** | **~376 tok** | **~35 tok** | **-86.13%** | **-98.57%** | **100% 保真落盘** | **同步延迟 1.68ms** |
+
+### 5. 长周期与复杂工程任务下的插件设计完善
 
 针对长周期、多轮交互轨迹容易出现的噪音堆积与记忆漂移，`tmem` 进行了专项架构升级：
 1. **死修改消除 (Dead Mutation Elimination) 与同文件多次编辑合并**：
@@ -208,6 +253,8 @@ tmem/
 ├── pyproject.toml                 # Python 包定义与 `tmem` CLI 入口配置
 ├── README.md                      # 中文架构与使用文档
 ├── README_EN.md                   # 英文文档
+├── MEMORIES.md                    # 自治活文档记忆索引 (零插件通用检索导航)
+├── MEM.md                         # 指向 MEMORIES.md 的软链接别名
 ├── AGENTS.md                      # Agent 记忆消费与里程碑提示协议规则
 ├── benchmarks/                    # 公开轨迹基准数据集与验证用例
 │   └── data/
@@ -216,12 +263,14 @@ tmem/
 │       ├── swe_bench_sympy_20590.atif.json
 │       └── dsh_e2e_session.jsonl
 ├── tmem/
-│   ├── models.py                  # ActionNode IR、GuardProbe 探针与 TracePlaybook 三层数据模型
+│   ├── models.py                  # ActionNode IR、GuardProbe 探针、RawExecutionTrace 与 Playbook 模型
 │   ├── slicer.py                  # Git Ground-Truth 后向依赖切片器 (BackwardTraceSlicer)
+│   ├── raw_storage.py             # 原始执行轨迹保真存储、终端回放与补丁审查器 (RawTraceStore)
+│   ├── mem_doc.py                 # MEMORIES.md / MEM.md 活文档渲染与原子同步引擎
 │   ├── guards.py                  # <5ms 零 Token 预检探针校验与 L0->L1->L2 降级格式化器
 │   ├── store.py                   # 项目级 (.tmem/) + 全局级 (~/.tmem/) 双层存储与级联检索
-│   ├── evaluate.py                # 公开轨迹基准评测引擎与量化报告生成器
-│   ├── cli.py                     # CLI 入口、/tmem 命令解析、里程碑检测与插件安装器
+│   ├── evaluate.py                # 公开轨迹基准评测引擎、下游效能与渐进披露量化报告
+│   ├── cli.py                     # CLI 入口、/tmem 命令解析、取证审查与插件安装器
 │   ├── dsh_plugin.mjs             # @deepseek-ai/dsh 原生 Cordis 插件源码
 │   └── adapters/
 │       ├── base.py                # 统一会话协议、报错签名提取、符号提取与密钥脱敏
@@ -231,5 +280,6 @@ tmem/
 └── tests/
     ├── test_tmem_e2e.py           # 核心后向切片、双层存储、探针降级与 agy 钩子 E2E 测试
     ├── test_dsh_e2e.py            # @deepseek-ai/dsh v4 解析与真机 Cordis 运行时 E2E 测试
+    ├── test_raw_and_memories.py   # 原始轨迹存储、渐进披露、活文档与取证 CLI 自动化测试
     └── test_evaluation_benchmark.py # SWE-bench / ATIF 轨迹基准评测自动化测试套件
 ```

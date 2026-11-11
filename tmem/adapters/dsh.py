@@ -245,6 +245,7 @@ class DshAdapter(AgentAdapter):
                                 t_node.error_signature = err_sig
                                 session.active_errors.append(err_sig)
                             t_node.output_snippet = scrub_secrets(out_text[:400])
+                            t_node.raw_output = scrub_secrets(out_text)
                     continue
 
                 # 4. Fallback for generic JSONL tool_calls / inline command logs
@@ -326,6 +327,12 @@ class DshAdapter(AgentAdapter):
         timestamp: str,
     ) -> List[ActionNode]:
         low = tool_name.lower()
+        cleaned_args = {}
+        for k, v in args.items():
+            if isinstance(v, str):
+                cleaned_args[k] = scrub_secrets(v)
+            else:
+                cleaned_args[k] = v
 
         # 1. `apply_patch` (Codex / dsh multi-file patch format)
         if low == "apply_patch":
@@ -342,6 +349,7 @@ class DshAdapter(AgentAdapter):
                             target_file=normalize_rel_path(raw_path, workspace_root),
                             symbols_touched=extract_symbols_from_text(added_body, raw_path),
                             timestamp=timestamp,
+                            raw_input=cleaned_args,
                         )
                     )
                 return nodes
@@ -366,6 +374,7 @@ class DshAdapter(AgentAdapter):
                     tool_name=tool_name,
                     target_file=normalize_rel_path(file_arg, workspace_root),
                     timestamp=timestamp,
+                    raw_input=cleaned_args,
                 )
             ]
 
@@ -388,6 +397,7 @@ class DshAdapter(AgentAdapter):
                     target_file=normalize_rel_path(file_arg, workspace_root),
                     symbols_touched=extract_symbols_from_text(code_body, str(file_arg or "")),
                     timestamp=timestamp,
+                    raw_input=cleaned_args,
                 )
             ]
 
@@ -400,6 +410,7 @@ class DshAdapter(AgentAdapter):
                     tool_name=tool_name,
                     command=scrub_secrets(str(cmd_arg or "")),
                     timestamp=timestamp,
+                    raw_input=cleaned_args,
                 )
             ]
 
@@ -409,6 +420,7 @@ class DshAdapter(AgentAdapter):
                 kind=ActionKind.OTHER,
                 tool_name=tool_name,
                 timestamp=timestamp,
+                raw_input=cleaned_args,
             )
         ]
 

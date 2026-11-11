@@ -58,5 +58,7 @@
   "hit_count": 0,
   "status": "active",
   "raw_steps_count": 4,
-  "sliced_steps_count": 3
+  "sliced_steps_count": 3,
+  "raw_trace_path": null,
+  "raw_trace_hash": null
 }

@@ -19,7 +19,9 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
 from tmem.guards import EvaluatedPlaybook, evaluate_guards
-from tmem.models import CausalRepairPair, TracePlaybook
+from tmem.mem_doc import sync_memories_file
+from tmem.models import CausalRepairPair, RawExecutionTrace, TracePlaybook
+from tmem.raw_storage import RawTraceStore
 
 
 class DualTierMemoryStore:
@@ -29,8 +31,10 @@ class DualTierMemoryStore:
         self.workspace_root = str(Path(workspace_root).resolve())
         self.project_dir = Path(self.workspace_root) / ".tmem"
         self.project_traces_dir = self.project_dir / "traces"
+        self.project_raw_dir = self.project_dir / "raw"
         self.project_cache_dir = self.project_dir / ".cache"
         self.project_db_path = self.project_cache_dir / "index.db"
+        self.raw_store = RawTraceStore(self.workspace_root)
 
         self.global_dir = (
             Path(global_root).resolve()
@@ -47,6 +51,7 @@ class DualTierMemoryStore:
 
         if init_project:
             self.project_traces_dir.mkdir(parents=True, exist_ok=True)
+            self.project_raw_dir.mkdir(parents=True, exist_ok=True)
             self.project_cache_dir.mkdir(parents=True, exist_ok=True)
             gitignore = self.project_dir / ".gitignore"
             if not gitignore.exists():
@@ -126,6 +131,12 @@ class DualTierMemoryStore:
 
         if target_scope in ("project", "both", "auto"):
             self.ensure_initialized(init_project=True)
+            raw_path = self.project_raw_dir / f"{playbook.trace_id}.raw.json"
+            if raw_path.exists():
+                if not playbook.raw_trace_path:
+                    playbook.raw_trace_path = f"raw/{playbook.trace_id}.raw.json"
+                if not playbook.raw_trace_hash:
+                    playbook.raw_trace_hash = hashlib.sha256(raw_path.read_bytes()).hexdigest()[:16]
             proj_file = self.project_traces_dir / f"{playbook.trace_id}.json"
             proj_file.write_text(
                 json.dumps(playbook.to_dict(), indent=2, ensure_ascii=False),
@@ -134,6 +145,10 @@ class DualTierMemoryStore:
             with sqlite3.connect(str(self.project_db_path)) as conn:
                 self._UpsertToDb(conn, playbook)
             proj_id = playbook.trace_id
+            try:
+                self.sync_memories_markdown()
+            except Exception:
+                pass
 
         should_save_global = (
             target_scope in ("global", "both")
@@ -428,6 +443,10 @@ class DualTierMemoryStore:
                 )
             except Exception:
                 continue
+        try:
+            self.sync_memories_markdown()
+        except Exception:
+            pass
         return stats
 
     def list_playbooks(self, scope: str = "both") -> List[Dict[str, object]]:
@@ -492,4 +511,50 @@ class DualTierMemoryStore:
                                 conn.execute("DELETE FROM playbooks_fts WHERE trace_id = ?", (matched_id,))
                         except Exception:
                             pass
+        try:
+            self.raw_store.delete_raw_trace(tid)
+        except Exception:
+            pass
+        try:
+            self.sync_memories_markdown()
+        except Exception:
+            pass
         return {"deleted": bool(removed_from), "removed_from": removed_from}
+
+    def get_raw_trace(self, trace_id: str) -> Optional[RawExecutionTrace]:
+        """Retrieve full-fidelity raw execution trace if stored."""
+        return self.raw_store.load_raw_trace(trace_id)
+
+    def get_all_project_playbooks(self) -> List[TracePlaybook]:
+        """Load all active project playbooks."""
+        if not self.project_traces_dir.exists():
+            return []
+        playbooks: List[TracePlaybook] = []
+        for jf in sorted(self.project_traces_dir.glob("*.json")):
+            try:
+                playbooks.append(
+                    TracePlaybook.from_dict(json.loads(jf.read_text(encoding="utf-8")))
+                )
+            except Exception:
+                continue
+        return playbooks
+
+    def get_all_global_playbooks(self) -> List[TracePlaybook]:
+        """Load all active global playbooks."""
+        if not self.global_traces_dir.exists():
+            return []
+        playbooks: List[TracePlaybook] = []
+        for jf in sorted(self.global_traces_dir.glob("*.json")):
+            try:
+                playbooks.append(
+                    TracePlaybook.from_dict(json.loads(jf.read_text(encoding="utf-8")))
+                )
+            except Exception:
+                continue
+        return playbooks
+
+    def sync_memories_markdown(self) -> Path:
+        """Regenerate MEMORIES.md and maintain MEM.md living index in workspace root."""
+        proj_pbs = self.get_all_project_playbooks()
+        glob_pbs = self.get_all_global_playbooks()
+        return sync_memories_file(self.workspace_root, proj_pbs, global_playbooks=glob_pbs)

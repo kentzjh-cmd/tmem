@@ -127,5 +127,10 @@ def format_injected_context(evaluated_list: List[EvaluatedPlaybook]) -> str:
                 f"- L2 Causal Repair: On `{rep.error_signature}` => `{rep.repair_action}` (verify: `{rep.verification_cmd}`)"
             )
 
+        if pb.raw_trace_path:
+            lines.append(
+                f"- Forensic Audit: Raw trace archived at `{pb.raw_trace_path}` (inspect: `python3 -m tmem.cli inspect {pb.trace_id} --level raw`)"
+            )
+
     lines.append("</tmem_speculative_memory>")
     return "\n".join(lines)
