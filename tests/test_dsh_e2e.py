@@ -580,7 +580,7 @@ console.log(JSON.stringify({{
         self.assertEqual(len(payload["milestoneContexts"]), 1)
         milestone_text = payload["milestoneContexts"][0]["content"][0]["text"]
         self.assertIn("<tmem_milestone_reached>", milestone_text)
-        self.assertIn("/tmem project", milestone_text)
+        self.assertIn("/tmem", milestone_text)
 
         # Verify `agent/pre-step` injected `<tmem_speculative_memory>` with `tier="L0_FULL"`
         self.assertEqual(len(payload["preStepMessages"]), 2)

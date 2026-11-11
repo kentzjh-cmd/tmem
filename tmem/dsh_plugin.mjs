@@ -3,13 +3,13 @@
  *
  * Capabilities:
  * 1. Pre-Step Speculative Memory Recall (`agent/pre-step`):
- *    Silently queries Project (`.tmem/`) + Global (`~/.tmem/`) memory tiers on new user turns or
+ *    Silently queries Project (`.tmem/`) memory tier on new user turns or
  *    after tool errors, injecting `<tmem_speculative_memory>` (L0_FULL / L1_TOPOLOGY / L2_INVARIANT).
  * 2. Post-Tool Execution Observation & Milestone Detection (`tools/post-execute`):
  *    Tracks file mutations (`write`, `edit`, `str_replace_editor`, `apply_patch`) and verification commands
  *    (`bash`, `pwsh`). Injects L2 repair hints on errors and `<tmem_milestone_reached>` when `MUTATE -> VERIFY(0)` completes.
  * 3. Native `/tmem` Slash Command (`commands.register`):
- *    Registers `/tmem [project|global|both|status|list|forget|gc] [<intent|trace_id>]` directly in `dsh-commands`.
+ *    Registers `/tmem [status|list|forget|gc|inspect|replay|diff|sync] [<intent|trace_id>]` directly in `dsh-commands`.
  */
 
 import { spawnSync } from "node:child_process";
@@ -130,9 +130,9 @@ export function apply(ctx, config = {}) {
         definitionId: "@tmem/dsh-command-tmem",
         name: "tmem",
         description:
-          "Capture, slice, list, inspect, replay, or manage execution trace memory (project | global | both | status | list | forget | gc | inspect | replay | diff | sync)",
+          "Capture, slice, list, inspect, replay, or manage project execution trace memory (.tmem/)",
         input: {
-          hint: "[project|global|both|status|list|forget|gc|bench|evaluate|inspect|replay|diff|sync] [<intent|trace_id>]",
+          hint: "[status|list|forget|gc|bench|evaluate|inspect|replay|diff|sync] [<intent|trace_id>]",
         },
         handler: async (invocation) => {
           const workspaceRoot = resolveSessionWorkspace(

@@ -2,11 +2,11 @@
 Headless CLI, `/tmem` Slash-Command Interceptor, and Autonomous Milestone Detector for tmem.
 
 Supports:
-1. `/tmem [project|global|both|status|gc] [intent]` command interception via `PreInvocation` hook.
+1. `/tmem [status|list|forget|gc|inspect|replay|diff|sync] [intent]` command interception via `PreInvocation` hook.
 2. Autonomous Goal-Achievement Prompting: Detects `MUTATE -> VERIFY(exit 0)` milestones in `PostToolUse`
    and prompts the agent (via `<tmem_milestone_prompt>` + `AGENTS.md`) to ask whether to persist memory
-   at Project (`.tmem/`) or Global (`~/.tmem/`) scope.
-3. Direct CLI execution (`python3 -m tmem.cli capture --scope project|global|both`) for natural-language
+   at Project (`.tmem/`) scope.
+3. Direct CLI execution (`python3 -m tmem.cli capture`) for natural-language
    confirmations or multi-agent wrappers (`agy`, `codex`, `opencode`, `pi`, `dsh`).
 """
 
@@ -91,14 +91,14 @@ def execute_capture(
     workspace_root: str,
     agent_name: str = "agy",
     transcript_path: Optional[str] = None,
-    scope: str = "auto",
+    scope: str = "project",
     custom_intent: Optional[str] = None,
     full_session: bool = False,
     session_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Core capture pipeline used by both `/tmem` hook interception and CLI `tmem capture`.
-    Supports scope: 'project' | 'global' | 'both' | 'auto'.
+    Saves deterministic execution traces to project repository (.tmem/).
     """
     adapter = get_adapter(agent_name)
     if transcript_path:
@@ -145,9 +145,7 @@ def execute_capture(
     pb.raw_trace_path = f"raw/{pb.trace_id}.raw.json"
 
     store = DualTierMemoryStore(workspace_root)
-    proj_id, glob_id = store.save_playbook(
-        pb, auto_promote_global=(scope == "auto"), target_scope=scope
-    )
+    proj_id, _ = store.save_playbook(pb, target_scope="project")
 
     # Advance incremental step cursor and reset pending milestone state
     max_step = max((a.step_idx for a in session.actions), default=min_step)
@@ -160,9 +158,8 @@ def execute_capture(
     return {
         "status": "compiled",
         "agent": agent_name,
-        "scope": scope,
+        "scope": "project",
         "project_trace_id": proj_id,
-        "global_promoted_id": glob_id,
         "raw_trace_path": pb.raw_trace_path,
         "problem_intent": pb.problem_intent,
         "touched_files": pb.touched_files,
@@ -211,12 +208,10 @@ def handle_agy_hook(event: str, payload: Dict[str, Any]) -> Dict[str, Any]:
 
             if action_mode == "status":
                 proj_cnt = len(list(store.project_traces_dir.glob("*.json"))) if store.project_traces_dir.exists() else 0
-                glob_cnt = len(list(store.global_traces_dir.glob("*.json"))) if store.global_traces_dir.exists() else 0
                 msg = (
                     "<tmem_command_executed>\n"
                     f"Command `/tmem status` executed:\n"
-                    f"- Project Tier (`{store.project_dir}`): {proj_cnt} traces\n"
-                    f"- Global Tier (`{store.global_dir}`): {glob_cnt} playbooks\n"
+                    f"- Project Execution Memory (`{store.project_dir}`): {proj_cnt} trace(s)\n"
                     "Please report these statistics concisely to the user.\n"
                     "</tmem_command_executed>"
                 )
@@ -233,7 +228,7 @@ def handle_agy_hook(event: str, payload: Dict[str, Any]) -> Dict[str, Any]:
                 return {"injectSteps": [{"systemMessage": {"systemMessage": msg}}]}
 
             if action_mode == "list":
-                items = store.list_playbooks(scope=custom_intent.lower() if custom_intent.lower() in ("project", "global", "both") else "both")
+                items = store.list_playbooks()
                 msg = (
                     "<tmem_command_executed>\n"
                     f"Command `/tmem list` executed ({len(items)} trace(s)):\n"
@@ -269,12 +264,12 @@ def handle_agy_hook(event: str, payload: Dict[str, Any]) -> Dict[str, Any]:
                 tid = parts[0] if parts else ""
                 level = parts[1] if len(parts) > 1 else "playbook"
                 target_pb = None
-                for pb in store.get_all_project_playbooks() + store.get_all_global_playbooks():
+                for pb in store.get_all_project_playbooks():
                     if pb.trace_id == tid or pb.trace_id.startswith(tid):
                         target_pb = pb
                         break
                 if not target_pb:
-                    msg = f"<tmem_command_executed>\nTrace '{tid}' not found in project or global memory.\n</tmem_command_executed>"
+                    msg = f"<tmem_command_executed>\nTrace '{tid}' not found in project memory.\n</tmem_command_executed>"
                 else:
                     raw_tr = store.get_raw_trace(target_pb.trace_id)
                     view_text = format_progressive_view(target_pb, raw_tr, level=level)
@@ -308,25 +303,25 @@ def handle_agy_hook(event: str, payload: Dict[str, Any]) -> Dict[str, Any]:
                 msg = (
                     "<tmem_command_executed>\n"
                     f"Command `/tmem sync` completed successfully:\n"
-                    f"- Project & Global indexes synchronized\n"
+                    f"- Project index synchronized\n"
                     f"- Living index updated: `{doc_path.name}` and `MEM.md`\n"
                     "</tmem_command_executed>"
                 )
                 return {"injectSteps": [{"systemMessage": {"systemMessage": msg}}]}
 
-            # Otherwise action_mode is 'project', 'global', or 'both'
+            # Otherwise action_mode is capture (or 'project' / intent)
             res = execute_capture(
                 workspace_root=workspace_root,
                 agent_name="agy",
                 transcript_path=transcript_path or None,
-                scope=action_mode,
+                scope="project",
                 custom_intent=custom_intent or None,
             )
             msg = (
                 "<tmem_command_executed>\n"
-                f"User invoked `/tmem {action_mode}`. Trace compilation completed automatically:\n"
+                f"User invoked `/tmem`. Trace compilation completed automatically:\n"
                 f"{json.dumps(res, indent=2, ensure_ascii=False)}\n"
-                "Please confirm to the user that the memory trace has been persisted to the requested scope.\n"
+                "Please confirm to the user that the memory trace has been persisted to the project repository (`.tmem/traces/`).\n"
                 "</tmem_command_executed>"
             )
             return {"injectSteps": [{"systemMessage": {"systemMessage": msg}}]}
@@ -346,9 +341,7 @@ def handle_agy_hook(event: str, payload: Dict[str, Any]) -> Dict[str, Any]:
                 "<tmem_milestone_reached>\n"
                 f"Milestone detected: {len(uncommitted)} file(s) modified ({', '.join(uncommitted[:4])}) and verification succeeded.\n"
                 "When you finish summarizing your work to the user in this turn, add a brief, non-intrusive one-line prompt asking if they would like to persist this execution path to memory:\n"
-                "- `/tmem project` (save to repo `.tmem/traces/`)\n"
-                "- `/tmem global` (distill to cross-project `~/.tmem/playbooks/`)\n"
-                "- `/tmem both` (save to both tiers)\n"
+                "> 💡 *是否需要将本次有效执行路径沉淀为记忆？（输入 `/tmem` 或 `/remember [备注]` 保存）*\n"
                 "</tmem_milestone_reached>"
             )
 
@@ -461,13 +454,11 @@ def handle_dsh_hook(event: str, payload: Dict[str, Any]) -> Dict[str, Any]:
 
         if action_mode == "status":
             proj_cnt = len(list(store.project_traces_dir.glob("*.json"))) if store.project_traces_dir.exists() else 0
-            glob_cnt = len(list(store.global_traces_dir.glob("*.json"))) if store.global_traces_dir.exists() else 0
             return {
                 "kind": "success",
                 "text": (
                     f"[tmem status]\n"
-                    f"- Project Tier ({store.project_dir}): {proj_cnt} trace(s)\n"
-                    f"- Global Tier ({store.global_dir}): {glob_cnt} playbook(s)"
+                    f"- Project Tier ({store.project_dir}): {proj_cnt} trace(s)"
                 ),
             }
 
@@ -479,8 +470,7 @@ def handle_dsh_hook(event: str, payload: Dict[str, Any]) -> Dict[str, Any]:
             }
 
         if action_mode == "list":
-            target_s = custom_intent.lower() if custom_intent.lower() in ("project", "global", "both") else "both"
-            items = store.list_playbooks(scope=target_s)
+            items = store.list_playbooks()
             return {
                 "kind": "success",
                 "text": f"[tmem list ({len(items)})]\n{json.dumps(items, indent=2, ensure_ascii=False)}",
@@ -512,7 +502,7 @@ def handle_dsh_hook(event: str, payload: Dict[str, Any]) -> Dict[str, Any]:
             tid = parts[0] if parts else ""
             level = parts[1] if len(parts) > 1 else "playbook"
             target_pb = None
-            for pb in store.get_all_project_playbooks() + store.get_all_global_playbooks():
+            for pb in store.get_all_project_playbooks():
                 if pb.trace_id == tid or pb.trace_id.startswith(tid):
                     target_pb = pb
                     break
@@ -551,7 +541,7 @@ def handle_dsh_hook(event: str, payload: Dict[str, Any]) -> Dict[str, Any]:
             workspace_root=workspace_root,
             agent_name="dsh",
             transcript_path=transcript_path or None,
-            scope=action_mode,
+            scope="project",
             custom_intent=custom_intent or None,
             session_id=session_id if session_id != "default" else None,
         )
@@ -604,7 +594,8 @@ def handle_dsh_hook(event: str, payload: Dict[str, Any]) -> Dict[str, Any]:
             injected_blocks.append(
                 "<tmem_milestone_reached>\n"
                 f"Milestone detected: {len(uncommitted)} file(s) modified ({', '.join(uncommitted[:4])}) and verification succeeded.\n"
-                "When you finish summarizing your work to the user in this turn, add a brief one-line prompt asking if they would like to persist this execution path to memory (`/tmem project`, `/tmem global`, or `/tmem both`).\n"
+                "When you finish summarizing your work to the user in this turn, add a brief, non-intrusive one-line prompt asking if they would like to persist this execution path to memory:\n"
+                "> 💡 *是否需要将本次有效执行路径沉淀为记忆？（输入 `/tmem` 或 `/remember [备注]` 保存）*\n"
                 "</tmem_milestone_reached>"
             )
 
@@ -753,9 +744,7 @@ def handle_dsh_hook(event: str, payload: Dict[str, Any]) -> Dict[str, Any]:
                         "<tmem_milestone_reached>\n"
                         f"Milestone detected: {len(uncommitted)} file(s) modified ({', '.join(uncommitted[:4])}) and verification succeeded.\n"
                         "When you finish summarizing your work to the user in this turn, add a brief, non-intrusive one-line prompt asking if they would like to persist this execution path to memory:\n"
-                        "- `/tmem project` (save to repo `.tmem/traces/`)\n"
-                        "- `/tmem global` (distill to cross-project `~/.tmem/playbooks/`)\n"
-                        "- `/tmem both` (save to both tiers)\n"
+                        "> 💡 *是否需要将本次有效执行路径沉淀为记忆？（输入 `/tmem` 或 `/remember [备注]` 保存）*\n"
                         "</tmem_milestone_reached>"
                     )
 
@@ -789,7 +778,7 @@ def install_invisible_integration(
 
         plugin_manifest = {
             "name": "tmem",
-            "description": "Invisible Backward-Slicing Execution Trace Memory Compiler (Project + Global)",
+            "description": "Invisible Backward-Slicing Execution Trace Memory Compiler (.tmem/)",
         }
         (plugin_dir / "plugin.json").write_text(
             json.dumps(plugin_manifest, indent=2), encoding="utf-8"
@@ -833,9 +822,9 @@ def install_invisible_integration(
             "- **Progressive Disclosure**: Detailed playbooks are in `.tmem/traces/*.json`; full forensic step replay is in `.tmem/raw/*.raw.json` (`python3 -m tmem.cli inspect <id> --level raw`).\n\n"
             "## 2. Goal Completion & `/tmem` Memory Persistence\n"
             "- **Proactive Milestone Prompt**: When you complete a non-trivial coding, debugging, or environment setup goal (or when `<tmem_milestone_reached>` is injected), append a concise one-line prompt at the end of your response asking whether to persist the memory trace:\n"
-            "  > 💡 *是否需要将本次有效执行路径沉淀为记忆？（可输入 `/tmem project` 存项目级、`/tmem global` 存全局级、或 `/tmem both` 同时保存）*\n"
+            "  > 💡 *是否需要将本次有效执行路径沉淀为记忆？（输入 `/tmem` 或 `/remember [备注]` 保存）*\n"
             "- **Executing Persistence**: If the user asks to save/record memory via natural language or `/tmem`, run:\n"
-            f"  `PYTHONPATH={ws} {cli_cmd} capture --scope <project|global|both> --workspace {ws}`\n"
+            f"  `PYTHONPATH={ws} {cli_cmd} capture --workspace {ws}`\n"
         )
         (rules_dir / "AGENTS.md").write_text(rules_md, encoding="utf-8")
 
@@ -843,18 +832,14 @@ def install_invisible_integration(
             "---\n"
             "name: tmem\n"
             "description: >-\n"
-            "  Capture, slice, or query deterministic execution trace memories at project (.tmem/) or global (~/.tmem/) scope.\n"
+            "  Capture, slice, or query deterministic execution trace memories at project (.tmem/) scope.\n"
             "  Activate when the user types /tmem, /remember, or confirms saving the current session's effective execution path.\n"
             "---\n\n"
             "# tmem Execution Trace Memory Skill\n\n"
             "## Commands\n\n"
-            "1. **Save to Project Tier (`.tmem/traces/`)**:\n"
-            f"   `PYTHONPATH={ws} {cli_cmd} capture --scope project --workspace {ws}`\n"
-            "2. **Save to Global Tier (`~/.tmem/playbooks/`)**:\n"
-            f"   `PYTHONPATH={ws} {cli_cmd} capture --scope global --workspace {ws}`\n"
-            "3. **Save to Both Project & Global Tiers**:\n"
-            f"   `PYTHONPATH={ws} {cli_cmd} capture --scope both --workspace {ws}`\n"
-            "4. **Check Memory Status**:\n"
+            "1. **Save Memory Trace**:\n"
+            f"   `PYTHONPATH={ws} {cli_cmd} capture --workspace {ws}`\n"
+            "2. **Check Memory Status**:\n"
             f"   `PYTHONPATH={ws} {cli_cmd} status --workspace {ws}`\n"
         )
         (skill_dir / "SKILL.md").write_text(skill_md, encoding="utf-8")
@@ -882,7 +867,7 @@ def install_invisible_integration(
         ws_patch_path = ws / ".dsh" / "tmem.patch.yml"
         ws_patch_path.write_text(patch_yaml, encoding="utf-8")
 
-        # Also install into $DSH_HOME/cordis.patch.yml so dsh loads tmem globally by default
+        # Also install into $DSH_HOME/cordis.patch.yml so dsh loads tmem by default
         dsh_home = Path(os.environ.get("DSH_HOME") or (Path.home() / ".dsh"))
         try:
             dsh_home.mkdir(parents=True, exist_ok=True)
@@ -905,18 +890,14 @@ def install_invisible_integration(
             "---\n"
             "name: tmem\n"
             "description: >-\n"
-            "  Capture, slice, or query deterministic execution trace memories at project (.tmem/) or global (~/.tmem/) scope.\n"
+            "  Capture, slice, or query deterministic execution trace memories at project (.tmem/) scope.\n"
             "  Activate when the user types /tmem, /remember, or confirms saving the current session's effective execution path.\n"
             "---\n\n"
             "# tmem Execution Trace Memory Skill (dsh & Multi-Agent)\n\n"
             "## Commands\n\n"
-            "1. **Save to Project Tier (`.tmem/traces/`)**:\n"
-            f"   `PYTHONPATH={tmem_pkg_root} {cli_cmd} capture --agent dsh --scope project --workspace {ws}`\n"
-            "2. **Save to Global Tier (`~/.tmem/playbooks/`)**:\n"
-            f"   `PYTHONPATH={tmem_pkg_root} {cli_cmd} capture --agent dsh --scope global --workspace {ws}`\n"
-            "3. **Save to Both Project & Global Tiers**:\n"
-            f"   `PYTHONPATH={tmem_pkg_root} {cli_cmd} capture --agent dsh --scope both --workspace {ws}`\n"
-            "4. **Check Memory Status**:\n"
+            "1. **Save Memory Trace**:\n"
+            f"   `PYTHONPATH={tmem_pkg_root} {cli_cmd} capture --agent dsh --workspace {ws}`\n"
+            "2. **Check Memory Status**:\n"
             f"   `PYTHONPATH={tmem_pkg_root} {cli_cmd} status --workspace {ws}`\n"
         )
         (dsh_skill_dir / "SKILL.md").write_text(dsh_skill_md, encoding="utf-8")
@@ -932,9 +913,9 @@ def install_invisible_integration(
             "- **Progressive Disclosure**: Detailed playbooks are in `.tmem/traces/*.json`; full forensic step replay is in `.tmem/raw/*.raw.json` (`python3 -m tmem.cli inspect <id> --level raw`).\n\n"
             "## 2. Goal Completion & `/tmem` Memory Persistence\n"
             "- **Proactive Milestone Prompt**: When you complete a non-trivial coding, debugging, or environment setup goal (or when `<tmem_milestone_reached>` is injected), append a concise one-line prompt at the end of your response asking whether to persist the memory trace:\n"
-            "  > 💡 *是否需要将本次有效执行路径沉淀为记忆？（可输入 `/tmem project` 存项目级、`/tmem global` 存全局级、或 `/tmem both` 同时保存）*\n"
+            "  > 💡 *是否需要将本次有效执行路径沉淀为记忆？（输入 `/tmem` 或 `/remember [备注]` 保存）*\n"
             "- **Executing Persistence**: If the user asks to save/record memory via natural language or `/tmem`, run:\n"
-            f"  `PYTHONPATH={tmem_pkg_root} {cli_cmd} capture --agent dsh --scope <project|global|both> --workspace {ws}`\n"
+            f"  `PYTHONPATH={tmem_pkg_root} {cli_cmd} capture --agent dsh --workspace {ws}`\n"
         )
         if ws_agents_md.exists():
             cur_agents = ws_agents_md.read_text(encoding="utf-8")
@@ -1005,9 +986,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     p_cap.add_argument(
         "--scope",
-        default="auto",
+        default="project",
         choices=["project", "global", "both", "auto"],
-        help="Target memory tier: project (.tmem), global (~/.tmem), both, or auto",
+        help="Target memory scope (defaults to project repository .tmem/)",
     )
     p_cap.add_argument("--intent", default=None, help="Optional custom problem intent summary")
     p_cap.add_argument("--transcript", default=None, help="Explicit path to transcript.jsonl")
@@ -1016,7 +997,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     p_cap.add_argument("--quiet", action="store_true", help="Suppress stdout output (for git hooks)")
 
     # 4. lookup
-    p_look = sub.add_parser("lookup", help="Query Project (.tmem) + Global (~/.tmem) with guard evaluation")
+    p_look = sub.add_parser("lookup", help="Query Project (.tmem/) execution traces with guard evaluation")
     p_look.add_argument("query", nargs="?", default="", help="Problem intent or error query")
     p_look.add_argument("--file", action="append", default=[], help="Touched file path trigger")
     p_look.add_argument("--error", action="append", default=[], help="Error signature trigger")
@@ -1028,16 +1009,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     p_gc.add_argument("--workspace", default=os.getcwd(), help="Workspace root directory")
 
     # 6. status
-    p_stat = sub.add_parser("status", help="Show Project and Global trace memory counts")
+    p_stat = sub.add_parser("status", help="Show Project trace memory counts")
     p_stat.add_argument("--workspace", default=os.getcwd(), help="Workspace root directory")
 
     # 7. list
     p_list = sub.add_parser("list", help="List stored traces with live guard evaluation tier")
-    p_list.add_argument("--scope", choices=["project", "global", "both"], default="both")
+    p_list.add_argument("--scope", default="project", help="Memory scope (project)")
     p_list.add_argument("--workspace", default=os.getcwd(), help="Workspace root directory")
 
     # 8. forget
-    p_forget = sub.add_parser("forget", help="Delete a trace by ID or prefix from project/global stores")
+    p_forget = sub.add_parser("forget", help="Delete a trace by ID or prefix from project store")
     p_forget.add_argument("trace_id", help="Trace ID or prefix (e.g. tr_acd0dc0ff0)")
     p_forget.add_argument("--workspace", default=os.getcwd(), help="Workspace root directory")
 
@@ -1140,14 +1121,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.subcommand == "status":
         store = DualTierMemoryStore(args.workspace)
         proj_count = len(list(store.project_traces_dir.glob("*.json"))) if store.project_traces_dir.exists() else 0
-        glob_count = len(list(store.global_traces_dir.glob("*.json"))) if store.global_traces_dir.exists() else 0
         print(
             json.dumps(
                 {
                     "project_store": str(store.project_dir),
                     "project_traces": proj_count,
-                    "global_store": str(store.global_dir),
-                    "global_playbooks": glob_count,
                 },
                 indent=2,
                 ensure_ascii=False,
@@ -1182,12 +1160,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         store = DualTierMemoryStore(args.workspace)
         tid = args.trace_id.strip()
         target_pb = None
-        for pb in store.get_all_project_playbooks() + store.get_all_global_playbooks():
+        for pb in store.get_all_project_playbooks():
             if pb.trace_id == tid or pb.trace_id.startswith(tid):
                 target_pb = pb
                 break
         if not target_pb:
-            print(f"Error: Trace '{tid}' not found in project or global memory.", file=sys.stderr)
+            print(f"Error: Trace '{tid}' not found in project memory.", file=sys.stderr)
             return 1
         raw_tr = store.get_raw_trace(target_pb.trace_id)
         if args.json:

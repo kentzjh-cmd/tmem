@@ -2,7 +2,7 @@
 
 [中文文档](./README.md) | **English**
 
-`tmem` (**Trace Memory**) is a **zero-dependency, zero-UI, dual-tier (Project `.tmem/` + Global `~/.tmem/`)** execution trace memory compiler and CLI tool for coding agents. It integrates natively with **`agy` (Antigravity)** and **`@deepseek-ai/dsh` (DeepSeek Harness)**, and parses session trajectories from `codex`, `opencode`, `pi`, SWE-bench, and ATIF.
+`tmem` (**Trace Memory**) is a **zero-dependency, zero-UI, repository-scoped (`.tmem/`)** execution trace memory compiler and CLI tool for coding agents. It integrates natively with **`agy` (Antigravity)** and **`@deepseek-ai/dsh` (DeepSeek Harness)**, and parses session trajectories from `codex`, `opencode`, `pi`, SWE-bench, and ATIF.
 
 Unlike memory systems that store unstructured conversational summaries, `tmem` treats agent transcripts (`transcript.jsonl` / `session.v4.jsonl`) as **unoptimized execution traces**. By anchoring on **Git ground-truth surviving states** and **final passing verification commands (`exit_code == 0`)**, it performs **deterministic backward trace slicing** to prune exploratory dead-ends, abandoned edits, and noise scans into **3-tier structured playbooks (L0 / L1 / L2)** protected by **pre-flight guards**. When a similar task or error arises later, `tmem` validates the guards first and injects the highest valid tier.
 
@@ -59,14 +59,13 @@ flowchart LR
         S --> R["Raw Trace .tmem/raw/"]
     end
 
-    subgraph Store["2. Dual-Tier Store"]
+    subgraph Store["2. Repository Storage"]
         P -->|"L0 + L1 + L2"| Proj["Project Tier .tmem/traces/<br/>Versioned & shared via Git"]
-        P -->|"Distill L2 repair pairs"| Glob["Global Tier ~/.tmem/playbooks/<br/>Cross-repo local invariants"]
         Proj --> Doc["MEMORIES.md Living Index"]
     end
 
     subgraph Recall["3. Guarded Tiered Recall"]
-        Proj & Glob --> Guard{"Zero-Token Guards<br/>file_exists / symbol_present"}
+        Proj --> Guard{"Zero-Token Guards<br/>file_exists / symbol_present"}
         Guard -->|"All guards pass"| L0["L0_FULL<br/>Concrete read/edit/verify path"]
         Guard -->|"Symbol or file drifted"| L1["L1_TOPOLOGY<br/>Co-change files + verify cmd"]
         Guard -->|"Error signature matched"| L2["L2_INVARIANT<br/>Error signature -> causal fix"]
@@ -87,10 +86,10 @@ flowchart LR
 | **L1** | Co-Change Topology `L1_TOPOLOGY` | Co-modified file set + verification command | When L0 guards fail (refactoring, rename, deletion), L0 is suppressed and degraded to L1 architectural reminders. |
 | **L2** | Causal Invariant `L2_INVARIANT` | `Error Signature -> Minimal Repair Action -> Verification` | Injected when a tool execution hits a matching error signature or cross-repo lookup matches. Toolchain/dependency fixes are portable across repos. |
 
-### 3. Dual-Tier Storage ([`tmem/store.py`](./tmem/store.py))
+### 3. Repository Storage ([`tmem/store.py`](./tmem/store.py))
 - **Project Tier (`<repo>/.tmem/traces/*.json`)**: Tracked in Git. Each trace is stored as an independent content-addressed JSON file (e.g., `tr_30fa71c60d.json`) to avoid merge conflicts. Teammates get project playbooks automatically on `git pull`.
-- **Global Tier (`~/.tmem/playbooks/*.json`)**: Stores distilled L2 error-to-fix invariants stripped of repo-specific paths, shared across repositories on the local machine.
-- **Search Index**: Local SQLite FTS5 cache indexes (`.tmem/.cache/`, git-ignored) are rebuilt automatically whenever trace JSON files change.
+- **Strict Repo Boundary & Zero Negative Transfer**: Symbols, verification contracts, and relative paths are strictly bound to their parent repository, eliminating cross-project hallucinations and negative transfer.
+- **Search Index**: Local SQLite FTS5 cache index (`.tmem/.cache/`, git-ignored) is rebuilt automatically whenever trace JSON files change.
 
 ### 4. Raw Trace Storage & Progressive Disclosure ([`tmem/raw_storage.py`](./tmem/raw_storage.py))
 Alongside compact playbooks, `tmem` saves full-fidelity raw traces in `.tmem/raw/<trace_id>.raw.json` (tool inputs, outputs, exit codes, error stacks, and unified git diffs):
@@ -155,15 +154,13 @@ Run `tmem init --agents agy,dsh` to set up integrations:
 By default, `tmem` **does not auto-save on every conversation stop**, avoiding polluting the store with unfinished or low-quality sessions. Memories are captured through three entry points:
 
 1. **Milestone Prompt**: After detecting a `MUTATE -> VERIFY (exit 0)` loop, `tmem` asks the agent to append a one-line prompt at the end of its response:
-   > 💡 *Would you like to persist this execution path to memory? (Type `/tmem project`, `/tmem global`, or `/tmem both`)*
+   > 💡 *Would you like to persist this execution path to memory? (Type `/tmem` or `/remember [notes]`)*
 2. **`/tmem` Slash Commands**:
 
    | Command | Description |
    |---|---|
-   | `/tmem` or `/tmem project [notes]` | Slice current session and save to project tier |
-   | `/tmem global [notes]` | Slice and distill to global tier |
-   | `/tmem both [notes]` | Save to both tiers |
-   | `/tmem status` / `list [scope]` | Show counts / list traces and active guard tiers |
+   | `/tmem [notes]` | Slice current session and save to project tier (`.tmem/traces/`) |
+   | `/tmem status` / `list` | Show counts / list project traces and active guard tiers |
    | `/tmem inspect <id> [index\|playbook\|raw\|diff]` | Inspect a trace at the chosen granularity |
    | `/tmem replay <id>` / `diff <id>` | Replay terminal steps / view recorded git diff |
    | `/tmem sync` | Rebuild SQLite index, re-evaluate guards, update `MEMORIES.md` |
@@ -171,7 +168,7 @@ By default, `tmem` **does not auto-save on every conversation stop**, avoiding p
    | `/tmem gc` | Run guard checks and mark drifted traces |
    | `/tmem bench` | Run built-in offline evaluation |
 
-3. **Git `post-commit` Hook**: `tmem init` installs `.git/hooks/post-commit`, running `tmem capture --scope auto --quiet` in the background after each commit.
+3. **Git `post-commit` Hook**: `tmem init` installs `.git/hooks/post-commit`, running `tmem capture --quiet` in the background after each commit.
 
 ### Recall (Read)
 - **When triggered**: On a new user turn (querying with user input) or immediately after a new tool error (querying with the error signature).
@@ -185,15 +182,14 @@ By default, `tmem` **does not auto-save on every conversation stop**, avoiding p
 ### 1. Install & Initialize
 ```bash
 pip install -e .            # Provides the `tmem` CLI (or run `python3 -m tmem.cli`)
-tmem init --agents agy,dsh  # Initialize .tmem/, ~/.tmem/, agent plugins, and git post-commit hook
+tmem init --agents agy,dsh  # Initialize .tmem/, agent plugins, and git post-commit hook
 ```
 
 ### 2. Common Commands
 ```bash
-tmem status                                     # Project & global memory statistics
-tmem capture --agent dsh --scope both           # Slice latest session and persist
+tmem status                                     # Project memory statistics
+tmem capture --agent dsh                        # Slice latest session and persist to project repo
                                                 #   --agent agy|dsh|codex|opencode|pi|swe_bench|atif
-                                                #   --scope project|global|both|auto
 tmem lookup "ZeroDivisionError" --file src/billing.py   # Retrieve + evaluate guards + tier
 tmem inspect tr_cc3a687f02 --level playbook     # index | playbook | raw | diff
 tmem replay tr_cc3a687f02                       # Replay raw action stream
@@ -297,7 +293,6 @@ Across all 9 trajectories, raw storage verification and terminal replay renderin
 - **Repo memories are untrusted input**: Because `.tmem/traces/` is tracked in Git, anyone with commit access can influence what gets injected into another developer's agent context. Review `.tmem/` changes in PRs just like code, and only merge traces from trusted contributors in open-source repos.
 - **Advisory, not imperative**: Injected blocks are framed as historical traces, and agent rules instruct the model to verify applicability before acting.
 - **Best-effort secret scrubbing**: Regex scrubbing covers common token patterns, but `.tmem/raw/` may still contain internal paths, URLs, or command outputs. Add `.tmem/raw/` to `.gitignore` if you do not want raw traces shared.
-- **Local-only global tier**: `~/.tmem/` stays on the local machine and is never uploaded.
 
 ---
 

@@ -107,14 +107,6 @@ def render_memories_markdown(
                 seen_repairs.add(sig_key)
                 all_repairs.append(r)
 
-    if global_playbooks:
-        for gpb in global_playbooks:
-            for r in gpb.l2_causal_repairs:
-                sig_key = f"{r.error_signature}|{r.repair_action}"
-                if sig_key not in seen_repairs:
-                    seen_repairs.add(sig_key)
-                    all_repairs.append(r)
-
     lines.extend(
         [
             "---",
@@ -189,9 +181,9 @@ def render_memories_markdown(
             "| `python3 -m tmem.cli replay <trace_id>` | Step-by-step forensic terminal playback of critical path vs pruned noise |",
             "| `python3 -m tmem.cli diff <trace_id>` | View unified git diff patch recorded during the session |",
             "| `python3 -m tmem.cli sync` | Re-index SQLite cache, validate L0 guards, and regenerate `MEMORIES.md` |",
-            "| `python3 -m tmem.cli status` | Show project-level and global-level memory statistics |",
+            "| `python3 -m tmem.cli status` | Show project-level memory statistics |",
             "| `python3 -m tmem.cli gc` | Run metabolic garbage collection and prune stale paths |",
-            "| `/tmem [project\\|global\\|both]` | Capture current session execution path into requested scope |",
+            "| `/tmem [intent]` | Capture current session execution path into project memory (`.tmem/traces/`) |",
             "",
         ]
     )

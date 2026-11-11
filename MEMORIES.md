@@ -39,6 +39,6 @@ _No error-to-fix invariant pairs extracted yet._
 | `python3 -m tmem.cli replay <trace_id>` | Step-by-step forensic terminal playback of critical path vs pruned noise |
 | `python3 -m tmem.cli diff <trace_id>` | View unified git diff patch recorded during the session |
 | `python3 -m tmem.cli sync` | Re-index SQLite cache, validate L0 guards, and regenerate `MEMORIES.md` |
-| `python3 -m tmem.cli status` | Show project-level and global-level memory statistics |
+| `python3 -m tmem.cli status` | Show project-level memory statistics |
 | `python3 -m tmem.cli gc` | Run metabolic garbage collection and prune stale paths |
-| `/tmem [project\|global\|both]` | Capture current session execution path into requested scope |
+| `/tmem [intent]` | Capture current session execution path into project memory (`.tmem/traces/`) |

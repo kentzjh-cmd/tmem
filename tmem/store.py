@@ -1,11 +1,12 @@
 """
-Dual-Tier Storage & Cascading Retrieval Engine (.tmem/ Project Tier + ~/.tmem/ Global Tier).
+Repository-Scoped Storage & Retrieval Engine (.tmem/).
 
 Architectural inspirations absorbed:
 - Beads (bd): Git-tracked per-trace files (.tmem/traces/<id>.json) for zero merge conflicts,
   paired with a gitignored local SQLite FTS5 index (.tmem/.cache/index.db).
 - Zep / Graphiti: Bi-temporal lifecycle & deterministic invalidation when Git files drift.
-- Voyager / Reflexion: Skill library with confidence decay & automatic global promotion of L2 invariants.
+- Strict Repository Boundary: Execution traces, AST symbols, and verification contracts are strictly
+  repository-scoped (.tmem/) to eliminate cross-project negative transfer and hallucinated file targets.
 """
 
 from __future__ import annotations
@@ -24,8 +25,8 @@ from tmem.models import CausalRepairPair, RawExecutionTrace, TracePlaybook
 from tmem.raw_storage import RawTraceStore
 
 
-class DualTierMemoryStore:
-    """Manages both Project-level (.tmem/) and Global-level (~/.tmem/) trace stores."""
+class ProjectMemoryStore:
+    """Manages Project-level (.tmem/) execution trace store and local SQLite FTS5 index."""
 
     def __init__(self, workspace_root: str, global_root: Optional[str] = None) -> None:
         self.workspace_root = str(Path(workspace_root).resolve())
@@ -36,19 +37,8 @@ class DualTierMemoryStore:
         self.project_db_path = self.project_cache_dir / "index.db"
         self.raw_store = RawTraceStore(self.workspace_root)
 
-        self.global_dir = (
-            Path(global_root).resolve()
-            if global_root
-            else Path(os.environ.get("TMEM_GLOBAL_DIR", str(Path.home() / ".tmem"))).resolve()
-        )
-        self.global_traces_dir = self.global_dir / "playbooks"
-        self.global_db_path = self.global_dir / "global_index.db"
-
     def ensure_initialized(self, init_project: bool = True) -> None:
         """Create directory hierarchy and gitignore for local cache."""
-        self.global_traces_dir.mkdir(parents=True, exist_ok=True)
-        self._init_sqlite(self.global_db_path)
-
         if init_project:
             self.project_traces_dir.mkdir(parents=True, exist_ok=True)
             self.project_raw_dir.mkdir(parents=True, exist_ok=True)
@@ -122,124 +112,36 @@ class DualTierMemoryStore:
     def save_playbook(
         self,
         playbook: TracePlaybook,
-        auto_promote_global: bool = True,
-        target_scope: str = "auto",
+        auto_promote_global: bool = False,
+        target_scope: str = "project",
     ) -> Tuple[Optional[str], Optional[str]]:
         """
-        Save playbook according to target_scope:
-        - "project": Save only to Project Tier (.tmem/traces/<id>.json)
-        - "global": Save only to Global Tier (~/.tmem/playbooks/<id>.json)
-        - "both": Save to Project Tier AND force-distill to Global Tier
-        - "auto": Save to Project Tier, and auto-promote to Global Tier if L2 causal repairs exist
-        Returns (project_trace_id, global_trace_id).
+        Save playbook to Project Tier (.tmem/traces/<id>.json) and index into SQLite.
+        Returns (project_trace_id, None).
         """
-        proj_id: Optional[str] = None
-        promoted_id: Optional[str] = None
+        self.ensure_initialized(init_project=True)
+        raw_path = self.project_raw_dir / f"{playbook.trace_id}.raw.json"
+        if raw_path.exists():
+            if not playbook.raw_trace_path:
+                playbook.raw_trace_path = f"raw/{playbook.trace_id}.raw.json"
+            if not playbook.raw_trace_hash:
+                playbook.raw_trace_hash = hashlib.sha256(raw_path.read_bytes()).hexdigest()[:16]
 
-        if target_scope in ("project", "both", "auto"):
-            self.ensure_initialized(init_project=True)
-            raw_path = self.project_raw_dir / f"{playbook.trace_id}.raw.json"
-            if raw_path.exists():
-                if not playbook.raw_trace_path:
-                    playbook.raw_trace_path = f"raw/{playbook.trace_id}.raw.json"
-                if not playbook.raw_trace_hash:
-                    playbook.raw_trace_hash = hashlib.sha256(raw_path.read_bytes()).hexdigest()[:16]
-            proj_file = self.project_traces_dir / f"{playbook.trace_id}.json"
-            proj_file.write_text(
-                json.dumps(playbook.to_dict(), indent=2, ensure_ascii=False),
-                encoding="utf-8",
-            )
-            with sqlite3.connect(str(self.project_db_path)) as conn:
-                self._UpsertToDb(conn, playbook)
-            proj_id = playbook.trace_id
-            try:
-                self.sync_memories_markdown()
-            except Exception:
-                pass
-
-        should_save_global = (
-            target_scope in ("global", "both")
-            or (target_scope == "auto" and auto_promote_global and bool(playbook.l2_causal_repairs))
-        )
-        if should_save_global:
-            global_pb = self._distill_to_global(
-                playbook, force=(target_scope in ("global", "both"))
-            )
-            if global_pb:
-                self.save_global_playbook(global_pb)
-                promoted_id = global_pb.trace_id
-
-        return proj_id, promoted_id
-
-    def save_global_playbook(self, global_pb: TracePlaybook) -> None:
-        self.ensure_initialized(init_project=False)
-        glob_file = self.global_traces_dir / f"{global_pb.trace_id}.json"
-        glob_file.write_text(
-            json.dumps(global_pb.to_dict(), indent=2, ensure_ascii=False),
+        playbook.scope = "project"
+        proj_file = self.project_traces_dir / f"{playbook.trace_id}.json"
+        proj_file.write_text(
+            json.dumps(playbook.to_dict(), indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
-        with sqlite3.connect(str(self.global_db_path)) as conn:
-            self._UpsertToDb(conn, global_pb)
+        with sqlite3.connect(str(self.project_db_path)) as conn:
+            self._UpsertToDb(conn, playbook)
+        proj_id = playbook.trace_id
+        try:
+            self.sync_memories_markdown()
+        except Exception:
+            pass
 
-    def _distill_to_global(
-        self, pb: TracePlaybook, force: bool = False
-    ) -> Optional[TracePlaybook]:
-        """Strip project-specific file paths to create a portable Global L2 Playbook."""
-        if not pb.l2_causal_repairs and not force:
-            return None
-
-        portable_repairs: List[CausalRepairPair] = []
-        for r in pb.l2_causal_repairs:
-            portable_repairs.append(
-                CausalRepairPair(
-                    error_signature=r.error_signature,
-                    failed_command=r.failed_command,
-                    repair_action=r.repair_action,
-                    verification_cmd=r.verification_cmd,
-                    is_env_or_toolchain=r.is_env_or_toolchain,
-                )
-            )
-
-        # When user explicitly runs `/tmem global` on a task without an error stack,
-        # synthesize a portable workflow recipe from verification/execution steps
-        if not portable_repairs and force:
-            steps_summary = " -> ".join(
-                f"{s['action']}({s.get('command') or Path(str(s.get('target', ''))).name})"
-                for s in pb.l0_critical_path[:6]
-            )
-            verify_cmd = pb.l1_verification_cmds[-1] if pb.l1_verification_cmds else ""
-            portable_repairs.append(
-                CausalRepairPair(
-                    error_signature=pb.problem_intent[:120],
-                    failed_command="",
-                    repair_action=steps_summary or "Execute portable workflow",
-                    verification_cmd=verify_cmd,
-                    is_env_or_toolchain=True,
-                )
-            )
-
-        sig_seed = "|".join(r.error_signature for r in portable_repairs) or pb.problem_intent
-        global_id = "gtr_" + hashlib.sha256(sig_seed.encode("utf-8")).hexdigest()[:10]
-
-        return TracePlaybook(
-            trace_id=global_id,
-            agent_source=pb.agent_source,
-            scope="global",
-            created_at=pb.created_at,
-            git_commit=None,
-            problem_intent=pb.problem_intent,
-            error_signatures=pb.error_signatures,
-            touched_files=[],  # Stripped for global portability
-            touched_symbols=pb.touched_symbols,
-            guards=[],         # L2 invariants rely on error signature trigger
-            l0_critical_path=[],
-            l1_cochange_topology=[],
-            l1_verification_cmds=pb.l1_verification_cmds,
-            l2_causal_repairs=portable_repairs,
-            confidence=pb.confidence,
-            raw_steps_count=pb.raw_steps_count,
-            sliced_steps_count=pb.sliced_steps_count,
-        )
+        return proj_id, None
 
     def _UpsertToDb(self, conn: sqlite3.Connection, pb: TracePlaybook) -> None:
         conn.execute(
@@ -321,31 +223,21 @@ class DualTierMemoryStore:
         limit: int = 3,
     ) -> List[EvaluatedPlaybook]:
         """
-        3-Stage Deterministic Funnel across Project Tier (.tmem/) -> Global Tier (~/.tmem/):
+        Deterministic Retrieval Funnel across Project Repository (.tmem/):
         Stage 1: Exact Error Signature / File Path / Symbol Match
         Stage 2: SQLite FTS5 BM25 Match
         Stage 3: Pre-flight Guard Evaluation & L0->L1->L2 Progressive Degradation
         """
         self.sync_project_index_if_needed()
+        if not self.project_db_path.exists():
+            return []
+
         candidates: Dict[str, Tuple[TracePlaybook, float]] = {}
-
-        # Search Project DB first (higher priority), then Global DB
-        # Deduplicate global clones that were distilled from the current project's own traces
-        seen_signatures: Set[str] = set()
-        db_list = []
-        if self.project_db_path.exists():
-            db_list.append((self.project_db_path, "project"))
-        if self.global_db_path.exists():
-            db_list.append((self.global_db_path, "global"))
-
-        for db_path, tier_name in db_list:
-            for pb, score in self._query_single_db(
-                db_path, query_text, file_paths or [], error_signatures or []
-            ):
-                dedup_sig = f"{pb.problem_intent}|{'|'.join(pb.error_signatures)}"
-                if pb.trace_id not in candidates and dedup_sig not in seen_signatures and pb.status != "invalidated":
-                    candidates[pb.trace_id] = (pb, score)
-                    seen_signatures.add(dedup_sig)
+        for pb, score in self._query_single_db(
+            self.project_db_path, query_text, file_paths or [], error_signatures or []
+        ):
+            if pb.trace_id not in candidates and pb.status != "invalidated":
+                candidates[pb.trace_id] = (pb, score)
 
         # Evaluate pre-flight guards on every matched candidate
         evaluated_pairs: List[Tuple[EvaluatedPlaybook, float]] = []
@@ -353,12 +245,11 @@ class DualTierMemoryStore:
             ev = evaluate_guards(pb, self.workspace_root)
             evaluated_pairs.append((ev, score))
 
-        # Rank: Project vs Global > Relevance Score (exact match + BM25) > L0 Guard Validity > Confidence
-        def _rank_key(item: Tuple[EvaluatedPlaybook, float]) -> Tuple[int, float, int, float]:
+        # Rank: Relevance Score (exact match + BM25) > L0 Guard Validity > Confidence
+        def _rank_key(item: Tuple[EvaluatedPlaybook, float]) -> Tuple[float, int, float]:
             ev, rel_score = item
-            is_proj = 1 if ev.playbook.scope == "project" else 0
             l0_ok = 1 if ev.l0_valid else 0
-            return (is_proj, round(rel_score, 2), l0_ok, ev.playbook.confidence)
+            return (round(rel_score, 2), l0_ok, ev.playbook.confidence)
 
         evaluated_pairs.sort(key=_rank_key, reverse=True)
         return [ev for ev, _ in evaluated_pairs[:limit]]
@@ -472,63 +363,52 @@ class DualTierMemoryStore:
             pass
         return stats
 
-    def list_playbooks(self, scope: str = "both") -> List[Dict[str, object]]:
-        """List summary entries of stored traces across project and/or global tiers."""
+    def list_playbooks(self, scope: str = "project") -> List[Dict[str, object]]:
+        """List summary entries of stored project traces."""
         items: List[Dict[str, object]] = []
-        dirs: List[Tuple[str, Path]] = []
-        if scope in ("project", "both"):
-            dirs.append(("project", self.project_traces_dir))
-        if scope in ("global", "both"):
-            dirs.append(("global", self.global_traces_dir))
+        if not self.project_traces_dir.exists():
+            return items
 
-        for tier_name, t_dir in dirs:
-            if not t_dir.exists():
+        for jf in sorted(self.project_traces_dir.glob("*.json")):
+            try:
+                pb = TracePlaybook.from_dict(json.loads(jf.read_text(encoding="utf-8")))
+                ev = evaluate_guards(pb, self.workspace_root)
+                items.append(
+                    {
+                        "trace_id": pb.trace_id,
+                        "scope": "project",
+                        "effective_tier": ev.effective_tier,
+                        "problem_intent": pb.problem_intent,
+                        "semantic_summary": pb.semantic_summary,
+                        "touched_files": pb.touched_files,
+                        "l2_repairs_count": len(pb.l2_causal_repairs),
+                        "status": pb.status,
+                        "created_at": pb.created_at,
+                    }
+                )
+            except Exception:
                 continue
-            for jf in sorted(t_dir.glob("*.json")):
-                try:
-                    pb = TracePlaybook.from_dict(json.loads(jf.read_text(encoding="utf-8")))
-                    ev = evaluate_guards(pb, self.workspace_root)
-                    items.append(
-                        {
-                            "trace_id": pb.trace_id,
-                            "scope": tier_name,
-                            "effective_tier": ev.effective_tier,
-                            "problem_intent": pb.problem_intent,
-                            "semantic_summary": pb.semantic_summary,
-                            "touched_files": pb.touched_files,
-                            "l2_repairs_count": len(pb.l2_causal_repairs),
-                            "status": pb.status,
-                            "created_at": pb.created_at,
-                        }
-                    )
-                except Exception:
-                    continue
         return items
 
     def delete_playbook(self, trace_id: str) -> Dict[str, object]:
-        """Remove a trace by ID (or prefix) from project and/or global stores."""
+        """Remove a trace by ID (or prefix) from project store."""
         removed_from: List[str] = []
         tid = trace_id.strip()
         if not tid:
             return {"deleted": False, "removed_from": []}
 
-        for tier_name, t_dir, db_path in [
-            ("project", self.project_traces_dir, self.project_db_path),
-            ("global", self.global_traces_dir, self.global_db_path),
-        ]:
-            if not t_dir.exists():
-                continue
-            for jf in list(t_dir.glob("*.json")):
+        if self.project_traces_dir.exists():
+            for jf in list(self.project_traces_dir.glob("*.json")):
                 if jf.stem == tid or jf.stem.startswith(tid):
                     matched_id = jf.stem
                     try:
                         jf.unlink()
-                        removed_from.append(f"{tier_name}:{matched_id}")
+                        removed_from.append(f"project:{matched_id}")
                     except Exception:
                         pass
-                    if db_path.exists():
+                    if self.project_db_path.exists():
                         try:
-                            with sqlite3.connect(str(db_path)) as conn:
+                            with sqlite3.connect(str(self.project_db_path)) as conn:
                                 conn.execute("DELETE FROM playbooks WHERE trace_id = ?", (matched_id,))
                                 conn.execute("DELETE FROM exact_triggers WHERE trace_id = ?", (matched_id,))
                                 conn.execute("DELETE FROM playbooks_fts WHERE trace_id = ?", (matched_id,))
@@ -567,18 +447,8 @@ class DualTierMemoryStore:
         return playbooks
 
     def get_all_global_playbooks(self) -> List[TracePlaybook]:
-        """Load all active global playbooks."""
-        if not self.global_traces_dir.exists():
-            return []
-        playbooks: List[TracePlaybook] = []
-        for jf in sorted(self.global_traces_dir.glob("*.json")):
-            try:
-                playbooks.append(
-                    TracePlaybook.from_dict(json.loads(jf.read_text(encoding="utf-8")))
-                )
-            except Exception:
-                continue
-        return playbooks
+        """Backward compatibility stub: global tier removed."""
+        return []
 
     def get_linked_traces(self, symbol: str, exclude_trace_id: str = "") -> List[str]:
         """Query other trace IDs linked by the same symbol."""
@@ -597,5 +467,7 @@ class DualTierMemoryStore:
     def sync_memories_markdown(self) -> Path:
         """Regenerate MEMORIES.md and maintain MEM.md living index in workspace root."""
         proj_pbs = self.get_all_project_playbooks()
-        glob_pbs = self.get_all_global_playbooks()
-        return sync_memories_file(self.workspace_root, proj_pbs, global_playbooks=glob_pbs)
+        return sync_memories_file(self.workspace_root, proj_pbs)
+
+
+DualTierMemoryStore = ProjectMemoryStore  # Backward compatibility alias

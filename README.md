@@ -2,7 +2,7 @@
 
 **中文文档** | [English](./README_EN.md)
 
-`tmem`（**Trace Memory**）是一个**零依赖、零 UI、双层存储（项目级 `.tmem/` + 全局级 `~/.tmem/`）**的编程 Agent 执行轨迹记忆插件与 CLI 工具。原生集成 **`agy` (Antigravity)** 与 **`@deepseek-ai/dsh` (DeepSeek Harness)**，并可解析 `codex` / `opencode` / `pi` / SWE-bench / ATIF 的会话轨迹。
+`tmem`（**Trace Memory**）是一个**零依赖、零 UI、严格代码仓库作用域（`.tmem/`）**的编程 Agent 执行轨迹记忆插件与 CLI 工具。原生集成 **`agy` (Antigravity)** 与 **`@deepseek-ai/dsh` (DeepSeek Harness)**，并可解析 `codex` / `opencode` / `pi` / SWE-bench / ATIF 的会话轨迹。
 
 与把对话文本总结成记忆的做法不同，`tmem` 把 Agent 会话日志（`transcript.jsonl` / `session.v4.jsonl`）当作一段**未经优化的执行轨迹**来处理：以 **Git 最终落盘状态**和**最终通过的验证命令（`exit_code == 0`）**为终点做**确定性后向切片**，剪掉试错弯路、废弃修改和无关扫描，编译成带**预检探针（Guards）**的 **L0 / L1 / L2 三层记忆手册（Playbook）**。下次遇到相似任务或相同报错时，先校验探针，再按校验结果分级注入。
 
@@ -59,14 +59,13 @@ flowchart LR
         S --> R["原始轨迹 .tmem/raw/"]
     end
 
-    subgraph Store["2. 双层存储"]
+    subgraph Store["2. 仓库级存储"]
         P -->|"L0 + L1 + L2"| Proj["项目级 .tmem/traces/<br/>随 Git 版本化共享"]
-        P -->|"蒸馏 L2 修复对"| Glob["全局级 ~/.tmem/playbooks/<br/>本机跨仓库经验"]
         Proj --> Doc["MEMORIES.md 活文档索引"]
     end
 
     subgraph Recall["3. 探针校验与分级召回"]
-        Proj & Glob --> Guard{"零 Token 预检探针<br/>file_exists / symbol_present"}
+        Proj --> Guard{"零 Token 预检探针<br/>file_exists / symbol_present"}
         Guard -->|"全部通过"| L0["L0_FULL<br/>关键读写与验证路径"]
         Guard -->|"符号或文件漂移"| L1["L1_TOPOLOGY<br/>协同修改文件 + 验证命令"]
         Guard -->|"命中报错签名"| L2["L2_INVARIANT<br/>报错签名 -> 修复动作"]
@@ -87,10 +86,10 @@ flowchart LR
 | **L1** | 协同修改契约 `L1_TOPOLOGY` | 一起修改的文件集合 + 必跑的验证命令 | L0 探针失效（重构、改名、删除）时，隐藏 L0，只保留架构级的“防漏改”提醒。 |
 | **L2** | 排障不变量 `L2_INVARIANT` | `报错签名 -> 最小修复动作 -> 验证命令` | 工具执行出现同类报错，或跨项目检索命中报错签名时注入。工具链/依赖类修复可以跨项目复用。 |
 
-### 3. 双层存储（[`tmem/store.py`](./tmem/store.py)）
-- **项目级 `<repo>/.tmem/traces/*.json`**：随仓库提交。每条记忆是一个独立的短哈希文件（如 `tr_30fa71c60d.json`），多人协作时很少出现 merge 冲突；团队成员 `git pull` 后，本地 Agent 就能用上。
-- **全局级 `~/.tmem/playbooks/*.json`**：存放从项目记忆中蒸馏出来的报错修复经验（L2），在本机跨仓库共享。
-- **检索索引**：项目和全局各有一个 SQLite（FTS5）缓存索引（`.tmem/.cache/`，不进 Git），JSON 文件变化时会自动重建。
+### 3. 仓库级存储（[`tmem/store.py`](./tmem/store.py)）
+- **项目级 `<repo>/.tmem/traces/*.json`**：随仓库提交。每条记忆是一个独立的短哈希文件（如 `tr_30fa71c60d.json`），多人协作时零 merge 冲突；团队成员 `git pull` 后，本地 Agent 就能用上。
+- **严格仓库边界，零负迁移**：代码符号、验证脚本与相对路径均属于具体的代码仓库，不设跨项目全局层，杜绝跨仓库污染与幻觉。
+- **检索索引**：项目 SQLite（FTS5）缓存索引（`.tmem/.cache/`，不进 Git），JSON 文件变化时会自动重建。
 
 ### 4. 原始轨迹存储与渐进式查看（[`tmem/raw_storage.py`](./tmem/raw_storage.py)）
 切片的同时，`tmem` 会在 `.tmem/raw/<trace_id>.raw.json` 保存原始会话的工具输入、命令输出、退出码、错误堆栈，以及会话期间产生的 Git 统一补丁：
@@ -155,15 +154,13 @@ flowchart LR
 `tmem` **默认不会在每次会话结束时自动写入**，以免把低质量的会话记成记忆。写入有三个入口：
 
 1. **里程碑提示**：检测到“修改代码 → 验证通过”的闭环后，提示 Agent 在回复末尾附一行询问：
-   > 💡 *是否需要将本次有效执行路径沉淀为记忆？（可输入 `/tmem project` 存项目级、`/tmem global` 存全局级、或 `/tmem both` 同时保存）*
+   > 💡 *是否需要将本次有效执行路径沉淀为记忆？（输入 `/tmem` 或 `/remember [备注]` 保存）*
 2. **`/tmem` 斜杠命令**：
 
    | 命令 | 作用 |
    |---|---|
-   | `/tmem` 或 `/tmem project [备注]` | 切片当前会话，保存到项目级 |
-   | `/tmem global [备注]` | 切片并蒸馏到全局级 |
-   | `/tmem both [备注]` | 两级同时保存 |
-   | `/tmem status` / `list [scope]` | 统计 / 列出记忆及其当前生效层级 |
+   | `/tmem [备注]` | 切片当前会话，保存到项目级（`.tmem/traces/`） |
+   | `/tmem status` / `list` | 统计 / 列出项目记忆及其当前生效层级 |
    | `/tmem inspect <id> [index\|playbook\|raw\|diff]` | 按粒度查看记忆 |
    | `/tmem replay <id>` / `diff <id>` | 回放原始操作流 / 查看代码补丁 |
    | `/tmem sync` | 重建索引、校验探针、刷新 `MEMORIES.md` |
@@ -171,7 +168,7 @@ flowchart LR
    | `/tmem gc` | 运行探针检查，标记失效记忆 |
    | `/tmem bench` | 运行内置评测 |
 
-3. **Git `post-commit` 兜底**：`tmem init` 会安装 `.git/hooks/post-commit`，每次提交后在后台执行 `tmem capture --scope auto --quiet`。
+3. **Git `post-commit` 兜底**：`tmem init` 会安装 `.git/hooks/post-commit`，每次提交后在后台执行 `tmem capture --quiet`。
 
 ### 召回（读取）
 - **触发时机**：新的用户轮（用用户输入做检索）或刚出现新的工具报错（用报错签名做检索）。
@@ -185,15 +182,14 @@ flowchart LR
 ### 1. 安装与初始化
 ```bash
 pip install -e .            # 提供 `tmem` 命令（也可以用 python3 -m tmem.cli 代替）
-tmem init --agents agy,dsh  # 初始化 .tmem/、~/.tmem/，安装插件与 git post-commit 钩子
+tmem init --agents agy,dsh  # 初始化 .tmem/，安装插件与 git post-commit 钩子
 ```
 
 ### 2. 常用命令
 ```bash
-tmem status                                     # 项目级 / 全局级记忆统计
-tmem capture --agent dsh --scope both           # 从最新会话切片并沉淀
+tmem status                                     # 项目级记忆统计
+tmem capture --agent dsh                        # 从最新会话切片并沉淀到项目仓库
                                                 #   --agent agy|dsh|codex|opencode|pi|swe_bench|atif
-                                                #   --scope project|global|both|auto
 tmem lookup "ZeroDivisionError" --file src/billing.py   # 检索 + 探针校验 + 分级
 tmem inspect tr_cc3a687f02 --level playbook     # index | playbook | raw | diff
 tmem replay tr_cc3a687f02                       # 回放原始操作流

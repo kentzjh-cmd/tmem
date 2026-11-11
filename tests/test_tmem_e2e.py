@@ -232,13 +232,10 @@ class TestTmemEndToEnd(unittest.TestCase):
         self.assertIn("ModuleNotFoundError: No module named 'pyjwt'", pb.l2_causal_repairs[0].error_signature)
         self.assertTrue(pb.l2_causal_repairs[0].is_env_or_toolchain)
 
-        # 3. Save to Dual-Tier Store (Project + Auto-Promoted Global)
-        store_a = DualTierMemoryStore(str(self.workspace_a), str(self.global_dir))
-        proj_id, glob_id = store_a.save_playbook(pb, auto_promote_global=True)
+        # 3. Save to Project Store
+        store_a = DualTierMemoryStore(str(self.workspace_a))
+        proj_id, _ = store_a.save_playbook(pb)
         self.assertTrue(proj_id.startswith("tr_"))
-        self.assertIsNotNone(glob_id)
-        assert glob_id is not None
-        self.assertTrue(glob_id.startswith("gtr_"))
 
         # 4. Verify agy PreInvocation Hook in Workspace A (Guards Pass -> L0_FULL)
         hook_out = handle_agy_hook(
@@ -268,7 +265,7 @@ class TestTmemEndToEnd(unittest.TestCase):
         self.assertIn("L0 concrete paths drifted (missing_file:src/auth.py)", deg_msg)
         self.assertIn("L2 Causal Repair", deg_msg)
 
-        # 6. Cross-Project Global Recall in Workspace B (Zero local traces, matches Global ~/.tmem/)
+        # 6. Repository Isolation in Workspace B (Zero local traces -> No memory injected, zero negative transfer)
         cross_out = handle_agy_hook(
             "pre_invocation",
             {
@@ -277,10 +274,8 @@ class TestTmemEndToEnd(unittest.TestCase):
                 "lastUserInput": "Getting ModuleNotFoundError: No module named 'pyjwt' when running tests",
             },
         )
-        self.assertIn("injectSteps", cross_out)
-        cross_msg = cross_out["injectSteps"][0]["systemMessage"]["systemMessage"]
-        self.assertIn("Scope: GLOBAL", cross_msg)
-        self.assertIn("pip install pyjwt>=2.8.0", cross_msg)
+        # Workspace B is a separate repository without .tmem/ traces; must not recall Workspace A's memory
+        self.assertEqual(cross_out, {})
 
     def test_milestone_prompt_and_slash_commands(self) -> None:
         t_path = self._create_noisy_agy_transcript(self.workspace_a)
@@ -315,23 +310,22 @@ class TestTmemEndToEnd(unittest.TestCase):
         self.assertIn("injectSteps", milestone_out)
         m_msg = milestone_out["injectSteps"][0]["systemMessage"]["systemMessage"]
         self.assertIn("<tmem_milestone_reached>", m_msg)
-        self.assertIn("/tmem project", m_msg)
-        self.assertIn("/tmem global", m_msg)
+        self.assertIn("/tmem", m_msg)
 
-        # 3. User types `/tmem both Fix JWT leeway validation` -> PreInvocation intercepts & saves to both tiers
+        # 3. User types `/tmem Fix JWT leeway validation` -> PreInvocation intercepts & saves to project repository
         cmd_out = handle_agy_hook(
             "pre_invocation",
             {
                 "conversationId": "conv_m1",
                 "workspacePaths": [str(self.workspace_a)],
                 "transcriptPath": str(t_path),
-                "lastUserInput": "/tmem both Fix JWT leeway validation",
+                "lastUserInput": "/tmem Fix JWT leeway validation",
             },
         )
         self.assertIn("injectSteps", cmd_out)
         c_msg = cmd_out["injectSteps"][0]["systemMessage"]["systemMessage"]
         self.assertIn("<tmem_command_executed>", c_msg)
-        self.assertIn('"scope": "both"', c_msg)
+        self.assertIn('"scope": "project"', c_msg)
         self.assertIn("Fix JWT leeway validation", c_msg)
 
         # 4. Verify `/tmem status` command
@@ -345,8 +339,8 @@ class TestTmemEndToEnd(unittest.TestCase):
         )
         s_msg = stat_out["injectSteps"][0]["systemMessage"]["systemMessage"]
         self.assertIn("Command `/tmem status` executed", s_msg)
-        self.assertIn("1 traces", s_msg)
-        self.assertIn("1 playbooks", s_msg)
+        self.assertIn("Project Execution Memory", s_msg)
+        self.assertIn("1 trace(s)", s_msg)
 
 
 if __name__ == "__main__":
