@@ -36,6 +36,12 @@ def get_token():
     token = os.environ.get("GITHUB_TOKEN")
     if token:
         return token
+    key_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".tmem", "key")
+    if os.path.exists(key_file):
+        with open(key_file) as f:
+            t = f.read().strip()
+            if t:
+                return t
     cred_file = os.path.expanduser("~/.git-credentials")
     if os.path.exists(cred_file):
         with open(cred_file) as f:
@@ -97,25 +103,17 @@ def main():
     fork_repo = f"{username}/awesome-dsh-plugin"
     branch_name = "add-tmem-plugin"
 
-    # Wait for fork to be ready if newly created
-    print("⏳ Verifying fork repository branch status...")
-    main_ref = None
-    for _ in range(10):
-        try:
-            main_ref = api_request(f"https://api.github.com/repos/{fork_repo}/git/ref/heads/{TARGET_BRANCH}", token=token)
-            if main_ref:
-                break
-        except Exception:
-            time.sleep(2)
-
-    if not main_ref:
-        print("❌ Could not get default branch ref on fork.")
+    # Get latest upstream default branch SHA to avoid stale-fork issues
+    print(f"⏳ Verifying upstream repository {TARGET_REPO} branch status...")
+    upstream_ref = api_request(f"https://api.github.com/repos/{TARGET_REPO}/git/ref/heads/{TARGET_BRANCH}", token=token)
+    if not upstream_ref:
+        print("❌ Could not get default branch ref on upstream.")
         sys.exit(1)
 
-    base_sha = main_ref["object"]["sha"]
-    print(f"✅ Fork default branch SHA: {base_sha[:8]}")
+    base_sha = upstream_ref["object"]["sha"]
+    print(f"✅ Upstream default branch SHA: {base_sha[:8]}")
 
-    print(f"🌿 Creating branch '{branch_name}' on fork...")
+    print(f"🌿 Setting branch '{branch_name}' on fork to upstream HEAD...")
     try:
         api_request(f"https://api.github.com/repos/{fork_repo}/git/refs", method="POST", data={
             "ref": f"refs/heads/{branch_name}",
@@ -124,7 +122,12 @@ def main():
         print(f"✅ Branch '{branch_name}' created.")
     except urllib.error.HTTPError as e:
         if e.code == 422:
-            print(f"ℹ️ Branch '{branch_name}' already exists, continuing.")
+            print(f"ℹ️ Branch '{branch_name}' already exists, resetting to upstream HEAD...")
+            api_request(f"https://api.github.com/repos/{fork_repo}/git/refs/heads/{branch_name}", method="PATCH", data={
+                "sha": base_sha,
+                "force": True
+            }, token=token)
+            print(f"✅ Branch '{branch_name}' reset to upstream HEAD.")
         else:
             raise
 

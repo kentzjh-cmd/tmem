@@ -17,6 +17,8 @@ htmlcov/
 # Ignore local SQLite FTS5 cache & runtime state, while keeping .tmem/traces/ git-tracked
 .tmem/.cache/
 .tmem/runtime_state.json
+.tmem/key
+*.key
 *.db
 *.db-journal
 *.db-wal
