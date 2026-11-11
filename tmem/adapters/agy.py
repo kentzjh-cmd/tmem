@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 from tmem.adapters.base import (
     AgentAdapter,
     ParsedSession,
+    clean_rationale,
     extract_assistant_conclusion,
     extract_error_signature,
     extract_symbols_from_text,
@@ -18,7 +19,7 @@ from tmem.adapters.base import (
     normalize_rel_path,
     scrub_secrets,
 )
-from tmem.models import ActionKind, ActionNode
+from tmem.models import ActionKind, ActionNode, Requirement
 
 USER_REQ_RE = re.compile(r"<USER_REQUEST>\s*(.*?)\s*</USER_REQUEST>", re.DOTALL)
 EXIT_CODE_RE = re.compile(r"Command exited with code (\d+)")
@@ -85,6 +86,10 @@ class AgyAdapter(AgentAdapter):
                         and not is_filler_user_intent(user_text)
                     ):
                         session.user_intents.append(user_text)
+                        req_id = f"R{len(session.user_requirements) + 1}"
+                        session.user_requirements.append(
+                            Requirement(req_id=req_id, text=user_text, source="user")
+                        )
 
                 elif step_type == "PLANNER_RESPONSE":
                     if content.strip():
@@ -95,8 +100,19 @@ class AgyAdapter(AgentAdapter):
                     for tc in entry.get("tool_calls", []) or []:
                         t_name = tc.get("name", "")
                         args = tc.get("args", {}) or {}
+                        # Extract zero-token step rationale from toolSummary or preceding message
+                        tool_sum = args.get("toolSummary") or ""
+                        if not tool_sum and content.strip():
+                            tool_sum = extract_assistant_conclusion(content) or content
+                        step_rationale = clean_rationale(tool_sum)
+
                         node = self._map_tool_call(
-                            step_idx, t_name, args, workspace_root, created_at
+                            step_idx,
+                            t_name,
+                            args,
+                            workspace_root,
+                            created_at,
+                            rationale=step_rationale,
                         )
                         session.actions.append(node)
                         pending_nodes.append(node)
@@ -124,6 +140,7 @@ class AgyAdapter(AgentAdapter):
         args: Dict[str, Any],
         workspace_root: str,
         timestamp: str,
+        rationale: Optional[str] = None,
     ) -> ActionNode:
         cleaned_args = {}
         for k, v in args.items():
@@ -141,6 +158,7 @@ class AgyAdapter(AgentAdapter):
                 target_file=normalize_rel_path(raw_path, workspace_root),
                 timestamp=timestamp,
                 raw_input=cleaned_args,
+                rationale=rationale,
             )
         if tool_name in ("write_file", "edit_file", "replace_file_content", "multi_replace_file_content"):
             raw_path = _clean_agy_arg(args.get("Path") or args.get("TargetFile"))
@@ -155,6 +173,7 @@ class AgyAdapter(AgentAdapter):
                 symbols_touched=extract_symbols_from_text(code_body, raw_path),
                 timestamp=timestamp,
                 raw_input=cleaned_args,
+                rationale=rationale,
             )
         if tool_name in ("run_command", "bash"):
             cmd = scrub_secrets(_clean_agy_arg(args.get("CommandLine") or args.get("command")))
@@ -165,6 +184,7 @@ class AgyAdapter(AgentAdapter):
                 command=cmd,
                 timestamp=timestamp,
                 raw_input=cleaned_args,
+                rationale=rationale,
             )
         return ActionNode(
             step_idx=step_idx,
@@ -172,6 +192,7 @@ class AgyAdapter(AgentAdapter):
             tool_name=tool_name,
             timestamp=timestamp,
             raw_input=cleaned_args,
+            rationale=rationale,
         )
 
     def discover_latest_transcript(self, workspace_root: str) -> Optional[str]:

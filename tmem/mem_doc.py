@@ -69,6 +69,9 @@ def render_memories_markdown(
             if pb.semantic_summary:
                 clean_sum = pb.semantic_summary.replace("|", "\\|").strip()
                 intent = f"**{intent}**<br>_{clean_sum}_"
+            if pb.root_cause:
+                clean_rc = pb.root_cause.replace("|", "\\|").strip()
+                intent += f"<br>🎯 <i>{clean_rc}</i>"
 
             files_str = "<br>".join(f"`{f}`" for f in pb.touched_files[:3]) or "`-`"
             if len(pb.touched_files) > 3:

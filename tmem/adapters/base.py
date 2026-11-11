@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from tmem.models import ActionNode
+from tmem.models import ActionNode, Requirement
 
 ERROR_PATTERNS = [
     re.compile(r"([A-Za-z0-9_.]*(?:Error|Exception|Fault|Panic|FAIL)[A-Za-z0-9_.:]*[^\n]{0,120})"),
@@ -31,6 +31,22 @@ def scrub_secrets(text: str) -> str:
     return SECRET_REDACT_RE.sub("[REDACTED_SECRET]", text)
 
 
+def clean_rationale(text: str, max_chars: int = 160) -> Optional[str]:
+    """Clean, scrub secrets, and compact a tool rationale/summary into a single line."""
+    if not text:
+        return None
+    scrubbed = scrub_secrets(text).strip()
+    # Normalize whitespace/newlines into single spaces
+    compact = re.sub(r"\s+", " ", scrubbed).strip()
+    # Strip common markdown heading/bullet markers
+    compact = re.sub(r"^(?:#+\s*|[-*]\s*)", "", compact).strip()
+    if not compact or len(compact) < 3:
+        return None
+    if len(compact) > max_chars:
+        compact = compact[: max_chars - 3].rstrip() + "..."
+    return compact
+
+
 @dataclass
 class ParsedSession:
     """Normalized representation of an agent session across agy, codex, opencode, pi, dsh."""
@@ -42,6 +58,7 @@ class ParsedSession:
     assistant_conclusions: List[str] = field(default_factory=list)
     actions: List[ActionNode] = field(default_factory=list)
     active_errors: List[str] = field(default_factory=list)
+    user_requirements: List[Requirement] = field(default_factory=list)
 
 
 FILLER_INTENT_SET = {

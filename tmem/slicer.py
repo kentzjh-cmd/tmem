@@ -30,7 +30,9 @@ from tmem.models import (
     ActionNode,
     CausalRepairPair,
     GuardProbe,
+    IntentEdge,
     RawExecutionTrace,
+    Requirement,
     TracePlaybook,
 )
 
@@ -189,6 +191,33 @@ def get_git_diff_patch(workspace_root: str) -> Optional[str]:
     return None
 
 
+def extract_compact_diff_summary(
+    diff_patch: Optional[str], target_file: str, max_lines: int = 4
+) -> Optional[str]:
+    """Extract a compact single-line summary of added/modified code for target_file from git patch."""
+    if not diff_patch or not target_file:
+        return None
+    in_target = False
+    added_lines: List[str] = []
+    for raw_line in diff_patch.splitlines():
+        if raw_line.startswith("diff --git"):
+            in_target = f"a/{target_file}" in raw_line or f"b/{target_file}" in raw_line
+            continue
+        if in_target:
+            if raw_line.startswith("+") and not raw_line.startswith("+++"):
+                stripped = raw_line[1:].strip()
+                if stripped and not stripped.startswith(("#", "//", "/*", "*")):
+                    added_lines.append(stripped)
+                    if len(added_lines) >= max_lines:
+                        break
+    if not added_lines:
+        return None
+    summary = " ; ".join(added_lines[:max_lines])
+    if len(summary) > 120:
+        summary = summary[:117] + "..."
+    return f"+ {summary}"
+
+
 class BackwardTraceSlicer:
     """Compiles a noisy agent session into a minimal, verifiable TracePlaybook."""
 
@@ -264,12 +293,14 @@ class BackwardTraceSlicer:
                 if action.target_file in effective_files and action.target_file not in seen_reads:
                     seen_reads.add(action.target_file)
                     read_step_indices.append(action.step_idx)
-                    read_steps.append(
-                        {
-                            "action": ActionKind.READ.value,
-                            "target": action.target_file,
-                        }
-                    )
+                    step_entry: Dict[str, object] = {
+                        "step": action.step_idx,
+                        "action": ActionKind.READ.value,
+                        "target": action.target_file,
+                    }
+                    if action.rationale:
+                        step_entry["rationale"] = action.rationale
+                    read_steps.append(step_entry)
 
             elif action.kind == ActionKind.MUTATE and action.target_file:
                 # Dead Mutation Elimination: drop mutations to files not in effective_files
@@ -281,12 +312,18 @@ class BackwardTraceSlicer:
                         file_syms = sorted(
                             set(action.symbols_touched) | set(git_symbols.get(action.target_file, []))
                         )
-                        step_entry: Dict[str, object] = {
+                        diff_sum = extract_compact_diff_summary(git_diff_patch, action.target_file)
+                        step_entry = {
+                            "step": action.step_idx,
                             "action": ActionKind.MUTATE.value,
                             "target": action.target_file,
                         }
                         if file_syms:
                             step_entry["symbols"] = file_syms
+                        if action.rationale:
+                            step_entry["rationale"] = action.rationale
+                        if diff_sum:
+                            step_entry["diff_summary"] = diff_sum
                         mutate_steps.append(step_entry)
 
             elif action.kind == ActionKind.ENV_EXEC and action.command:
@@ -296,12 +333,14 @@ class BackwardTraceSlicer:
                     if canonical_cmd and canonical_cmd not in verification_cmds:
                         verification_cmds.append(canonical_cmd)
                         env_step_indices.append(action.step_idx)
-                        env_steps.append(
-                            {
-                                "action": ActionKind.ENV_EXEC.value,
-                                "command": canonical_cmd,
-                            }
-                        )
+                        step_entry = {
+                            "step": action.step_idx,
+                            "action": ActionKind.ENV_EXEC.value,
+                            "command": canonical_cmd,
+                        }
+                        if action.rationale:
+                            step_entry["rationale"] = action.rationale
+                        env_steps.append(step_entry)
 
         # Keep at most the last 2 canonical verification/toolchain commands in L0 critical path
         sliced_steps: List[Dict[str, object]] = read_steps + mutate_steps + env_steps[-2:]
@@ -316,7 +355,6 @@ class BackwardTraceSlicer:
         self.last_sliced_step_indices = sorted(set(collected_indices))
 
         if not sliced_steps and not causal_repairs:
-            return None
             return None
 
         # 4. Generate <5ms Pre-flight Speculative Guards
@@ -345,6 +383,99 @@ class BackwardTraceSlicer:
             | set(session.active_errors)
         )
 
+        # 6. Build Deterministic Execution-Intent Graph (Phase 1)
+        requirements: List[Requirement] = list(session.user_requirements)
+        if not requirements and problem_intent:
+            requirements.append(Requirement(req_id="R1", text=problem_intent, source="user"))
+
+        intent_edges: List[IntentEdge] = []
+        primary_req_id = requirements[0].req_id if requirements else "R1"
+
+        # 6a. Req -> served_by -> L0 steps
+        for s in sliced_steps:
+            s_num = int(s.get("step") or 0)
+            intent_edges.append(
+                IntentEdge(
+                    src=primary_req_id,
+                    dst=f"s{s_num}",
+                    relation="served_by",
+                    why=str(s.get("rationale") or f"Executed {s.get('action')} on {s.get('target') or s.get('command')}"),
+                    evidence=[s_num] if s_num else [],
+                    provenance="transcript" if s.get("rationale") else "rule",
+                )
+            )
+
+        # 6b. READ -> informs -> MUTATE (for matching target files)
+        read_map = {s.get("target"): s for s in read_steps if s.get("target")}
+        for m in mutate_steps:
+            tgt = m.get("target")
+            if tgt and tgt in read_map:
+                r = read_map[tgt]
+                r_num = int(r.get("step") or 0)
+                m_num = int(m.get("step") or 0)
+                intent_edges.append(
+                    IntentEdge(
+                        src=f"s{r_num}",
+                        dst=f"s{m_num}",
+                        relation="informs",
+                        why=f"Inspected {tgt} prior to mutation",
+                        evidence=[r_num, m_num] if (r_num and m_num) else [],
+                        provenance="rule",
+                    )
+                )
+
+        # 6c. MUTATE -> modifies -> file#symbol
+        for m in mutate_steps:
+            tgt = m.get("target")
+            m_num = int(m.get("step") or 0)
+            syms = m.get("symbols") or []
+            sym_clause = f"#{syms[0]}" if syms else ""
+            intent_edges.append(
+                IntentEdge(
+                    src=f"s{m_num}",
+                    dst=f"file:{tgt}{sym_clause}",
+                    relation="modifies",
+                    why=str(m.get("diff_summary") or m.get("rationale") or f"Mutated {tgt}"),
+                    evidence=[m_num] if m_num else [],
+                    provenance="rule",
+                )
+            )
+
+        # 6d. Error -> fixed_by -> MUTATE (from causal_repairs)
+        for idx, repair in enumerate(causal_repairs, start=1):
+            m_target = mutate_steps[0] if mutate_steps else None
+            m_num = int(m_target.get("step") or 0) if m_target else 0
+            intent_edges.append(
+                IntentEdge(
+                    src=f"E{idx}",
+                    dst=f"s{m_num}" if m_num else "L0_MUTATE",
+                    relation="fixed_by",
+                    why=f"{repair.error_signature} -> {repair.repair_action}",
+                    evidence=[m_num] if m_num else [],
+                    provenance="rule",
+                )
+            )
+
+        # 6e. ENV_EXEC -> verifies -> Req
+        for v in env_steps[-2:]:
+            v_num = int(v.get("step") or 0)
+            intent_edges.append(
+                IntentEdge(
+                    src=f"s{v_num}",
+                    dst=primary_req_id,
+                    relation="verifies",
+                    why=f"Passed verification `{v.get('command')}`",
+                    evidence=[v_num] if v_num else [],
+                    provenance="rule",
+                )
+            )
+
+        root_cause = (
+            f"Error '{causal_repairs[0].error_signature}' resolved by '{causal_repairs[0].repair_action}'"
+            if causal_repairs
+            else None
+        )
+
         # Deterministic content-addressed ID
         fingerprint = f"{problem_intent}|{'|'.join(sorted_files)}|{'|'.join(error_sigs)}"
         trace_id = "tr_" + hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()[:10]
@@ -355,6 +486,7 @@ class BackwardTraceSlicer:
             scope="project",
             created_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
             git_commit=commit_hash,
+            schema_version=2,
             problem_intent=problem_intent[:300],
             semantic_summary=semantic_summary[:350],
             error_signatures=error_sigs,
@@ -365,6 +497,10 @@ class BackwardTraceSlicer:
             l1_cochange_topology=cochange_topology,
             l1_verification_cmds=verification_cmds[-3:],
             l2_causal_repairs=causal_repairs,
+            requirements=requirements,
+            intent_edges=intent_edges,
+            root_cause=root_cause,
+            pitfalls=[],
             raw_steps_count=len(raw_actions),
             sliced_steps_count=len(sliced_steps),
         )

@@ -80,6 +80,13 @@ class DualTierMemoryStore:
                 );
                 CREATE INDEX IF NOT EXISTS idx_trigger_lookup
                     ON exact_triggers(trigger_type, trigger_key);
+                CREATE TABLE IF NOT EXISTS trace_links (
+                    symbol TEXT,
+                    trace_id TEXT,
+                    PRIMARY KEY (symbol, trace_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_trace_links_sym
+                    ON trace_links(symbol);
                 CREATE VIRTUAL TABLE IF NOT EXISTS playbooks_fts USING fts5(
                     trace_id UNINDEXED,
                     problem_intent,
@@ -253,6 +260,10 @@ class DualTierMemoryStore:
         )
         conn.execute("DELETE FROM exact_triggers WHERE trace_id = ?", (pb.trace_id,))
         conn.execute("DELETE FROM playbooks_fts WHERE trace_id = ?", (pb.trace_id,))
+        try:
+            conn.execute("DELETE FROM trace_links WHERE trace_id = ?", (pb.trace_id,))
+        except Exception:
+            pass
 
         for err in pb.error_signatures:
             conn.execute(
@@ -269,11 +280,23 @@ class DualTierMemoryStore:
                 "INSERT OR IGNORE INTO exact_triggers VALUES (?, 'symbol', ?)",
                 (pb.trace_id, sym.lower()),
             )
+            try:
+                conn.execute(
+                    "INSERT OR IGNORE INTO trace_links VALUES (?, ?)",
+                    (sym.lower(), pb.trace_id),
+                )
+            except Exception:
+                pass
 
         repairs_text = " ".join(
             f"{r.error_signature} {r.repair_action}" for r in pb.l2_causal_repairs
         )
-        intent_and_summary = f"{pb.problem_intent} {pb.semantic_summary}".strip()
+        reqs_text = " ".join(r.text for r in pb.requirements)
+        edges_text = " ".join(e.why for e in pb.intent_edges if e.why)
+        step_rats = " ".join(str(s.get("rationale") or "") for s in pb.l0_critical_path)
+        intent_and_summary = (
+            f"{pb.problem_intent} {pb.semantic_summary} {pb.root_cause or ''} {reqs_text} {edges_text} {step_rats}"
+        ).strip()
         conn.execute(
             """
             INSERT INTO playbooks_fts
@@ -509,6 +532,10 @@ class DualTierMemoryStore:
                                 conn.execute("DELETE FROM playbooks WHERE trace_id = ?", (matched_id,))
                                 conn.execute("DELETE FROM exact_triggers WHERE trace_id = ?", (matched_id,))
                                 conn.execute("DELETE FROM playbooks_fts WHERE trace_id = ?", (matched_id,))
+                                try:
+                                    conn.execute("DELETE FROM trace_links WHERE trace_id = ?", (matched_id,))
+                                except Exception:
+                                    pass
                         except Exception:
                             pass
         try:
@@ -552,6 +579,20 @@ class DualTierMemoryStore:
             except Exception:
                 continue
         return playbooks
+
+    def get_linked_traces(self, symbol: str, exclude_trace_id: str = "") -> List[str]:
+        """Query other trace IDs linked by the same symbol."""
+        if not symbol or not self.project_db_path.exists():
+            return []
+        try:
+            with sqlite3.connect(str(self.project_db_path)) as conn:
+                cur = conn.execute(
+                    "SELECT trace_id FROM trace_links WHERE symbol = ? AND trace_id != ? LIMIT 3",
+                    (symbol.lower(), exclude_trace_id),
+                )
+                return [row[0] for row in cur.fetchall()]
+        except Exception:
+            return []
 
     def sync_memories_markdown(self) -> Path:
         """Regenerate MEMORIES.md and maintain MEM.md living index in workspace root."""

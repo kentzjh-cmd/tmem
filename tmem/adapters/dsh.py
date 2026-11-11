@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from tmem.adapters.base import (
     AgentAdapter,
     ParsedSession,
+    clean_rationale,
     extract_assistant_conclusion,
     extract_error_signature,
     extract_symbols_from_text,
@@ -19,7 +20,7 @@ from tmem.adapters.base import (
     normalize_rel_path,
     scrub_secrets,
 )
-from tmem.models import ActionKind, ActionNode
+from tmem.models import ActionKind, ActionNode, Requirement
 
 DSH_EXIT_CODE_RE = re.compile(r"\[exit code:\s*(-?\d+)\]", re.IGNORECASE)
 APPLY_PATCH_FILE_RE = re.compile(
@@ -122,6 +123,7 @@ class DshAdapter(AgentAdapter):
         seq_to_nodes: Dict[int, List[ActionNode]] = {}
         pending_nodes: List[ActionNode] = []
         line_Step = 0
+        last_asst_text = ""
 
         with path.open("r", encoding="utf-8", errors="replace") as f:
             for raw_line in f:
@@ -177,6 +179,10 @@ class DshAdapter(AgentAdapter):
                         and not is_filler_user_intent(text)
                     ):
                         session.user_intents.append(text[:500])
+                        req_id = f"R{len(session.user_requirements) + 1}"
+                        session.user_requirements.append(
+                            Requirement(req_id=req_id, text=text[:500], source="user")
+                        )
                     continue
 
                 # 1b. Native dsh `assistant/message` or generic `assistant` role
@@ -187,6 +193,7 @@ class DshAdapter(AgentAdapter):
                         if isinstance(msg_obj, dict) and "content" in msg_obj
                         else entry.get("content") or ""
                     )
+                    last_asst_text = asst_text
                     conclusion = extract_assistant_conclusion(asst_text)
                     if conclusion:
                         session.assistant_conclusions.append(conclusion)
@@ -199,8 +206,10 @@ class DshAdapter(AgentAdapter):
                     tool_name = str(data.get("name") or "tool")
                     raw_args = data.get("arguments") or data.get("args") or {}
                     args = self._parse_args(raw_args)
+                    tool_sum = args.get("toolSummary") or args.get("description") or last_asst_text or ""
+                    step_rationale = clean_rationale(tool_sum)
                     nodes = self._map_dsh_tool_call(
-                        step_idx, tool_name, args, workspace_root, timestamp
+                        step_idx, tool_name, args, workspace_root, timestamp, rationale=step_rationale
                     )
                     session.actions.extend(nodes)
                     call_id_to_nodes[call_id] = nodes
@@ -325,6 +334,7 @@ class DshAdapter(AgentAdapter):
         args: Dict[str, Any],
         workspace_root: str,
         timestamp: str,
+        rationale: Optional[str] = None,
     ) -> List[ActionNode]:
         low = tool_name.lower()
         cleaned_args = {}
@@ -350,6 +360,7 @@ class DshAdapter(AgentAdapter):
                             symbols_touched=extract_symbols_from_text(added_body, raw_path),
                             timestamp=timestamp,
                             raw_input=cleaned_args,
+                            rationale=rationale,
                         )
                     )
                 return nodes
@@ -375,6 +386,7 @@ class DshAdapter(AgentAdapter):
                     target_file=normalize_rel_path(file_arg, workspace_root),
                     timestamp=timestamp,
                     raw_input=cleaned_args,
+                    rationale=rationale,
                 )
             ]
 
@@ -398,6 +410,7 @@ class DshAdapter(AgentAdapter):
                     symbols_touched=extract_symbols_from_text(code_body, str(file_arg or "")),
                     timestamp=timestamp,
                     raw_input=cleaned_args,
+                    rationale=rationale,
                 )
             ]
 
@@ -411,6 +424,7 @@ class DshAdapter(AgentAdapter):
                     command=scrub_secrets(str(cmd_arg or "")),
                     timestamp=timestamp,
                     raw_input=cleaned_args,
+                    rationale=rationale,
                 )
             ]
 
@@ -421,6 +435,7 @@ class DshAdapter(AgentAdapter):
                 tool_name=tool_name,
                 timestamp=timestamp,
                 raw_input=cleaned_args,
+                rationale=rationale,
             )
         ]
 

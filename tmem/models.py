@@ -32,6 +32,7 @@ class ActionNode:
     timestamp: str = ""
     raw_input: Optional[Dict[str, Any]] = None
     raw_output: Optional[str] = None
+    rationale: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -47,6 +48,7 @@ class ActionNode:
             "timestamp": self.timestamp,
             "raw_input": self.raw_input,
             "raw_output": self.raw_output,
+            "rationale": self.rationale,
         }
 
     @classmethod
@@ -95,10 +97,48 @@ class CausalRepairPair:
 
 
 @dataclass
+class Requirement:
+    """User requirement or sub-intent node in the execution-intent graph."""
+
+    req_id: str            # "R1", "R2", ...
+    text: str              # User requirement / sub-intent description
+    source: str = "user"   # "user" | "rule" | "llm"
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "Requirement":
+        return cls(**data)
+
+
+@dataclass
+class IntentEdge:
+    """
+    Deterministic/evidence-backed causal edge connecting requirements, steps,
+    files, and error invariants in the execution-intent graph.
+    """
+
+    src: str               # "R1" | "s3" | "E1"
+    dst: str               # "s3" | "file:tmem/guards.py#evaluate_guards" | "R1"
+    relation: str          # "served_by" | "informs" | "modifies" | "verifies" | "fixed_by"
+    why: str = ""          # Concise semantic explanation
+    evidence: List[int] = field(default_factory=list)   # Cites concrete step indices
+    provenance: str = "rule"   # "rule" | "transcript" | "llm"
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "IntentEdge":
+        return cls(**data)
+
+
+@dataclass
 class TracePlaybook:
     """
-    Compiled post-session memory artifact with 3 abstraction layers (L0, L1, L2)
-    and bi-temporal lifecycle tracking (inspired by Zep/Graphiti + Voyager + Beads).
+    Compiled post-session memory artifact with 3 abstraction layers (L0, L1, L2),
+    execution-intent graph topology (schema_version 2), and bi-temporal lifecycle tracking.
     """
 
     trace_id: str
@@ -106,6 +146,7 @@ class TracePlaybook:
     scope: str                         # "project" | "global"
     created_at: str
     git_commit: Optional[str] = None
+    schema_version: int = 2
 
     # Trigger anchors for deterministic recall funnel
     problem_intent: str = ""
@@ -127,6 +168,12 @@ class TracePlaybook:
     # L2: Root-cause error -> repair invariants (cross-project portable)
     l2_causal_repairs: List[CausalRepairPair] = field(default_factory=list)
 
+    # Execution-Intent Graph (Phase 1: Deterministic Evidence-Backed Topology)
+    requirements: List[Requirement] = field(default_factory=list)
+    intent_edges: List[IntentEdge] = field(default_factory=list)
+    root_cause: Optional[str] = None
+    pitfalls: List[str] = field(default_factory=list)
+
     # Metabolism & telemetry
     confidence: float = 1.0
     hit_count: int = 0
@@ -140,6 +187,8 @@ class TracePlaybook:
         data = asdict(self)
         data["guards"] = [g.to_dict() for g in self.guards]
         data["l2_causal_repairs"] = [r.to_dict() for r in self.l2_causal_repairs]
+        data["requirements"] = [req.to_dict() for req in self.requirements]
+        data["intent_edges"] = [edge.to_dict() for edge in self.intent_edges]
         return data
 
     @classmethod
@@ -149,9 +198,18 @@ class TracePlaybook:
         copied["l2_causal_repairs"] = [
             CausalRepairPair.from_dict(r) for r in copied.get("l2_causal_repairs", [])
         ]
+        copied["requirements"] = [
+            Requirement.from_dict(req) for req in copied.get("requirements", [])
+        ]
+        copied["intent_edges"] = [
+            IntentEdge.from_dict(edge) for edge in copied.get("intent_edges", [])
+        ]
+        copied.setdefault("schema_version", 1)
         copied.setdefault("semantic_summary", "")
         copied.setdefault("raw_trace_path", None)
         copied.setdefault("raw_trace_hash", None)
+        copied.setdefault("root_cause", None)
+        copied.setdefault("pitfalls", [])
         return cls(**copied)
 
 

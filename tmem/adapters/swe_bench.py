@@ -17,12 +17,13 @@ from typing import Any, Dict, List, Optional
 from tmem.adapters.base import (
     AgentAdapter,
     ParsedSession,
+    clean_rationale,
     extract_assistant_conclusion,
     extract_error_signature,
     extract_symbols_from_text,
     normalize_rel_path,
 )
-from tmem.models import ActionKind, ActionNode
+from tmem.models import ActionKind, ActionNode, Requirement
 
 
 class SweBenchAdapter(AgentAdapter):
@@ -75,7 +76,11 @@ class SweBenchAdapter(AgentAdapter):
             or ""
         )
         if problem_stmt:
-            session.user_intents.append(str(problem_stmt).strip()[:1000])
+            stmt_str = str(problem_stmt).strip()[:1000]
+            session.user_intents.append(stmt_str)
+            session.user_requirements.append(
+                Requirement(req_id="R1", text=stmt_str, source="user")
+            )
 
         # Detect schema: SWE-agent .traj vs ATIF vs OpenHands
         if "trajectory" in data and isinstance(data["trajectory"], list):
@@ -124,6 +129,9 @@ class SweBenchAdapter(AgentAdapter):
 
             node = self._normalize_swe_agent_action(idx, action_str, obs_str, last_file_opened, workspace_root)
             if node:
+                rat_raw = thought or response or ""
+                if rat_raw:
+                    node.rationale = clean_rationale(extract_assistant_conclusion(rat_raw) or rat_raw)
                 if node.kind == ActionKind.READ and node.target_file:
                     last_file_opened = node.target_file
                 if node.kind == ActionKind.MUTATE and node.target_file:
@@ -193,6 +201,7 @@ class SweBenchAdapter(AgentAdapter):
         workspace_root: str,
         min_step_idx: int,
     ) -> None:
+        last_thought = ""
         for idx, step in enumerate(steps, start=1):
             if idx < min_step_idx:
                 continue
@@ -201,11 +210,15 @@ class SweBenchAdapter(AgentAdapter):
             content = step.get("content") or ""
 
             if stype in ("user", "human"):
-                session.user_intents.append(str(content)[:1000])
+                u_text = str(content)[:1000]
+                session.user_intents.append(u_text)
+                req_id = f"R{len(session.user_requirements) + 1}"
+                session.user_requirements.append(Requirement(req_id=req_id, text=u_text, source="user"))
                 continue
 
             if stype in ("thought", "assistant", "model"):
-                conc = extract_assistant_conclusion(str(content))
+                last_thought = str(content)
+                conc = extract_assistant_conclusion(last_thought)
                 if conc:
                     session.assistant_conclusions.append(conc)
 
@@ -231,6 +244,8 @@ class SweBenchAdapter(AgentAdapter):
                 node = ActionNode(step_idx=idx, kind=ActionKind.OTHER, tool_name=tool_name)
 
             if node:
+                if last_thought:
+                    node.rationale = clean_rationale(extract_assistant_conclusion(last_thought) or last_thought)
                 node.exit_code = exit_code
                 if exit_code != 0 and obs:
                     err_sig = extract_error_signature(obs)

@@ -4,6 +4,7 @@
   "scope": "project",
   "created_at": "2026-11-10T09:07:43.136911+00:00",
   "git_commit": "0aa52ff",
+  "schema_version": 1,
   "problem_intent": "Modify tmem/slicer.py",
   "semantic_summary": "Key symbols: AgyAdapter, BackwardTraceSlicer, _extract_canonical_verification_cmd, _extract_toolchain_install_clause",
   "error_signatures": [],
@@ -54,6 +55,10 @@
     "PYTHONPATH=/home/ubuntu/proj python3 -m unittest discover -s tests -v"
   ],
   "l2_causal_repairs": [],
+  "requirements": [],
+  "intent_edges": [],
+  "root_cause": null,
+  "pitfalls": [],
   "confidence": 1.0,
   "hit_count": 0,
   "status": "active",

@@ -216,6 +216,12 @@ def format_progressive_view(
     ]
     if playbook.semantic_summary:
         doc_lines.append(f"- **Summary**: {playbook.semantic_summary}")
+    if playbook.root_cause:
+        doc_lines.append(f"- **Root Cause**: {playbook.root_cause}")
+    if playbook.requirements:
+        doc_lines.append("- **Requirements & Intent Nodes**:")
+        for r in playbook.requirements:
+            doc_lines.append(f"  - `[{r.req_id}]` ({r.source}): {r.text}")
     doc_lines.append(f"- **Created At**: {playbook.created_at} (Commit: {playbook.git_commit or 'HEAD'})")
     doc_lines.append(f"- **Files Touched**: {', '.join(playbook.touched_files) or 'None'}")
 
@@ -231,7 +237,14 @@ def format_progressive_view(
             tgt = s.get("target") or s.get("command") or ""
             syms = s.get("symbols")
             sym_clause = f" (symbols: {', '.join(syms)})" if syms else ""
-            doc_lines.append(f"  - `{act}`: `{tgt}`{sym_clause}")
+            diff_clause = f" [diff: {s['diff_summary']}]" if s.get("diff_summary") else ""
+            rat_clause = f" — {s['rationale']}" if s.get("rationale") else ""
+            doc_lines.append(f"  - `{act}`: `{tgt}`{sym_clause}{diff_clause}{rat_clause}")
+
+    if playbook.intent_edges:
+        doc_lines.append("- **Execution-Intent Graph Relations**:")
+        for edge in playbook.intent_edges[:8]:
+            doc_lines.append(f"  - `{edge.src}` --[{edge.relation}]--> `{edge.dst}`: {edge.why}")
 
     if playbook.l1_cochange_topology:
         doc_lines.append("- **L1 Co-Change Topology**:")
