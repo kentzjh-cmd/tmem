@@ -14,6 +14,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from tmem import logger
 from tmem.adapters.base import scrub_secrets
 from tmem.models import ActionKind, RawExecutionTrace, TracePlaybook
 
@@ -54,7 +55,8 @@ class RawTraceStore:
                 return RawExecutionTrace.from_dict(
                     json.loads(exact.read_text(encoding="utf-8"))
                 )
-            except Exception:
+            except (json.JSONDecodeError, OSError) as e:
+                logger.debug("Failed loading raw trace %s: %s", exact, e)
                 return None
 
         # Prefix search
@@ -64,7 +66,8 @@ class RawTraceStore:
                 return RawExecutionTrace.from_dict(
                     json.loads(matches[0].read_text(encoding="utf-8"))
                 )
-            except Exception:
+            except (json.JSONDecodeError, OSError) as e:
+                logger.debug("Failed loading raw trace prefix %s: %s", matches[0], e)
                 return None
         return None
 
@@ -79,8 +82,8 @@ class RawTraceStore:
             try:
                 p.unlink()
                 deleted = True
-            except Exception:
-                pass
+            except OSError as e:
+                logger.debug("Failed deleting raw trace %s: %s", p, e)
         return deleted
 
     def list_raw_traces(self) -> List[Dict[str, Any]]:
@@ -102,7 +105,8 @@ class RawTraceStore:
                         "file_size": p.stat().st_size,
                     }
                 )
-            except Exception:
+            except (json.JSONDecodeError, OSError) as e:
+                logger.debug("Failed listing raw trace %s: %s", p, e)
                 continue
         return items
 

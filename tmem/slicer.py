@@ -18,6 +18,7 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
+from tmem import logger
 from tmem.adapters.base import (
     ParsedSession,
     extract_symbols_from_text,
@@ -42,6 +43,11 @@ TOOLCHAIN_INSTALL_RE = re.compile(
     r"\bpython(?:3)?\s+setup\.py\s+(?:build|develop|build_ext|install)\b"
 )
 
+RE_TEST_SCRIPT_CMD = re.compile(
+    r"\b(?:python\d*(?:\.\d+)?|node|bash|sh)\s+[\w\./\\-]*?(?:test|tests|reproduce|repro|simulate|check|verify|runtests)[\w\./\\-]*\b",
+    re.I
+)
+
 VERIFY_WHITELIST_RE = re.compile(
     r"\b(?:pytest|unittest|tox|nox|coverage|mypy|ruff|flake8|black|isort|pylint|"
     r"runtests(?:\.py)?|manage\.py\s+test|"
@@ -64,6 +70,7 @@ EXPLORATORY_CLAUSE_RE = re.compile(
 
 def get_git_ground_truth(
     workspace_root: str,
+    target_files: Optional[Set[str]] = None,
 ) -> Tuple[Optional[str], Set[str], Dict[str, List[str]], Optional[str]]:
     """
     Inspect Git repository to obtain:
@@ -100,7 +107,6 @@ def get_git_ground_truth(
             text=True,
             timeout=3,
         )
-        diff_target = ["git", "diff", "HEAD"]
         if status_res.returncode == 0 and status_res.stdout.strip():
             for line in status_res.stdout.splitlines():
                 if len(line) > 3:
@@ -108,7 +114,8 @@ def get_git_ground_truth(
                     if " -> " in path_str:
                         path_str = path_str.split(" -> ")[-1]
                     if not path_str.startswith(".tmem/"):
-                        modified_files.add(path_str)
+                        if not target_files or path_str in target_files:
+                            modified_files.add(path_str)
         else:
             # Post-commit hook case: working tree is clean, inspect last commit
             subj_res = subprocess.run(
@@ -133,10 +140,14 @@ def get_git_ground_truth(
                 for line in names_res.stdout.splitlines():
                     p = line.strip()
                     if p and not p.startswith(".tmem/"):
-                        modified_files.add(p)
+                        if not target_files or p in target_files:
+                            modified_files.add(p)
 
+        diff_cmd = ["git", "diff", "HEAD~1", "HEAD"] if not status_res.stdout.strip() else ["git", "diff", "HEAD"]
+        if target_files:
+            diff_cmd.extend(["--"] + sorted(target_files))
         diff_res = subprocess.run(
-            ["git", "diff", "HEAD~1", "HEAD"] if not status_res.stdout.strip() else ["git", "diff", "HEAD"],
+            diff_cmd,
             cwd=workspace_root,
             capture_output=True,
             text=True,
@@ -153,14 +164,17 @@ def get_git_ground_truth(
                         existing = set(file_symbols.get(current_file, []))
                         existing.update(syms)
                         file_symbols[current_file] = sorted(existing)
-    except Exception:
-        pass
+    except (subprocess.SubprocessError, OSError, UnicodeDecodeError) as e:
+        logger.debug("get_git_ground_truth encountered non-fatal error: %s", e)
 
     return commit_hash, modified_files, file_symbols, commit_subject
 
 
-def get_git_diff_patch(workspace_root: str) -> Optional[str]:
-    """Capture unified git diff of uncommitted changes or HEAD commit."""
+def get_git_diff_patch(
+    workspace_root: str,
+    target_files: Optional[Set[str]] = None,
+) -> Optional[str]:
+    """Capture unified git diff of uncommitted changes or HEAD commit, optionally bounded to target_files."""
     ws = Path(workspace_root)
     if not (ws / ".git").exists():
         return None
@@ -177,6 +191,8 @@ def get_git_diff_patch(workspace_root: str) -> Optional[str]:
             if not status_res.stdout.strip()
             else ["git", "diff", "HEAD"]
         )
+        if target_files:
+            cmd.extend(["--"] + sorted(target_files))
         diff_res = subprocess.run(
             cmd,
             cwd=workspace_root,
@@ -186,8 +202,8 @@ def get_git_diff_patch(workspace_root: str) -> Optional[str]:
         )
         if diff_res.returncode == 0 and diff_res.stdout.strip():
             return scrub_secrets(diff_res.stdout.strip())
-    except Exception:
-        pass
+    except (subprocess.SubprocessError, OSError, UnicodeDecodeError) as e:
+        logger.debug("get_git_diff_patch encountered non-fatal error: %s", e)
     return None
 
 
@@ -218,12 +234,43 @@ def extract_compact_diff_summary(
     return f"+ {summary}"
 
 
+def assess_playbook_triviality(playbook: TracePlaybook) -> Tuple[bool, str]:
+    """
+    Determine whether a compiled playbook is trivial/tautological.
+    Returns (is_trivial, reason).
+    A playbook is considered trivial if it merely records reading, editing, and running a test
+    on a single isolated file without any error repairs, cross-file co-changes, or non-obvious context.
+    """
+    if playbook.l2_causal_repairs:
+        return False, "Contains verified L2 causal error-to-fix repairs"
+    if len(playbook.touched_files) > 1:
+        return False, f"Contains multi-file co-change topology ({len(playbook.touched_files)} files)"
+
+    actions = [str(s.get("action")) for s in playbook.l0_critical_path]
+    targets = {str(s.get("target")) for s in playbook.l0_critical_path if s.get("target")}
+
+    # Single-file edit with only standard READ -> MUTATE -> ENV_EXEC
+    if len(targets) <= 1:
+        core_actions = [a for a in actions if a in ("READ", "MUTATE", "ENV_EXEC")]
+        if core_actions in (
+            ["READ", "MUTATE", "ENV_EXEC"],
+            ["MUTATE", "ENV_EXEC"],
+            ["READ", "MUTATE"],
+            ["MUTATE"],
+        ):
+            target_name = list(targets)[0] if targets else "isolated file"
+            return True, f"Tautological single-file routine on '{target_name}' without error-fix causality or multi-file topology"
+
+    return False, "Meets non-trivial complexity thresholds"
+
+
 class BackwardTraceSlicer:
     """Compiles a noisy agent session into a minimal, verifiable TracePlaybook."""
 
     def __init__(self) -> None:
         self.last_sliced_step_indices: List[int] = []
         self.last_git_diff: Optional[str] = None
+        self._last_repair_fix_indices: List[List[int]] = []
 
     def slice_session(
         self,
@@ -236,36 +283,40 @@ class BackwardTraceSlicer:
             self.last_git_diff = None
             return None
 
-        commit_hash, git_files, git_symbols, commit_subject = (
-            get_git_ground_truth(session.workspace_root)
-            if use_git_ground_truth
-            else (None, set(), {}, None)
-        )
-        git_diff_patch = (
-            get_git_diff_patch(session.workspace_root)
-            if use_git_ground_truth
-            else None
-        )
-        self.last_git_diff = git_diff_patch
-
         # 1. Determine Ground Truth Mutated Files (Sink)
         session_mutated_files = {
             a.target_file
             for a in raw_actions
             if a.kind == ActionKind.MUTATE and a.target_file and not a.target_file.startswith(".tmem/")
         }
-        if git_files:
-            # Intersect if session touched a subset, or union if git diff is authoritative
-            effective_files = (session_mutated_files & git_files) or git_files
+
+        # Query git ground truth bounded to session mutated files if available
+        commit_hash, git_files, git_symbols, commit_subject = (
+            get_git_ground_truth(session.workspace_root, target_files=session_mutated_files or None)
+            if use_git_ground_truth
+            else (None, set(), {}, None)
+        )
+
+        ws = Path(session.workspace_root)
+        if session_mutated_files:
+            # Boundary isolation: strictly confine ground truth to files touched in this session!
+            if git_files:
+                effective_files = session_mutated_files & git_files
+                if not effective_files:
+                    effective_files = {f for f in session_mutated_files if (ws / f).exists()}
+            else:
+                effective_files = {f for f in session_mutated_files if (ws / f).exists()}
+            if not effective_files:
+                effective_files = set(session_mutated_files)
         else:
-            # Verify file still exists on disk (eliminate temporary scratch files that were deleted)
-            ws = Path(session.workspace_root)
-            existing_on_disk = {
-                f for f in session_mutated_files if f and (ws / f).exists()
-            }
-            # In live repos, keep existing files; in offline/benchmark evaluation where the repo is not on disk,
-            # fall back to session mutated files.
-            effective_files = existing_on_disk if existing_on_disk else set(session_mutated_files)
+            effective_files = git_files
+
+        git_diff_patch = (
+            get_git_diff_patch(session.workspace_root, target_files=effective_files or None)
+            if use_git_ground_truth
+            else None
+        )
+        self.last_git_diff = git_diff_patch
 
         # 2. Extract Error -> Fix Causal Pairs (L2 Universal Invariants)
         causal_repairs, repair_step_indices = self._extract_causal_repairs_with_indices(
@@ -281,16 +332,24 @@ class BackwardTraceSlicer:
         env_step_indices: List[int] = []
         seen_reads: Set[str] = set()
         seen_mutations: Set[str] = set()
+        mutate_map: Dict[str, Dict[str, object]] = {}
         verification_cmds: List[str] = []
         touched_symbols: Set[str] = set()
 
         for sym_list in git_symbols.values():
             touched_symbols.update(sym_list)
 
+        # Module stems of modified files to recognize cross-file reads
+        effective_modules = {Path(f).stem for f in effective_files if f}
+
         for action in raw_actions:
             if action.kind == ActionKind.READ and action.target_file:
-                # Read Shrinking: only keep first READ of a file that is in effective_files
-                if action.target_file in effective_files and action.target_file not in seen_reads:
+                target_stem = Path(action.target_file).stem
+                is_direct = action.target_file in effective_files
+                is_dependency = target_stem in effective_modules or any(
+                    target_stem in sym for sym in touched_symbols
+                )
+                if (is_direct or is_dependency) and action.target_file not in seen_reads:
                     seen_reads.add(action.target_file)
                     read_step_indices.append(action.step_idx)
                     step_entry: Dict[str, object] = {
@@ -306,9 +365,9 @@ class BackwardTraceSlicer:
                 # Dead Mutation Elimination: drop mutations to files not in effective_files
                 if action.target_file in effective_files:
                     touched_symbols.update(action.symbols_touched)
+                    mutate_step_indices.append(action.step_idx)
                     if action.target_file not in seen_mutations:
                         seen_mutations.add(action.target_file)
-                        mutate_step_indices.append(action.step_idx)
                         file_syms = sorted(
                             set(action.symbols_touched) | set(git_symbols.get(action.target_file, []))
                         )
@@ -325,6 +384,17 @@ class BackwardTraceSlicer:
                         if diff_sum:
                             step_entry["diff_summary"] = diff_sum
                         mutate_steps.append(step_entry)
+                        mutate_map[action.target_file] = step_entry
+                    else:
+                        existing_entry = mutate_map[action.target_file]
+                        merged_syms = sorted(
+                            set(existing_entry.get("symbols") or [])  # type: ignore[arg-type]
+                            | set(action.symbols_touched)
+                        )
+                        if merged_syms:
+                            existing_entry["symbols"] = merged_syms
+                        if action.rationale and not existing_entry.get("rationale"):
+                            existing_entry["rationale"] = action.rationale
 
             elif action.kind == ActionKind.ENV_EXEC and action.command:
                 # Keep only canonical verification or toolchain install commands (deduplicated)
@@ -441,17 +511,27 @@ class BackwardTraceSlicer:
                 )
             )
 
-        # 6d. Error -> fixed_by -> MUTATE (from causal_repairs)
+        # 6d. Error -> fixed_by -> MUTATE / ENV_EXEC (from causal_repairs)
         for idx, repair in enumerate(causal_repairs, start=1):
-            m_target = mutate_steps[0] if mutate_steps else None
-            m_num = int(m_target.get("step") or 0) if m_target else 0
+            fix_indices = (
+                self._last_repair_fix_indices[idx - 1]
+                if idx - 1 < len(self._last_repair_fix_indices)
+                else []
+            )
+            if fix_indices:
+                m_num = fix_indices[0]
+                ev_list = list(fix_indices)
+            else:
+                m_target = mutate_steps[0] if mutate_steps else None
+                m_num = int(m_target.get("step") or 0) if m_target else 0
+                ev_list = [m_num] if m_num else []
             intent_edges.append(
                 IntentEdge(
                     src=f"E{idx}",
                     dst=f"s{m_num}" if m_num else "L0_MUTATE",
                     relation="fixed_by",
                     why=f"{repair.error_signature} -> {repair.repair_action}",
-                    evidence=[m_num] if m_num else [],
+                    evidence=ev_list,
                     provenance="rule",
                 )
             )
@@ -480,7 +560,7 @@ class BackwardTraceSlicer:
         fingerprint = f"{problem_intent}|{'|'.join(sorted_files)}|{'|'.join(error_sigs)}"
         trace_id = "tr_" + hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()[:10]
 
-        return TracePlaybook(
+        playbook = TracePlaybook(
             trace_id=trace_id,
             agent_source=session.agent_name,
             scope="project",
@@ -505,6 +585,14 @@ class BackwardTraceSlicer:
             sliced_steps_count=len(sliced_steps),
         )
 
+        is_trivial, trivial_reason = assess_playbook_triviality(playbook)
+        playbook.is_trivial = is_trivial
+        if is_trivial:
+            playbook.confidence = 0.5
+            playbook.pitfalls.append(f"Trivial trace: {trivial_reason}")
+
+        return playbook
+
     slice = slice_session
 
     def _extract_causal_repairs(
@@ -518,65 +606,82 @@ class BackwardTraceSlicer:
     ) -> Tuple[List[CausalRepairPair], List[int]]:
         """
         Scan action trajectory within a bounded causal window for pattern:
-        [Failed canonical test/build/install ENV_EXEC] -> [Intervening MUTATE or toolchain install] -> [Succeeded verification ENV_EXEC]
+        [Failed canonical test/build/install or command with error signature] -> [Intervening MUTATE or toolchain install] -> [Succeeded verification ENV_EXEC]
         """
         repairs: List[CausalRepairPair] = []
         step_indices: List[int] = []
+        self._last_repair_fix_indices = []
         seen_sigs: Set[str] = set()
 
         for i, act in enumerate(actions):
-            if act.kind == ActionKind.ENV_EXEC and act.exit_code not in (0, None):
-                failed_canonical = self._extract_canonical_verification_cmd(act.command or "")
-                if not failed_canonical:
-                    continue
-                err_sig = act.error_signature or f"Command failed (exit {act.exit_code}): {failed_canonical}"
-                if err_sig in seen_sigs:
-                    continue
+            is_failure = act.kind == ActionKind.ENV_EXEC and (
+                act.exit_code not in (0, None) or bool(act.error_signature)
+            )
+            if not is_failure:
+                continue
 
-                intervening_fixes: List[str] = []
-                intervening_indices: List[int] = []
-                is_env = False
-                verified_cmd = ""
-                verify_idx: Optional[int] = None
+            failed_canonical = self._extract_canonical_verification_cmd(act.command or "")
+            failed_cmd = failed_canonical or (act.command.strip() if act.command else "")
+            if not failed_cmd and not act.error_signature:
+                continue
+            if (
+                act.command
+                and EXPLORATORY_CLAUSE_RE.match(act.command.strip())
+                and not act.error_signature
+            ):
+                continue
 
-                for j in range(i + 1, min(len(actions), i + 36)):
-                    nxt = actions[j]
-                    if nxt.kind == ActionKind.MUTATE and nxt.target_file in effective_files:
-                        sym_note = f" ({', '.join(nxt.symbols_touched[:3])})" if nxt.symbols_touched else ""
-                        fix_desc = f"edit {nxt.target_file}{sym_note}"
+            err_sig = act.error_signature or f"Command failed (exit {act.exit_code}): {failed_cmd}"
+            if err_sig in seen_sigs:
+                continue
+
+            intervening_fixes: List[str] = []
+            intervening_indices: List[int] = []
+            is_env = False
+            verified_cmd = ""
+            verify_idx: Optional[int] = None
+
+            for j in range(i + 1, min(len(actions), i + 36)):
+                nxt = actions[j]
+                if nxt.kind == ActionKind.MUTATE and nxt.target_file in effective_files:
+                    sym_note = f" ({', '.join(nxt.symbols_touched[:3])})" if nxt.symbols_touched else ""
+                    fix_desc = f"edit {nxt.target_file}{sym_note}"
+                    if fix_desc not in intervening_fixes:
+                        intervening_fixes.append(fix_desc)
+                        intervening_indices.append(nxt.step_idx)
+                elif nxt.kind == ActionKind.ENV_EXEC and nxt.command:
+                    install_clause = self._extract_toolchain_install_clause(nxt.command)
+                    if install_clause and nxt.exit_code in (0, None):
+                        fix_desc = f"run `{install_clause}`"
                         if fix_desc not in intervening_fixes:
                             intervening_fixes.append(fix_desc)
                             intervening_indices.append(nxt.step_idx)
-                    elif nxt.kind == ActionKind.ENV_EXEC and nxt.command:
-                        install_clause = self._extract_toolchain_install_clause(nxt.command)
-                        if install_clause and nxt.exit_code in (0, None):
-                            fix_desc = f"run `{install_clause}`"
-                            if fix_desc not in intervening_fixes:
-                                intervening_fixes.append(fix_desc)
-                                intervening_indices.append(nxt.step_idx)
-                            is_env = True
-                        elif nxt.exit_code == 0 and not nxt.error_signature and intervening_fixes:
-                            cand_verify = self._extract_canonical_verification_cmd(nxt.command)
-                            if cand_verify:
-                                verified_cmd = cand_verify
-                                verify_idx = nxt.step_idx
-                                break
+                        is_env = True
+                    elif nxt.exit_code == 0 and not nxt.error_signature and intervening_fixes:
+                        cand_verify = self._extract_canonical_verification_cmd(nxt.command)
+                        if not cand_verify and (act.command and nxt.command.strip() == act.command.strip()):
+                            cand_verify = nxt.command.strip()
+                        if cand_verify:
+                            verified_cmd = cand_verify
+                            verify_idx = nxt.step_idx
+                            break
 
-                if intervening_fixes and verified_cmd:
-                    seen_sigs.add(err_sig)
-                    repairs.append(
-                        CausalRepairPair(
-                            error_signature=err_sig,
-                            failed_command=failed_canonical,
-                            repair_action=" -> ".join(intervening_fixes[:3]),
-                            verification_cmd=verified_cmd,
-                            is_env_or_toolchain=is_env,
-                        )
+            if intervening_fixes and verified_cmd:
+                seen_sigs.add(err_sig)
+                repairs.append(
+                    CausalRepairPair(
+                        error_signature=err_sig,
+                        failed_command=failed_cmd,
+                        repair_action=" -> ".join(intervening_fixes[:3]),
+                        verification_cmd=verified_cmd,
+                        is_env_or_toolchain=is_env,
                     )
-                    step_indices.append(act.step_idx)
-                    step_indices.extend(intervening_indices)
-                    if verify_idx is not None:
-                        step_indices.append(verify_idx)
+                )
+                self._last_repair_fix_indices.append(list(intervening_indices))
+                step_indices.append(act.step_idx)
+                step_indices.extend(intervening_indices)
+                if verify_idx is not None:
+                    step_indices.append(verify_idx)
         return repairs, step_indices
 
     def build_raw_trace(
@@ -717,7 +822,7 @@ class BackwardTraceSlicer:
         stripped = cmd.strip()
         if any(
             k in stripped
-            for k in ("python3 -c", "python -c", "node -e", "node --input-type=module -e", "for pkg in ")
+            for k in ("for pkg in ", "which ")
         ):
             return None
 
@@ -734,7 +839,11 @@ class BackwardTraceSlicer:
                 continue
             if EXPLORATORY_CLAUSE_RE.match(base_part):
                 continue
-            if VERIFY_WHITELIST_RE.search(base_part) or TOOLCHAIN_INSTALL_RE.search(base_part):
+            if (
+                VERIFY_WHITELIST_RE.search(base_part)
+                or TOOLCHAIN_INSTALL_RE.search(base_part)
+                or RE_TEST_SCRIPT_CMD.search(base_part)
+            ):
                 if base_part not in kept_clauses:
                     kept_clauses.append(base_part)
 

@@ -45,23 +45,24 @@
     },
     {
       "action": "ENV_EXEC",
-      "command": "PYTHONPATH=/home/ubuntu/proj python3 -m unittest discover -s tests -v"
+      "command": "python3 -m unittest discover -s tests -v"
     }
   ],
   "l1_cochange_topology": [
     "Primary target module: tmem/slicer.py"
   ],
   "l1_verification_cmds": [
-    "PYTHONPATH=/home/ubuntu/proj python3 -m unittest discover -s tests -v"
+    "python3 -m unittest discover -s tests -v"
   ],
   "l2_causal_repairs": [],
   "requirements": [],
   "intent_edges": [],
   "root_cause": null,
   "pitfalls": [],
-  "confidence": 1.0,
+  "confidence": 0.5,
   "hit_count": 0,
   "status": "active",
+  "is_trivial": true,
   "raw_steps_count": 4,
   "sliced_steps_count": 3,
   "raw_trace_path": null,

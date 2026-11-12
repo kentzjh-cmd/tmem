@@ -42,7 +42,7 @@ class TestEvaluationBenchmark(unittest.TestCase):
         # Verify markdown reporting renders cleanly
         report_md = format_markdown_report(summary)
         self.assertIn("tmem Upstream Memory Compilation", report_md)
-        self.assertIn("tmem Downstream Agent Efficacy", report_md)
+        self.assertIn("tmem Trajectory Distillation", report_md)
         self.assertIn("PASSED", report_md)
 
 

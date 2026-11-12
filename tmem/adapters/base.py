@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import os
 import re
 from dataclasses import dataclass, field
@@ -228,10 +229,24 @@ def is_code_file(file_path: Optional[str]) -> bool:
 
 
 def extract_symbols_from_text(text: str, file_path: Optional[str] = None) -> List[str]:
-    """Extract defined/modified function or class names from code snippets via regex."""
+    """Extract defined/modified function or class names from code snippets via AST (Python) or regex."""
     if not text or not is_code_file(file_path):
         return []
     symbols = set()
+    is_py = file_path and file_path.lower().endswith(".py")
+    if is_py:
+        try:
+            tree = ast.parse(text)
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    if node.name.lower() not in SYMBOL_STOPWORDS:
+                        symbols.add(node.name)
+            if symbols:
+                return sorted(symbols)
+        except Exception:
+            pass
+
+    # Regex fallback for non-Python files or partial diff snippets
     for m in re.finditer(
         r"(?:^|[\s;{}()])(?:def|class|fn|func|function|interface|struct)\s+([A-Za-z_][A-Za-z0-9_]{2,})\s*(?:[\(<:{]|$)",
         text,

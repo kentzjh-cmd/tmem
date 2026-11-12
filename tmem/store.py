@@ -28,7 +28,7 @@ from tmem.raw_storage import RawTraceStore
 class ProjectMemoryStore:
     """Manages Project-level (.tmem/) execution trace store and local SQLite FTS5 index."""
 
-    def __init__(self, workspace_root: str, global_root: Optional[str] = None) -> None:
+    def __init__(self, workspace_root: str) -> None:
         self.workspace_root = str(Path(workspace_root).resolve())
         self.project_dir = Path(self.workspace_root) / ".tmem"
         self.project_traces_dir = self.project_dir / "traces"
@@ -96,10 +96,24 @@ class ProjectMemoryStore:
         self._init_sqlite(self.project_db_path)
 
         json_files = list(self.project_traces_dir.glob("*.json"))
+        disk_ids = {jf.stem for jf in json_files}
         with sqlite3.connect(str(self.project_db_path)) as conn:
-            cur = conn.execute("SELECT COUNT(*) FROM playbooks")
-            count = cur.fetchone()[0]
-            if count != len(json_files):
+            cur = conn.execute("SELECT trace_id FROM playbooks")
+            db_ids = {row[0] for row in cur.fetchall()}
+
+            # Remove orphaned traces that were deleted from .tmem/traces/
+            orphaned_ids = db_ids - disk_ids
+            for oid in orphaned_ids:
+                conn.execute("DELETE FROM playbooks WHERE trace_id = ?", (oid,))
+                conn.execute("DELETE FROM exact_triggers WHERE trace_id = ?", (oid,))
+                conn.execute("DELETE FROM playbooks_fts WHERE trace_id = ?", (oid,))
+                try:
+                    conn.execute("DELETE FROM trace_links WHERE trace_id = ?", (oid,))
+                except Exception:
+                    pass
+
+            # Upsert missing or out-of-sync JSON trace files
+            if db_ids != disk_ids:
                 for jf in json_files:
                     try:
                         pb = TracePlaybook.from_dict(
@@ -112,7 +126,6 @@ class ProjectMemoryStore:
     def save_playbook(
         self,
         playbook: TracePlaybook,
-        auto_promote_global: bool = False,
         target_scope: str = "project",
     ) -> Tuple[Optional[str], Optional[str]]:
         """
@@ -337,26 +350,31 @@ class ProjectMemoryStore:
         if not self.project_traces_dir.exists():
             return stats
 
-        for jf in self.project_traces_dir.glob("*.json"):
-            try:
-                pb = TracePlaybook.from_dict(json.loads(jf.read_text(encoding="utf-8")))
-                ev = evaluate_guards(pb, self.workspace_root)
-                if ev.l0_valid:
-                    pb.status = "active"
-                    stats["active_l0"] += 1
-                elif pb.l2_causal_repairs or len(pb.l1_cochange_topology) > 0:
-                    pb.status = "active"
-                    stats["degraded_l1_l2"] += 1
-                else:
-                    pb.status = "stale"
-                    pb.confidence = max(0.1, pb.confidence - 0.3)
-                    stats["stale"] += 1
-                jf.write_text(
-                    json.dumps(pb.to_dict(), indent=2, ensure_ascii=False),
-                    encoding="utf-8",
-                )
-            except Exception:
-                continue
+        with sqlite3.connect(str(self.project_db_path)) as conn:
+            for jf in self.project_traces_dir.glob("*.json"):
+                try:
+                    pb = TracePlaybook.from_dict(json.loads(jf.read_text(encoding="utf-8")))
+                    ev = evaluate_guards(pb, self.workspace_root)
+                    from tmem.slicer import assess_playbook_triviality
+                    is_triv, reason = assess_playbook_triviality(pb)
+                    pb.is_trivial = is_triv
+                    if ev.l0_valid:
+                        pb.status = "active"
+                        stats["active_l0"] += 1
+                    elif pb.l2_causal_repairs or len(pb.l1_cochange_topology) > 0:
+                        pb.status = "active"
+                        stats["degraded_l1_l2"] += 1
+                    else:
+                        pb.status = "stale"
+                        pb.confidence = max(0.1, pb.confidence - 0.3)
+                        stats["stale"] += 1
+                    jf.write_text(
+                        json.dumps(pb.to_dict(), indent=2, ensure_ascii=False),
+                        encoding="utf-8",
+                    )
+                    self._UpsertToDb(conn, pb)
+                except Exception:
+                    continue
         try:
             self.sync_memories_markdown()
         except Exception:
@@ -446,9 +464,6 @@ class ProjectMemoryStore:
                 continue
         return playbooks
 
-    def get_all_global_playbooks(self) -> List[TracePlaybook]:
-        """Backward compatibility stub: global tier removed."""
-        return []
 
     def get_linked_traces(self, symbol: str, exclude_trace_id: str = "") -> List[str]:
         """Query other trace IDs linked by the same symbol."""

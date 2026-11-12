@@ -19,7 +19,6 @@ from tmem.models import CausalRepairPair, TracePlaybook
 def render_memories_markdown(
     playbooks: List[TracePlaybook],
     workspace_root: str,
-    global_playbooks: Optional[List[TracePlaybook]] = None,
 ) -> str:
     """Generate Markdown text for MEMORIES.md."""
     lines: List[str] = [
@@ -60,7 +59,9 @@ def render_memories_markdown(
         for pb in playbooks:
             ev = evaluate_guards(pb, workspace_root)
             tier_badge = "🟢 `L0_FULL`"
-            if ev.effective_tier == "L1_TOPOLOGY":
+            if getattr(pb, "is_trivial", False):
+                tier_badge = "⚪ `TRIVIAL`"
+            elif ev.effective_tier == "L1_TOPOLOGY":
                 tier_badge = "🟡 `L1_TOPOLOGY`"
             elif ev.effective_tier == "L2_INVARIANT":
                 tier_badge = "🔵 `L2_INVARIANT`"
@@ -194,14 +195,13 @@ def render_memories_markdown(
 def sync_memories_file(
     workspace_root: str,
     playbooks: List[TracePlaybook],
-    global_playbooks: Optional[List[TracePlaybook]] = None,
 ) -> Path:
     """Atomically write MEMORIES.md and maintain MEM.md symlink in workspace root."""
     ws = Path(workspace_root).resolve()
     target_file = ws / "MEMORIES.md"
     temp_file = ws / ".MEMORIES.md.tmp"
 
-    content = render_memories_markdown(playbooks, str(ws), global_playbooks=global_playbooks)
+    content = render_memories_markdown(playbooks, str(ws))
     temp_file.write_text(content, encoding="utf-8")
     temp_file.replace(target_file)
 

@@ -36,12 +36,14 @@ def get_token():
     token = os.environ.get("GITHUB_TOKEN")
     if token:
         return token
-    key_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".tmem", "key")
-    if os.path.exists(key_file):
-        with open(key_file) as f:
-            t = f.read().strip()
-            if t:
-                return t
+    # Try gh auth token if installed
+    try:
+        import subprocess
+        res = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, timeout=3)
+        if res.returncode == 0 and res.stdout.strip():
+            return res.stdout.strip()
+    except Exception:
+        pass
     cred_file = os.path.expanduser("~/.git-credentials")
     if os.path.exists(cred_file):
         with open(cred_file) as f:

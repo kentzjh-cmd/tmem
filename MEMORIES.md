@@ -15,7 +15,7 @@
 
 | Trace ID | Tier Status | Problem Intent / Summary | Key Files & Symbols | Verification Command | Confidence | Raw Trace |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| [`tr_cc3a687f02`](.tmem/traces/tr_cc3a687f02.json) | 🟢 `L0_FULL` | **Modify tmem/slicer.py**<br>_Key symbols: AgyAdapter, BackwardTraceSlicer, _extract_canonical_verification_cmd, _extract_toolchain_install_clause_ | `tmem/slicer.py` | `PYTHONPATH=/home/ubuntu/proj python3 -m unittest discover -s tests -v` | 100% | `-` |
+| [`tr_cc3a687f02`](.tmem/traces/tr_cc3a687f02.json) | ⚪ `TRIVIAL` | **Modify tmem/slicer.py**<br>_Key symbols: AgyAdapter, BackwardTraceSlicer, _extract_canonical_verification_cmd, _extract_toolchain_install_clause_ | `tmem/slicer.py` | `python3 -m unittest discover -s tests -v` | 50% | `-` |
 
 ---
 

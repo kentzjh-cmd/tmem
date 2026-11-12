@@ -4,7 +4,7 @@
     "PreInvocation": [
       {
         "type": "command",
-        "command": "PYTHONPATH=/home/ubuntu/proj /usr/bin/python3 -m tmem.cli hook agy pre_invocation",
+        "command": "python3 -m tmem.cli hook agy pre_invocation",
         "timeout": 5
       }
     ],
@@ -14,7 +14,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PYTHONPATH=/home/ubuntu/proj /usr/bin/python3 -m tmem.cli hook agy post_tool_use",
+            "command": "python3 -m tmem.cli hook agy post_tool_use",
             "timeout": 5
           }
         ]

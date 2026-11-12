@@ -12,10 +12,10 @@
  *    Registers `/tmem [status|list|forget|gc|inspect|replay|diff|sync] [<intent|trace_id>]` directly in `dsh-commands`.
  */
 
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const name = "tmem";
@@ -74,34 +74,74 @@ function extractTextFromContent(content) {
 }
 
 function invokeTmemHook(event, payload, options = {}) {
-  const workspaceRoot = resolve(options.workspaceRoot || process.cwd());
-  const pythonBin = options.pythonBin || process.env.TMEM_PYTHON || "python3";
-  const pythonPathRoot = resolve(options.tmemRoot || resolveDefaultTmemRoot(workspaceRoot));
-  const env = {
-    ...process.env,
-    PYTHONPATH: process.env.PYTHONPATH
-      ? `${pythonPathRoot}:${process.env.PYTHONPATH}`
-      : pythonPathRoot,
-  };
+  return new Promise((promiseResolve) => {
+    const workspaceRoot = resolve(options.workspaceRoot || process.cwd());
+    const pythonBin = options.pythonBin || process.env.TMEM_PYTHON || "python3";
+    const pythonPathRoot = resolve(options.tmemRoot || resolveDefaultTmemRoot(workspaceRoot));
+    const env = {
+      ...process.env,
+      PYTHONPATH: process.env.PYTHONPATH
+        ? `${pythonPathRoot}${delimiter}${process.env.PYTHONPATH}`
+        : pythonPathRoot,
+    };
 
-  try {
-    const res = spawnSync(pythonBin, ["-m", "tmem.cli", "hook", "dsh", event], {
-      cwd: workspaceRoot,
-      env,
-      input: JSON.stringify({ workspaceRoot, ...payload }),
-      encoding: "utf-8",
-      timeout: 5000,
-    });
-    if (res.status === 0 && res.stdout) {
-      const trimmed = res.stdout.trim();
-      if (trimmed) {
-        return JSON.parse(trimmed);
+    let timer = null;
+    let finished = false;
+
+    const safeResolve = (val) => {
+      if (finished) return;
+      finished = true;
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
       }
+      promiseResolve(val);
+    };
+
+    try {
+      const child = spawn(pythonBin, ["-m", "tmem.cli", "hook", "dsh", event], {
+        cwd: workspaceRoot,
+        env,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+
+      timer = setTimeout(() => {
+        try {
+          child.kill("SIGKILL");
+        } catch (_e) {}
+        safeResolve({});
+      }, 5000);
+
+      let stdout = "";
+      child.stdout.setEncoding("utf-8");
+      child.stdout.on("data", (chunk) => {
+        stdout += chunk;
+      });
+
+      child.on("error", (_err) => {
+        safeResolve({});
+      });
+
+      child.on("close", (code) => {
+        if (code === 0 && stdout) {
+          const trimmed = stdout.trim();
+          if (trimmed) {
+            try {
+              return safeResolve(JSON.parse(trimmed));
+            } catch (_e) {
+              return safeResolve({});
+            }
+          }
+        }
+        safeResolve({});
+      });
+
+      const inputPayload = JSON.stringify({ workspaceRoot, ...payload });
+      child.stdin.end(inputPayload, "utf-8");
+    } catch (_err) {
+      safeResolve({});
     }
-  } catch (_err) {
-    // Fail-open: never disrupt the host dsh agent loop
-  }
-  return {};
+  });
 }
 
 function createNoticeMessage(text, summary = "tmem") {
@@ -140,7 +180,7 @@ export function apply(ctx, config = {}) {
             invocation?.agent,
             configuredWorkspace
           );
-          const out = invokeTmemHook(
+          const out = await invokeTmemHook(
             "command",
             {
               sessionId:
@@ -198,7 +238,7 @@ export function apply(ctx, config = {}) {
 
     const workspaceRoot = resolveSessionWorkspace(ctx, agent, configuredWorkspace);
     const sessionId = agent?.session?.id || "default";
-    const out = invokeTmemHook(
+    const out = await invokeTmemHook(
       "pre_invocation",
       {
         sessionId,
@@ -262,7 +302,7 @@ export function apply(ctx, config = {}) {
 
     const workspaceRoot = resolveSessionWorkspace(ctx, exec?.agent, configuredWorkspace);
     const sessionId = exec?.agent?.session?.id || "default";
-    const out = invokeTmemHook(
+    const out = await invokeTmemHook(
       "post_tool_use",
       {
         sessionId,

@@ -75,6 +75,17 @@ class SweBenchAdapter(AgentAdapter):
             or data.get("task_description")
             or ""
         )
+        if not problem_stmt and "history" in data and isinstance(data["history"], list):
+            for h in data["history"]:
+                if isinstance(h, dict) and h.get("role") == "user":
+                    cnt = str(h.get("content", ""))
+                    if "ISSUE:" in cnt:
+                        problem_stmt = cnt.split("ISSUE:", 1)[1].strip()
+                        break
+                    elif "solving the following issue" in cnt:
+                        problem_stmt = cnt.strip()
+                        break
+
         if problem_stmt:
             stmt_str = str(problem_stmt).strip()[:1000]
             session.user_intents.append(stmt_str)
@@ -127,6 +138,22 @@ class SweBenchAdapter(AgentAdapter):
                 if conc:
                     session.assistant_conclusions.append(conc)
 
+            # If state provides open_file, maintain last_file_opened
+            st_raw = turn.get("state")
+            if st_raw and isinstance(st_raw, str):
+                try:
+                    sd = json.loads(st_raw)
+                    of = sd.get("open_file")
+                    if of and of != "n/a":
+                        cleaned = re.sub(r"^/[^/]+__[^/]+/", "", of)
+                        last_file_opened = normalize_rel_path(cleaned, workspace_root)
+                except Exception:
+                    pass
+            # Also check if observation introduces [File: ...]
+            m_obs_f = re.search(r"\[File:\s*(?:/[^/]+__[^/]+/)?([^\s\(\]]+)", obs_str)
+            if m_obs_f:
+                last_file_opened = normalize_rel_path(m_obs_f.group(1), workspace_root)
+
             node = self._normalize_swe_agent_action(idx, action_str, obs_str, last_file_opened, workspace_root)
             if node:
                 rat_raw = thought or response or ""
@@ -166,17 +193,32 @@ class SweBenchAdapter(AgentAdapter):
         if not action_str:
             return None
 
-        # 1. open_file / view / cat commands
-        m_open = re.match(r"^(?:open_file|view|cat|read)\s+([^\s\n]+)", action_str)
+        # 1. open_file / open / view / cat commands
+        m_open = re.match(r"^(?:open_file|open|view|cat|read)\s+([^\s\n]+)", action_str)
         if m_open:
-            fpath = normalize_rel_path(m_open.group(1), workspace_root)
+            raw_path = m_open.group(1).strip("'\"")
+            raw_path = re.sub(r"^/[^/]+__[^/]+/", "", raw_path)
+            fpath = normalize_rel_path(raw_path, workspace_root)
             return ActionNode(step_idx=step_idx, kind=ActionKind.READ, tool_name="open_file", target_file=fpath)
 
-        # 2. edit_file / edit / str_replace / patch
-        m_edit = re.match(r"^(?:edit_file|edit|patch|create_file|write_file)(?:\s+([^\s\n]+))?", action_str)
+        # 2. create_file / create / touch commands
+        m_create = re.match(r"^(?:create_file|create|touch)\s+([^\s\n]+)", action_str)
+        if m_create:
+            raw_path = m_create.group(1).strip("'\"")
+            raw_path = re.sub(r"^/[^/]+__[^/]+/", "", raw_path)
+            fpath = normalize_rel_path(raw_path, workspace_root)
+            return ActionNode(step_idx=step_idx, kind=ActionKind.MUTATE, tool_name="create_file", target_file=fpath)
+
+        # 3. edit_file / edit / str_replace / patch
+        m_edit = re.match(r"^(?:edit_file|edit|patch|write_file)(?:\s+([^\s\n]+))?", action_str)
         if m_edit:
-            target = m_edit.group(1) or last_file_opened
-            fpath = normalize_rel_path(target, workspace_root)
+            target = m_edit.group(1)
+            if not target or re.match(r"^\d+:\d+$", target):
+                target = last_file_opened
+            else:
+                target = target.strip("'\"")
+                target = re.sub(r"^/[^/]+__[^/]+/", "", target)
+            fpath = normalize_rel_path(target, workspace_root) if target else None
             syms = extract_symbols_from_text(action_str, fpath)
             return ActionNode(
                 step_idx=step_idx,
@@ -186,7 +228,17 @@ class SweBenchAdapter(AgentAdapter):
                 symbols_touched=syms,
             )
 
-        # 3. Environment execution (pytest, python, tox, bash commands)
+        # 4. Search / exploratory commands
+        m_search = re.match(r"^(?:find_file|search_file|search_dir)\s+", action_str)
+        if m_search:
+            return ActionNode(
+                step_idx=step_idx,
+                kind=ActionKind.READ,
+                tool_name="search",
+                command=action_str,
+            )
+
+        # 5. Environment execution (pytest, python, tox, bash commands)
         return ActionNode(
             step_idx=step_idx,
             kind=ActionKind.ENV_EXEC,

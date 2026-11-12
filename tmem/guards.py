@@ -9,12 +9,51 @@ Validates L0 guards in <5ms with zero LLM tokens:
 
 from __future__ import annotations
 
+import ast
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Set, Tuple
 
 from tmem.models import GuardProbe, TracePlaybook
+
+
+def _check_symbol_in_python_ast(content: str, expected_symbol: str) -> bool:
+    """Verify presence of a defined symbol (func, class, method, variable) in Python AST."""
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        # Fallback to regex if the file has syntax errors during drift
+        return bool(re.search(rf"\b{re.escape(expected_symbol)}\b", content))
+
+    target_class = None
+    target_sym = expected_symbol
+    if "." in expected_symbol:
+        parts = expected_symbol.split(".", 1)
+        target_class, target_sym = parts[0], parts[1]
+
+    for node in ast.walk(tree):
+        if target_class:
+            if isinstance(node, ast.ClassDef) and node.name == target_class:
+                for item in node.body:
+                    if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name == target_sym:
+                        return True
+                    if isinstance(item, ast.Assign):
+                        for t in item.targets:
+                            if isinstance(t, ast.Name) and t.id == target_sym:
+                                return True
+        else:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                if node.name == target_sym:
+                    return True
+            elif isinstance(node, ast.Assign):
+                for t in node.targets:
+                    if isinstance(t, ast.Name) and t.id == target_sym:
+                        return True
+            elif isinstance(node, ast.AnnAssign):
+                if isinstance(node.target, ast.Name) and node.target.id == target_sym:
+                    return True
+    return False
 
 
 @dataclass
@@ -27,16 +66,7 @@ class EvaluatedPlaybook:
 
 
 def evaluate_guards(playbook: TracePlaybook, workspace_root: str) -> EvaluatedPlaybook:
-    """Run <5ms filesystem and symbol assertions for a TracePlaybook with partial degradation."""
-    if playbook.scope == "global":
-        return EvaluatedPlaybook(
-            playbook=playbook,
-            l0_valid=False,
-            effective_tier="L2_INVARIANT",
-            failed_guards=[],
-            passed_files=[],
-        )
-
+    """Run <5ms filesystem and AST/symbol assertions for a TracePlaybook with partial degradation."""
     ws = Path(workspace_root)
     failed: List[str] = []
     checked_files: Set[str] = set()
@@ -53,7 +83,12 @@ def evaluate_guards(playbook: TracePlaybook, workspace_root: str) -> EvaluatedPl
             else:
                 try:
                     content = target_path.read_text(encoding="utf-8", errors="ignore")
-                    if not re.search(rf"\b{re.escape(g.expected)}\b", content):
+                    is_py = target_path.suffix.lower() == ".py"
+                    if is_py:
+                        present = _check_symbol_in_python_ast(content, g.expected)
+                    else:
+                        present = bool(re.search(rf"\b{re.escape(g.expected)}\b", content))
+                    if not present:
                         failed.append(f"missing_symbol:{g.target}#{g.expected}")
                 except Exception:
                     failed.append(f"unreadable:{g.target}")

@@ -360,7 +360,7 @@ class TestRawAndMemories(unittest.TestCase):
         raw_store.save_raw_trace(self.sample_raw_trace)
         store.save_playbook(self.sample_playbook, target_scope="project")
 
-        # Test agy hook execution for inspect
+        # Test agy hook execution for inspect (both positional level and --level flag)
         payload = {
             "conversationId": "conv_test_1",
             "lastUserInput": "/tmem inspect tr_unit_test_001 index",
@@ -369,6 +369,16 @@ class TestRawAndMemories(unittest.TestCase):
         hook_resp = handle_agy_hook("pre_invocation", payload)
         msg = hook_resp["injectSteps"][0]["systemMessage"]["systemMessage"]
         self.assertIn("[tr_unit_test_001]", msg)
+
+        payload["lastUserInput"] = "/tmem inspect tr_unit_test_001 --level raw"
+        hook_resp = handle_agy_hook("pre_invocation", payload)
+        msg = hook_resp["injectSteps"][0]["systemMessage"]["systemMessage"]
+        self.assertIn("Forensic Trace Replay", msg)
+
+        payload["lastUserInput"] = "/tmem inspect"
+        hook_resp = handle_agy_hook("pre_invocation", payload)
+        msg = hook_resp["injectSteps"][0]["systemMessage"]["systemMessage"]
+        self.assertIn("not found in project memory", msg)
 
         # Test agy hook execution for replay
         payload["lastUserInput"] = "/tmem replay tr_unit_test_001"

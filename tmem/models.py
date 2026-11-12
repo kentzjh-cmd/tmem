@@ -143,8 +143,8 @@ class TracePlaybook:
 
     trace_id: str
     agent_source: str                  # "agy" | "codex" | "opencode" | "pi" | "dsh"
-    scope: str                         # "project" | "global"
-    created_at: str
+    scope: str = "project"             # Repository-scoped: "project"
+    created_at: str = ""
     git_commit: Optional[str] = None
     schema_version: int = 2
 
@@ -178,6 +178,7 @@ class TracePlaybook:
     confidence: float = 1.0
     hit_count: int = 0
     status: str = "active"             # "active" | "stale" | "invalidated"
+    is_trivial: bool = False
     raw_steps_count: int = 0
     sliced_steps_count: int = 0
     raw_trace_path: Optional[str] = None
@@ -210,6 +211,7 @@ class TracePlaybook:
         copied.setdefault("raw_trace_hash", None)
         copied.setdefault("root_cause", None)
         copied.setdefault("pitfalls", [])
+        copied.setdefault("is_trivial", False)
         return cls(**copied)
 
 

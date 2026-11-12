@@ -12,11 +12,15 @@ from tmem.adapters.swe_bench import SweBenchAdapter
 from tmem.adapters.base import (
     AgentAdapter,
     ParsedSession,
+    clean_rationale,
+    extract_assistant_conclusion,
     extract_error_signature,
     extract_symbols_from_text,
+    is_filler_user_intent,
     normalize_rel_path,
+    scrub_secrets,
 )
-from tmem.models import ActionKind, ActionNode
+from tmem.models import ActionKind, ActionNode, Requirement
 
 
 class GenericJsonlAgentAdapter(AgentAdapter):
@@ -63,9 +67,25 @@ class GenericJsonlAgentAdapter(AgentAdapter):
 
                 # User prompt extraction
                 if role in ("user", "human", "USER_INPUT"):
-                    text = content if isinstance(content, str) else json.dumps(content)
-                    if text.strip():
-                        session.user_intents.append(text.strip()[:500])
+                    raw_text = content if isinstance(content, str) else json.dumps(content)
+                    text = scrub_secrets(raw_text).strip()
+                    if (
+                        text
+                        and not text.startswith("/")
+                        and text != "[REDACTED_SECRET]"
+                        and not is_filler_user_intent(text)
+                    ):
+                        session.user_intents.append(text[:500])
+                        req_id = f"R{len(session.user_requirements) + 1}"
+                        session.user_requirements.append(
+                            Requirement(req_id=req_id, text=text[:500], source="user")
+                        )
+
+                elif role in ("assistant", "model"):
+                    raw_asst = content if isinstance(content, str) else json.dumps(content)
+                    conclusion = extract_assistant_conclusion(raw_asst)
+                    if conclusion:
+                        session.assistant_conclusions.append(conclusion)
 
                 # Tool calls in OpenAI/Anthropic/Codex/Pi/OpenCode schemas
                 tool_calls = (
@@ -129,12 +149,7 @@ class GenericJsonlAgentAdapter(AgentAdapter):
             or args.get("Path")
             or args.get("file")
         )
-        cmd_arg = (
-            args.get("command")
-            or args.get("cmd")
-            or args.get("CommandLine")
-            or ( " ".join(args[" command"]) if isinstance(args.get("command"), list) else None )
-        )
+        cmd_arg = args.get("command") or args.get("cmd") or args.get("CommandLine")
         if isinstance(cmd_arg, list):
             cmd_arg = " ".join(str(x) for x in cmd_arg)
 

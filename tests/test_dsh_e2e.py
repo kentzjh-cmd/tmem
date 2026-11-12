@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -405,10 +406,12 @@ class TestDshPluginEndToEnd(unittest.TestCase):
         Node.js runtime with `.dsh/plugins/tmem-dsh-plugin.mjs` loaded!
         """
         self._create_dsh_v4_session("sess_dsh_live")
+        repo_root = str(Path(__file__).resolve().parents[1])
+        python_bin = sys.executable
         env_patch = {
             "DSH_HOME": str(self.dsh_home),
             "TMEM_GLOBAL_DIR": str(self.global_home),
-            "PYTHONPATH": "/home/ubuntu/proj",
+            "PYTHONPATH": repo_root,
         }
         with patch.dict(os.environ, env_patch):
             info = install_invisible_integration(str(self.workspace), ["dsh"], install_git_hook=True)
@@ -451,8 +454,8 @@ const ctx = new Context();
 ctx.plugin(dshCommands.default);
 ctx.plugin(tmemPlugin.default, {{
   workspaceRoot: {json.dumps(str(self.workspace))},
-  tmemRoot: "/home/ubuntu/proj",
-  pythonBin: "/usr/bin/python3"
+  tmemRoot: {json.dumps(repo_root)},
+  pythonBin: {json.dumps(python_bin)}
 }});
 
 // Wait a tick for Cordis service injection
@@ -574,7 +577,7 @@ console.log(JSON.stringify({{
 
         # Verify `/tmem bench` executed and returned benchmark report
         self.assertIn("tmem Upstream Memory Compilation", payload["benchText"])
-        self.assertIn("tmem Downstream Agent Efficacy", payload["benchText"])
+        self.assertIn("tmem Trajectory Distillation", payload["benchText"])
 
         # Verify `tools/post-execute` injected `<tmem_milestone_reached>` after `edit` -> `bash(pytest)`
         self.assertEqual(len(payload["milestoneContexts"]), 1)
@@ -640,6 +643,22 @@ console.log(JSON.stringify({{
             )
             self.assertEqual(forget_out["kind"], "success")
             self.assertIn('"deleted": true', forget_out["text"])
+
+    def test_plugin_source_contracts_and_license(self) -> None:
+        """Verify license existence, async spawn, and cross-platform path delimiter in plugin contracts."""
+        repo_root = Path(__file__).resolve().parent.parent
+        license_path = repo_root / "LICENSE"
+        self.assertTrue(license_path.exists(), "LICENSE file must exist in repository root")
+        self.assertIn("MIT License", license_path.read_text(encoding="utf-8"))
+        self.assertIn("kentzjh-cmd", license_path.read_text(encoding="utf-8"))
+
+        pkg_json = json.loads((repo_root / "package.json").read_text(encoding="utf-8"))
+        self.assertIn("LICENSE", pkg_json.get("files", []))
+
+        plugin_code = (repo_root / "tmem" / "dsh_plugin.mjs").read_text(encoding="utf-8")
+        self.assertNotIn("spawnSync", plugin_code, "Plugin must use non-blocking async spawn instead of spawnSync")
+        self.assertIn("spawn", plugin_code)
+        self.assertIn("delimiter", plugin_code, "Plugin must use path.delimiter for cross-platform PYTHONPATH")
 
 
 if __name__ == "__main__":

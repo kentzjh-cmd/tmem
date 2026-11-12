@@ -1,7 +1,7 @@
 {
   "name": "dsh-tmem",
   "version": "0.2.0",
-  "description": "Invisible Backward-Slicing Execution Trace Memory Compiler for DeepSeek Harness (dsh) and multi-agent coding harnesses: slices session.v4.jsonl against git ground truth into guarded L0/L1/L2 playbooks (.tmem/ project + ~/.tmem/ global)",
+  "description": "Invisible Backward-Slicing Execution Trace Memory Compiler for DeepSeek Harness (dsh) and multi-agent coding harnesses: slices session.v4.jsonl against git ground truth into guarded L0/L1/L2 playbooks (.tmem/)",
   "type": "module",
   "main": "./tmem/dsh_plugin.mjs",
   "exports": {
@@ -15,7 +15,8 @@
     "tmem/dsh_plugin.mjs",
     "AGENTS.md",
     "README.md",
-    "README_EN.md"
+    "README_EN.md",
+    "LICENSE"
   ],
   "repository": {
     "type": "git",

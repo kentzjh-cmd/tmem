@@ -356,6 +356,182 @@ class TestIntentGraph(unittest.TestCase):
         linked = store.get_linked_traces("refresh_mutex_lock", exclude_trace_id="tr_other")
         self.assertIn("tr_graph_indexed", linked)
 
+    def test_repeated_mutations_symbol_merge_and_causal_fixed_by_edge(self) -> None:
+        """Verify multiple mutations to same file merge symbols and fixed_by edge cites actual repair step."""
+        act1 = ActionNode(
+            step_idx=1,
+            kind=ActionKind.MUTATE,
+            tool_name="edit_file",
+            target_file="src/other.py",
+            symbols_touched=["init_other"],
+        )
+        act2 = ActionNode(
+            step_idx=2,
+            kind=ActionKind.MUTATE,
+            tool_name="edit_file",
+            target_file="src/auth.py",
+            symbols_touched=["parse_header"],
+        )
+        act3 = ActionNode(
+            step_idx=3,
+            kind=ActionKind.ENV_EXEC,
+            tool_name="run_command",
+            command="pytest tests/test_auth.py",
+            exit_code=1,
+            error_signature="ValueError: invalid signature",
+        )
+        act4 = ActionNode(
+            step_idx=4,
+            kind=ActionKind.MUTATE,
+            tool_name="edit_file",
+            target_file="src/auth.py",
+            symbols_touched=["verify_signature"],
+            rationale="Fix signature verification padding",
+        )
+        act5 = ActionNode(
+            step_idx=5,
+            kind=ActionKind.ENV_EXEC,
+            tool_name="run_command",
+            command="pytest tests/test_auth.py",
+            exit_code=0,
+        )
+
+        session = ParsedSession(
+            agent_name="agy",
+            session_id="sess_multi_mut",
+            workspace_root=str(self.workspace),
+            user_intents=["Fix signature verification in src/auth.py"],
+            actions=[act1, act2, act3, act4, act5],
+        )
+
+        slicer = BackwardTraceSlicer()
+        pb = slicer.slice_session(session, use_git_ground_truth=False)
+        self.assertIsNotNone(pb)
+
+        auth_mut = next(s for s in pb.l0_critical_path if s.get("target") == "src/auth.py")
+        self.assertEqual(auth_mut["symbols"], ["parse_header", "verify_signature"])
+        self.assertEqual(auth_mut.get("rationale"), "Fix signature verification padding")
+
+        fixed_edge = next(e for e in pb.intent_edges if e.relation == "fixed_by")
+        self.assertEqual(fixed_edge.src, "E1")
+        self.assertEqual(fixed_edge.dst, "s4")
+        self.assertEqual(fixed_edge.evidence, [4])
+
+    def test_sqlite_orphan_cleanup_and_gc_db_sync(self) -> None:
+        """Verify deleted JSON traces are purged from SQLite and GC updates SQLite confidence/status."""
+        store = DualTierMemoryStore(workspace_root=str(self.workspace))
+        pb = TracePlaybook(
+            trace_id="tr_orphan_check",
+            agent_source="agy",
+            scope="project",
+            created_at="2026-11-11T12:00:00Z",
+            problem_intent="Fix missing config parser",
+            touched_files=["src/missing_cfg.py"],
+            guards=[GuardProbe(probe_type="file_exists", target="src/missing_cfg.py")],
+            l0_critical_path=[{"step": 1, "action": "MUTATE", "target": "src/missing_cfg.py"}],
+            confidence=1.0,
+        )
+        store.save_playbook(pb)
+        self.assertEqual(len(store.cascading_lookup(query_text="missing config parser")), 1)
+
+        # Run GC: guard fails and no L1/L2 -> status becomes stale, confidence drops to 0.7 in both JSON and SQLite
+        stats = store.run_metabolism_gc()
+        self.assertEqual(stats["stale"], 1)
+        recalled_after_gc = store.cascading_lookup(query_text="missing config parser")
+        self.assertEqual(len(recalled_after_gc), 1)
+        self.assertEqual(recalled_after_gc[0].playbook.status, "stale")
+        self.assertAlmostEqual(recalled_after_gc[0].playbook.confidence, 0.7)
+
+        # Now delete the JSON file directly from disk (e.g. git branch switch / rm)
+        (store.project_traces_dir / "tr_orphan_check.json").unlink()
+        recalled_after_rm = store.cascading_lookup(query_text="missing config parser")
+        self.assertEqual(recalled_after_rm, [])
+
+    def test_ast_symbol_guard_precision(self) -> None:
+        """Verify that Python AST symbol guard accurately checks real definitions and rejects comments."""
+        code_file = self.workspace / "src" / "service.py"
+        code_file.parent.mkdir(parents=True, exist_ok=True)
+        code_file.write_text(
+            '# Comment mentioning old_legacy_handler\n'
+            '"""Docstring mentioning deprecated_method."""\n'
+            'class WorkerService:\n'
+            '    def process_task(self):\n'
+            '        pass\n'
+            'def standalone_runner():\n'
+            '    pass\n',
+            encoding="utf-8",
+        )
+
+        pb_valid = TracePlaybook(
+            trace_id="tr_ast_valid",
+            agent_source="agy",
+            scope="project",
+            created_at="2026-11-11T12:00:00Z",
+            problem_intent="Worker service process task",
+            guards=[
+                GuardProbe(probe_type="symbol_present", target="src/service.py", expected="WorkerService"),
+                GuardProbe(probe_type="symbol_present", target="src/service.py", expected="WorkerService.process_task"),
+                GuardProbe(probe_type="symbol_present", target="src/service.py", expected="standalone_runner"),
+            ],
+            l0_critical_path=[{"step": 1, "action": "MUTATE", "target": "src/service.py"}],
+        )
+        ev_valid = evaluate_guards(pb_valid, str(self.workspace))
+        self.assertTrue(ev_valid.l0_valid)
+        self.assertEqual(ev_valid.effective_tier, "L0_FULL")
+
+        # Comment mention must NOT pass AST check
+        pb_comment = TracePlaybook(
+            trace_id="tr_ast_comment",
+            agent_source="agy",
+            scope="project",
+            created_at="2026-11-11T12:00:00Z",
+            problem_intent="Legacy handler",
+            guards=[
+                GuardProbe(probe_type="symbol_present", target="src/service.py", expected="old_legacy_handler"),
+            ],
+            l0_critical_path=[{"step": 1, "action": "MUTATE", "target": "src/service.py"}],
+        )
+        ev_comment = evaluate_guards(pb_comment, str(self.workspace))
+        self.assertFalse(ev_comment.l0_valid)
+        self.assertIn("missing_symbol:src/service.py#old_legacy_handler", ev_comment.failed_guards)
+
+        # Docstring mention must NOT pass AST check
+        pb_doc = TracePlaybook(
+            trace_id="tr_ast_doc",
+            agent_source="agy",
+            scope="project",
+            created_at="2026-11-11T12:00:00Z",
+            problem_intent="Deprecated method",
+            guards=[
+                GuardProbe(probe_type="symbol_present", target="src/service.py", expected="deprecated_method"),
+            ],
+            l0_critical_path=[{"step": 1, "action": "MUTATE", "target": "src/service.py"}],
+        )
+        ev_doc = evaluate_guards(pb_doc, str(self.workspace))
+        self.assertFalse(ev_doc.l0_valid)
+        self.assertIn("missing_symbol:src/service.py#deprecated_method", ev_doc.failed_guards)
+
+    def test_portable_init_contracts(self) -> None:
+        """Verify that tmem init outputs portable relative configurations without hardcoded absolute paths."""
+        from tmem.cli import install_invisible_integration
+        temp_dir = tempfile.mkdtemp(prefix="tmem_init_test_")
+        try:
+            info = install_invisible_integration(temp_dir, ["agy", "dsh"])
+            hooks_json = Path(temp_dir) / ".agents" / "plugins" / "tmem" / "hooks.json"
+            self.assertTrue(hooks_json.exists())
+            hooks_content = hooks_json.read_text(encoding="utf-8")
+            self.assertNotIn("/usr/bin/python3", hooks_content)
+            self.assertNotIn("PYTHONPATH=", hooks_content)
+            self.assertIn("python3 -m tmem.cli hook agy", hooks_content)
+
+            dsh_patch = Path(temp_dir) / ".dsh" / "tmem.patch.yml"
+            self.assertTrue(dsh_patch.exists())
+            patch_content = dsh_patch.read_text(encoding="utf-8")
+            self.assertIn("./.dsh/plugins/tmem-dsh-plugin.mjs", patch_content)
+            self.assertNotIn("pythonBin: /usr/bin/python3", patch_content)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
 
 if __name__ == "__main__":
     unittest.main()
