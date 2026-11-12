@@ -243,11 +243,19 @@ def assess_playbook_triviality(playbook: TracePlaybook) -> Tuple[bool, str]:
     """
     if playbook.l2_causal_repairs:
         return False, "Contains verified L2 causal error-to-fix repairs"
-    if len(playbook.touched_files) > 1:
-        return False, f"Contains multi-file co-change topology ({len(playbook.touched_files)} files)"
+
+    code_files = [f for f in playbook.touched_files if is_code_file(f)]
+    if len(code_files) > 1:
+        return False, f"Contains multi-file co-change topology ({len(code_files)} code files)"
+    if not code_files:
+        return True, "Does not touch any source code files (documentation/metadata only)"
 
     actions = [str(s.get("action")) for s in playbook.l0_critical_path]
-    targets = {str(s.get("target")) for s in playbook.l0_critical_path if s.get("target")}
+    targets = {
+        str(s.get("target"))
+        for s in playbook.l0_critical_path
+        if s.get("target") and is_code_file(str(s.get("target")))
+    }
 
     # Single-file edit with only standard READ -> MUTATE -> ENV_EXEC
     if len(targets) <= 1:
@@ -260,6 +268,9 @@ def assess_playbook_triviality(playbook: TracePlaybook) -> Tuple[bool, str]:
         ):
             target_name = list(targets)[0] if targets else "isolated file"
             return True, f"Tautological single-file routine on '{target_name}' without error-fix causality or multi-file topology"
+
+    if not playbook.l1_verification_cmds:
+        return True, "Lacks verified test/build execution command"
 
     return False, "Meets non-trivial complexity thresholds"
 
