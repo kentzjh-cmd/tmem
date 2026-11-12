@@ -24,7 +24,7 @@ from tmem.adapters.base import (
     is_high_entropy_error_signature,
 )
 from tmem.cli import execute_capture, handle_agy_hook
-from tmem.models import ActionKind, ActionNode, GuardProbe, TracePlaybook
+from tmem.models import ActionKind, ActionNode, CausalRepairPair, GuardProbe, TracePlaybook
 from tmem.slicer import (
     BackwardTraceSlicer,
     assess_playbook_triviality,
@@ -300,6 +300,152 @@ class TestPragmaticOptimizations(unittest.TestCase):
         cmd = "r = re.compile(r'test') && print(bool(r.search('python3 test.py')))"
         res = slicer._extract_canonical_verification_cmd(cmd)
         self.assertIsNone(res, "Inline assignment expression should be rejected as verification command")
+
+    def test_p0_2_tr_37a01e0db5_fixture_produces_zero_l2_repairs(self) -> None:
+        """Roadmap 0.2: tr_37a01e0db5 fixture must produce 0 L2 causal repairs."""
+        fixture_path = Path(__file__).parent / "fixtures" / "tr_37a01e0db5.raw.json"
+        self.assertTrue(fixture_path.exists(), f"Fixture missing: {fixture_path}")
+
+        with fixture_path.open("r", encoding="utf-8") as f:
+            raw_data = json.load(f)
+
+        actions = [
+            ActionNode(
+                step_idx=a["step_idx"],
+                kind=ActionKind(a["kind"]),
+                tool_name=a.get("tool_name") or "run_command",
+                target_file=a.get("target_file"),
+                command=a.get("command"),
+                exit_code=a.get("exit_code"),
+                error_signature=a.get("error_signature"),
+                output_snippet=a.get("output_snippet"),
+                raw_output=a.get("raw_output"),
+                rationale=a.get("rationale"),
+                symbols_touched=a.get("symbols_touched") or [],
+            )
+            for a in raw_data["actions"]
+        ]
+
+        slicer = BackwardTraceSlicer()
+        repairs, _ = slicer._extract_causal_repairs_with_indices(
+            actions=actions,
+            effective_files={
+                "README.md",
+                "README_EN.md",
+                "tests/test_optimizations.py",
+                "tmem/adapters/base.py",
+                "tmem/evaluate.py",
+                "tmem/slicer.py",
+            },
+            workspace_root=str(self.workspace),
+        )
+        self.assertEqual(len(repairs), 0, "tr_37a01e0db5 fixture must produce exactly 0 L2 repairs")
+
+    def test_p0_3_confidence_calibration_capped_at_0_7(self) -> None:
+        """Roadmap 0.3: Single-session playbook confidence must be <= 0.70."""
+        code_file = self.workspace / "logic.py"
+        code_file.write_text("def add(a, b): return a + b\n")
+        subprocess.run(["git", "add", "."], cwd=self.workspace, check=True)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=self.workspace, check=True)
+
+        actions = [
+            ActionNode(
+                step_idx=1,
+                kind=ActionKind.MUTATE,
+                tool_name="edit_file",
+                target_file="logic.py",
+                symbols_touched=["add"],
+            ),
+            ActionNode(
+                step_idx=2,
+                kind=ActionKind.ENV_EXEC,
+                tool_name="run_command",
+                command="pytest",
+                exit_code=0,
+            ),
+        ]
+        session = ParsedSession(
+            agent_name="agy",
+            session_id="test_conf_sess",
+            workspace_root=str(self.workspace),
+            user_intents=["Implement add function in logic.py"],
+            actions=actions,
+        )
+        slicer = BackwardTraceSlicer()
+        pb = slicer.slice_session(session, use_git_ground_truth=False)
+        self.assertIsNotNone(pb)
+        assert pb is not None
+        self.assertLessEqual(pb.confidence, 0.70, "Single-session confidence must be capped at 0.70")
+        self.assertGreaterEqual(pb.confidence, 0.30)
+
+    def test_p0_4_meta_review_session_marked_as_non_task_and_not_stored(self) -> None:
+        """Roadmap 0.4: Meta review sessions must be marked non_task and produce None."""
+        actions = [
+            ActionNode(
+                step_idx=1,
+                kind=ActionKind.READ,
+                tool_name="read_file",
+                target_file="tmem/slicer.py",
+            ),
+            ActionNode(
+                step_idx=2,
+                kind=ActionKind.MUTATE,
+                tool_name="edit_file",
+                target_file="README.md",
+            ),
+        ]
+        session = ParsedSession(
+            agent_name="agy",
+            session_id="test_meta_sess",
+            workspace_root=str(self.workspace),
+            user_intents=["务实的评价下本项目，客观甚至刻薄的给与评分", "根据反馈优化项目"],
+            actions=actions,
+        )
+        slicer = BackwardTraceSlicer()
+        intent, summary = slicer._synthesize_semantic_topic(
+            session=session,
+            sorted_files=["README.md"],
+            sorted_symbols=[],
+            commit_subject=None,
+        )
+        self.assertEqual(intent, "non_task")
+        pb = slicer.slice_session(session, use_git_ground_truth=False)
+        self.assertIsNone(pb, "Meta-request session should not be persisted into memory")
+
+    def test_p0_5_memories_table_rendering_preserves_structure_with_multiline_and_pipes(self) -> None:
+        """Roadmap 0.5: MEMORIES.md table rendering must escape pipes and collapse newlines."""
+        from tmem.mem_doc import render_memories_markdown
+        multiline_cmd = "python3 -c '\nimport os\nfor i in range(5):\n    print(\"foo | bar\")\n'"
+        repair = CausalRepairPair(
+            error_signature="TypeError: bad | signature\nline 2",
+            failed_command=multiline_cmd,
+            repair_action="edit a.py | edit b.py",
+            verification_cmd="pytest -k 'test | pipe'",
+        )
+        pb = TracePlaybook(
+            trace_id="tr_multi_cmd",
+            agent_source="agy",
+            l2_causal_repairs=[repair],
+        )
+        md = render_memories_markdown([pb], str(self.workspace))
+        # Find the row containing the multiline command in Section 2
+        l2_rows = [ln for ln in md.splitlines() if "python3 -c" in ln and ln.startswith("|")]
+        self.assertEqual(len(l2_rows), 1, "Multiline command must render on exactly a single table row")
+        l2_row = l2_rows[0]
+        self.assertNotIn("\n", l2_row)
+        # Verify columns in the L2 table row (should have 4 columns separated by unescaped pipes)
+        # Using regex to split by unescaped pipe: (?<!\\)\|
+        import re
+        cols = [c.strip() for c in re.split(r"(?<!\\)\|", l2_row.strip("|"))]
+        self.assertEqual(len(cols), 4, f"L2 table row must have 4 columns, got {len(cols)}")
+
+    def test_p0_6_agents_rules_do_not_contain_skip_exploration(self) -> None:
+        """Roadmap 0.6: AGENTS.md rules must not instruct agents to skip exploration."""
+        agents_md = Path(__file__).parent.parent / "AGENTS.md"
+        content = agents_md.read_text(encoding="utf-8")
+        self.assertNotIn("redundant exploratory `grep`/`find` scans", content)
+        self.assertNotIn("不要再 grep/find 探索", content)
+        self.assertIn("clues", content.lower())
 
 
 if __name__ == "__main__":

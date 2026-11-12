@@ -1,0 +1,220 @@
+{
+  "total_indexed_playbooks": 25,
+  "total_eval_queries": 25,
+  "metrics": {
+    "recall_at_1": 100.0,
+    "recall_at_3": 100.0,
+    "mrr": 1.0,
+    "negative_holdout_queries": 6,
+    "false_positive_rate": 16.7
+  },
+  "queries": [
+    {
+      "dataset_instance": "astropy__astropy-14182",
+      "target_trace_id": "tr_46b9650da6",
+      "query_snippet": "Please support header rows in RestructuredText output\n### Description\r\n\r\nIt woul...",
+      "retrieval_rank": 1,
+      "top_retrieved": "tr_46b9650da6"
+    },
+    {
+      "dataset_instance": "astropy__astropy-14365",
+      "target_trace_id": "tr_d18f683d06",
+      "query_snippet": "ascii.qdp Table format assumes QDP commands are upper case\n### Description\n\nasci...",
+      "retrieval_rank": 1,
+      "top_retrieved": "tr_d18f683d06"
+    },
+    {
+      "dataset_instance": "django__django-10914",
+      "target_trace_id": "tr_8cb204f61e",
+      "query_snippet": "Set default FILE_UPLOAD_PERMISSION to 0o644.\nDescription\n\t\nHello,\nAs far as I ca...",
+      "retrieval_rank": 1,
+      "top_retrieved": "tr_8cb204f61e"
+    },
+    {
+      "dataset_instance": "django__django-10924",
+      "target_trace_id": "tr_1860a29a79",
+      "query_snippet": "Allow FilePathField path to accept a callable.\nDescription\n\t\nI have a special ca...",
+      "retrieval_rank": 1,
+      "top_retrieved": "tr_1860a29a79"
+    },
+    {
+      "dataset_instance": "django__django-11001",
+      "target_trace_id": "tr_e3bbe020a1",
+      "query_snippet": "Incorrect removal of order_by clause created as multiline RawSQL\nDescription\n\t\nH...",
+      "retrieval_rank": 1,
+      "top_retrieved": "tr_e3bbe020a1"
+    },
+    {
+      "dataset_instance": "django__django-11019",
+      "target_trace_id": "tr_967658cea1",
+      "query_snippet": "Merging 3 or more media objects can throw unnecessary MediaOrderConflictWarnings...",
+      "retrieval_rank": 1,
+      "top_retrieved": "tr_967658cea1"
+    },
+    {
+      "dataset_instance": "django__django-11039",
+      "target_trace_id": "tr_c2534642ca",
+      "query_snippet": "sqlmigrate wraps it's outpout in BEGIN/COMMIT even if the database doesn't suppo...",
+      "retrieval_rank": 1,
+      "top_retrieved": "tr_c2534642ca"
+    },
+    {
+      "dataset_instance": "matplotlib__matplotlib-23913",
+      "target_trace_id": "tr_059d4f51f2",
+      "query_snippet": "legend draggable as keyword\n<!--To help us understand and resolve your issue, pl...",
+      "retrieval_rank": 1,
+      "top_retrieved": "tr_059d4f51f2"
+    },
+    {
+      "dataset_instance": "matplotlib__matplotlib-23964",
+      "target_trace_id": "tr_82432d5748",
+      "query_snippet": "[Bug]: Text label with empty line causes a \"TypeError: cannot unpack non-iterabl...",
+      "retrieval_rank": 1,
+      "top_retrieved": "tr_82432d5748"
+    },
+    {
+      "dataset_instance": "matplotlib__matplotlib-24149",
+      "target_trace_id": "tr_5e53ea996c",
+      "query_snippet": "[Bug]: ax.bar raises for all-nan data on matplotlib 3.6.1 \n### Bug summary\n\n`ax....",
+      "retrieval_rank": 1,
+      "top_retrieved": "tr_5e53ea996c"
+    },
+    {
+      "dataset_instance": "psf__requests-2148",
+      "target_trace_id": "tr_17d6e46b4f",
+      "query_snippet": "socket.error exception not caught/wrapped in a requests exception (ConnectionErr...",
+      "retrieval_rank": 1,
+      "top_retrieved": "tr_17d6e46b4f"
+    },
+    {
+      "dataset_instance": "psf__requests-2674",
+      "target_trace_id": "tr_2d92cbeb70",
+      "query_snippet": "urllib3 exceptions passing through requests API\nI don't know if it's a design go...",
+      "retrieval_rank": 1,
+      "top_retrieved": "tr_2d92cbeb70"
+    },
+    {
+      "dataset_instance": "pydata__xarray-3364",
+      "target_trace_id": "tr_066a782865",
+      "query_snippet": "Ignore missing variables when concatenating datasets?\nSeveral users (@raj-kesava...",
+      "retrieval_rank": 1,
+      "top_retrieved": "tr_066a782865"
+    },
+    {
+      "dataset_instance": "pydata__xarray-4094",
+      "target_trace_id": "tr_a1bd9760ab",
+      "query_snippet": "to_unstacked_dataset broken for single-dim variables\n<!-- A short summary of the...",
+      "retrieval_rank": 1,
+      "top_retrieved": "tr_a1bd9760ab"
+    },
+    {
+      "dataset_instance": "pylint-dev__pylint-5859",
+      "target_trace_id": "tr_0fa8f4fcd9",
+      "query_snippet": "\"--notes\" option ignores note tags that are entirely punctuation\n### Bug descrip...",
+      "retrieval_rank": 1,
+      "top_retrieved": "tr_0fa8f4fcd9"
+    },
+    {
+      "dataset_instance": "pylint-dev__pylint-7080",
+      "target_trace_id": "tr_022301beef",
+      "query_snippet": "`--recursive=y` ignores `ignore-paths`\n### Bug description\r\n\r\nWhen running recur...",
+      "retrieval_rank": 1,
+      "top_retrieved": "tr_022301beef"
+    },
+    {
+      "dataset_instance": "pytest-dev__pytest-5221",
+      "target_trace_id": "tr_86a77dd8ea",
+      "query_snippet": "Display fixture scope with `pytest --fixtures`\nIt would be useful to show fixtur...",
+      "retrieval_rank": 1,
+      "top_retrieved": "tr_86a77dd8ea"
+    },
+    {
+      "dataset_instance": "pytest-dev__pytest-7168",
+      "target_trace_id": "tr_255526ba5b",
+      "query_snippet": "INTERNALERROR when exception in __repr__\nMinimal code to reproduce the issue: \r\n...",
+      "retrieval_rank": 1,
+      "top_retrieved": "tr_255526ba5b"
+    },
+    {
+      "dataset_instance": "scikit-learn__scikit-learn-10508",
+      "target_trace_id": "tr_a0b2277a82",
+      "query_snippet": "LabelEncoder transform fails for empty lists (for certain inputs)\nPython 3.6.3, ...",
+      "retrieval_rank": 1,
+      "top_retrieved": "tr_a0b2277a82"
+    },
+    {
+      "dataset_instance": "scikit-learn__scikit-learn-11040",
+      "target_trace_id": "tr_5a432c3db1",
+      "query_snippet": "Missing parameter validation in Neighbors estimator for float n_neighbors\n```pyt...",
+      "retrieval_rank": 1,
+      "top_retrieved": "tr_5a432c3db1"
+    },
+    {
+      "dataset_instance": "sphinx-doc__sphinx-8273",
+      "target_trace_id": "tr_a67004b8f5",
+      "query_snippet": "Generate man page section directories\n**Current man page generation does not con...",
+      "retrieval_rank": 1,
+      "top_retrieved": "tr_a67004b8f5"
+    },
+    {
+      "dataset_instance": "sympy__sympy-22005",
+      "target_trace_id": "tr_4c50ae83e2",
+      "query_snippet": "detection of infinite solution request\n```python\r\n>>> solve_poly_system((x - 1,)...",
+      "retrieval_rank": 1,
+      "top_retrieved": "tr_4c50ae83e2"
+    },
+    {
+      "dataset_instance": "dsh_e2e_session",
+      "target_trace_id": "tr_ca7a2b0e83",
+      "query_snippet": "Fix parser regression in tmem/adapters/dsh.py and verify with tests...",
+      "retrieval_rank": 1,
+      "top_retrieved": "tr_ca7a2b0e83"
+    },
+    {
+      "dataset_instance": "dsh_multiturn_complex_session",
+      "target_trace_id": "tr_b7f9ed8807",
+      "query_snippet": "Refactor multi-line error signature extraction in tmem/adapters/base.py to captu...",
+      "retrieval_rank": 1,
+      "top_retrieved": "tr_b7f9ed8807"
+    },
+    {
+      "dataset_instance": "dsh_long_lifecycle_session",
+      "target_trace_id": "tr_68a25ce7be",
+      "query_snippet": "Implement token bucket rate limiter in src/limiter.py with unit tests in tests/t...",
+      "retrieval_rank": 1,
+      "top_retrieved": "tr_68a25ce7be"
+    }
+  ],
+  "negative_queries": [
+    {
+      "query": "How to prepare authentic Italian carbonara with guanciale and pecorino",
+      "retrieved_count": 0,
+      "false_positive": false
+    },
+    {
+      "query": "Deploy high-availability Kubernetes cluster on AWS using Terraform and EKS",
+      "retrieved_count": 0,
+      "false_positive": false
+    },
+    {
+      "query": "Resolve lifetime elision and borrow checker conflict in Rust async trait",
+      "retrieved_count": 0,
+      "false_positive": false
+    },
+    {
+      "query": "Configure Nginx reverse proxy with Let's Encrypt automated TLS certificates",
+      "retrieved_count": 0,
+      "false_positive": false
+    },
+    {
+      "query": "Train a transformer language model with deepspeed pipeline parallelism",
+      "retrieved_count": 1,
+      "false_positive": true
+    },
+    {
+      "query": "Docker compose configuration for PostgreSQL read-write replica pool",
+      "retrieved_count": 1,
+      "false_positive": false
+    }
+  ]
+}

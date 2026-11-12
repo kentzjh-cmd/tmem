@@ -1,0 +1,600 @@
+{
+  "total_instances": 25,
+  "summary": {
+    "B0_trivial_git_diff": {
+      "mean_precision": 97.1,
+      "mean_recall": 70.8,
+      "mean_f1": 81.0,
+      "avg_steps": 4.4
+    },
+    "B1_tmem_slicer": {
+      "mean_precision": 63.2,
+      "mean_recall": 88.7,
+      "mean_f1": 70.8,
+      "avg_steps": 8.8
+    },
+    "B2_oracle_upper_bound": {
+      "mean_precision": 100.0,
+      "mean_recall": 100.0,
+      "mean_f1": 100.0,
+      "avg_steps": 5.6
+    }
+  },
+  "per_case": [
+    {
+      "instance_id": "astropy__astropy-14182",
+      "raw_steps": 33,
+      "gold_steps": 20,
+      "b0": {
+        "p": 100.0,
+        "r": 95.0,
+        "f1": 97.4,
+        "steps": 19
+      },
+      "b1": {
+        "p": 86.4,
+        "r": 95.0,
+        "f1": 90.5,
+        "steps": 22
+      },
+      "b2": {
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "steps": 20
+      }
+    },
+    {
+      "instance_id": "astropy__astropy-14365",
+      "raw_steps": 10,
+      "gold_steps": 4,
+      "b0": {
+        "p": 100.0,
+        "r": 75.0,
+        "f1": 85.7,
+        "steps": 3
+      },
+      "b1": {
+        "p": 50.0,
+        "r": 75.0,
+        "f1": 60.0,
+        "steps": 6
+      },
+      "b2": {
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "steps": 4
+      }
+    },
+    {
+      "instance_id": "django__django-10914",
+      "raw_steps": 8,
+      "gold_steps": 4,
+      "b0": {
+        "p": 100.0,
+        "r": 50.0,
+        "f1": 66.7,
+        "steps": 2
+      },
+      "b1": {
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "steps": 4
+      },
+      "b2": {
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "steps": 4
+      }
+    },
+    {
+      "instance_id": "django__django-10924",
+      "raw_steps": 22,
+      "gold_steps": 7,
+      "b0": {
+        "p": 100.0,
+        "r": 85.7,
+        "f1": 92.3,
+        "steps": 6
+      },
+      "b1": {
+        "p": 46.7,
+        "r": 100.0,
+        "f1": 63.6,
+        "steps": 15
+      },
+      "b2": {
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "steps": 7
+      }
+    },
+    {
+      "instance_id": "django__django-11001",
+      "raw_steps": 16,
+      "gold_steps": 3,
+      "b0": {
+        "p": 100.0,
+        "r": 66.7,
+        "f1": 80.0,
+        "steps": 2
+      },
+      "b1": {
+        "p": 33.3,
+        "r": 100.0,
+        "f1": 50.0,
+        "steps": 9
+      },
+      "b2": {
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "steps": 3
+      }
+    },
+    {
+      "instance_id": "django__django-11019",
+      "raw_steps": 17,
+      "gold_steps": 5,
+      "b0": {
+        "p": 100.0,
+        "r": 80.0,
+        "f1": 88.9,
+        "steps": 4
+      },
+      "b1": {
+        "p": 45.5,
+        "r": 100.0,
+        "f1": 62.5,
+        "steps": 11
+      },
+      "b2": {
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "steps": 5
+      }
+    },
+    {
+      "instance_id": "django__django-11039",
+      "raw_steps": 31,
+      "gold_steps": 2,
+      "b0": {
+        "p": 100.0,
+        "r": 50.0,
+        "f1": 66.7,
+        "steps": 1
+      },
+      "b1": {
+        "p": 7.1,
+        "r": 100.0,
+        "f1": 13.3,
+        "steps": 28
+      },
+      "b2": {
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "steps": 2
+      }
+    },
+    {
+      "instance_id": "matplotlib__matplotlib-23913",
+      "raw_steps": 30,
+      "gold_steps": 4,
+      "b0": {
+        "p": 100.0,
+        "r": 50.0,
+        "f1": 66.7,
+        "steps": 2
+      },
+      "b1": {
+        "p": 50.0,
+        "r": 75.0,
+        "f1": 60.0,
+        "steps": 6
+      },
+      "b2": {
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "steps": 4
+      }
+    },
+    {
+      "instance_id": "matplotlib__matplotlib-23964",
+      "raw_steps": 8,
+      "gold_steps": 3,
+      "b0": {
+        "p": 100.0,
+        "r": 66.7,
+        "f1": 80.0,
+        "steps": 2
+      },
+      "b1": {
+        "p": 50.0,
+        "r": 100.0,
+        "f1": 66.7,
+        "steps": 6
+      },
+      "b2": {
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "steps": 3
+      }
+    },
+    {
+      "instance_id": "matplotlib__matplotlib-24149",
+      "raw_steps": 12,
+      "gold_steps": 3,
+      "b0": {
+        "p": 100.0,
+        "r": 66.7,
+        "f1": 80.0,
+        "steps": 2
+      },
+      "b1": {
+        "p": 60.0,
+        "r": 100.0,
+        "f1": 75.0,
+        "steps": 5
+      },
+      "b2": {
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "steps": 3
+      }
+    },
+    {
+      "instance_id": "psf__requests-2148",
+      "raw_steps": 13,
+      "gold_steps": 8,
+      "b0": {
+        "p": 100.0,
+        "r": 87.5,
+        "f1": 93.3,
+        "steps": 7
+      },
+      "b1": {
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "steps": 8
+      },
+      "b2": {
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "steps": 8
+      }
+    },
+    {
+      "instance_id": "psf__requests-2674",
+      "raw_steps": 33,
+      "gold_steps": 15,
+      "b0": {
+        "p": 100.0,
+        "r": 86.7,
+        "f1": 92.9,
+        "steps": 13
+      },
+      "b1": {
+        "p": 66.7,
+        "r": 93.3,
+        "f1": 77.8,
+        "steps": 21
+      },
+      "b2": {
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "steps": 15
+      }
+    },
+    {
+      "instance_id": "pydata__xarray-3364",
+      "raw_steps": 31,
+      "gold_steps": 13,
+      "b0": {
+        "p": 100.0,
+        "r": 84.6,
+        "f1": 91.7,
+        "steps": 11
+      },
+      "b1": {
+        "p": 73.3,
+        "r": 84.6,
+        "f1": 78.6,
+        "steps": 15
+      },
+      "b2": {
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "steps": 13
+      }
+    },
+    {
+      "instance_id": "pydata__xarray-4094",
+      "raw_steps": 23,
+      "gold_steps": 5,
+      "b0": {
+        "p": 100.0,
+        "r": 60.0,
+        "f1": 75.0,
+        "steps": 3
+      },
+      "b1": {
+        "p": 66.7,
+        "r": 80.0,
+        "f1": 72.7,
+        "steps": 6
+      },
+      "b2": {
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "steps": 5
+      }
+    },
+    {
+      "instance_id": "pylint-dev__pylint-5859",
+      "raw_steps": 13,
+      "gold_steps": 3,
+      "b0": {
+        "p": 100.0,
+        "r": 66.7,
+        "f1": 80.0,
+        "steps": 2
+      },
+      "b1": {
+        "p": 40.0,
+        "r": 66.7,
+        "f1": 50.0,
+        "steps": 5
+      },
+      "b2": {
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "steps": 3
+      }
+    },
+    {
+      "instance_id": "pylint-dev__pylint-7080",
+      "raw_steps": 10,
+      "gold_steps": 2,
+      "b0": {
+        "p": 100.0,
+        "r": 50.0,
+        "f1": 66.7,
+        "steps": 1
+      },
+      "b1": {
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "steps": 2
+      },
+      "b2": {
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "steps": 2
+      }
+    },
+    {
+      "instance_id": "pytest-dev__pytest-5221",
+      "raw_steps": 14,
+      "gold_steps": 3,
+      "b0": {
+        "p": 100.0,
+        "r": 66.7,
+        "f1": 80.0,
+        "steps": 2
+      },
+      "b1": {
+        "p": 40.0,
+        "r": 66.7,
+        "f1": 50.0,
+        "steps": 5
+      },
+      "b2": {
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "steps": 3
+      }
+    },
+    {
+      "instance_id": "pytest-dev__pytest-7168",
+      "raw_steps": 8,
+      "gold_steps": 4,
+      "b0": {
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "steps": 4
+      },
+      "b1": {
+        "p": 66.7,
+        "r": 100.0,
+        "f1": 80.0,
+        "steps": 6
+      },
+      "b2": {
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "steps": 4
+      }
+    },
+    {
+      "instance_id": "scikit-learn__scikit-learn-10508",
+      "raw_steps": 11,
+      "gold_steps": 3,
+      "b0": {
+        "p": 100.0,
+        "r": 66.7,
+        "f1": 80.0,
+        "steps": 2
+      },
+      "b1": {
+        "p": 50.0,
+        "r": 100.0,
+        "f1": 66.7,
+        "steps": 6
+      },
+      "b2": {
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "steps": 3
+      }
+    },
+    {
+      "instance_id": "scikit-learn__scikit-learn-11040",
+      "raw_steps": 34,
+      "gold_steps": 7,
+      "b0": {
+        "p": 100.0,
+        "r": 57.1,
+        "f1": 72.7,
+        "steps": 4
+      },
+      "b1": {
+        "p": 75.0,
+        "r": 85.7,
+        "f1": 80.0,
+        "steps": 8
+      },
+      "b2": {
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "steps": 7
+      }
+    },
+    {
+      "instance_id": "sphinx-doc__sphinx-8273",
+      "raw_steps": 9,
+      "gold_steps": 4,
+      "b0": {
+        "p": 100.0,
+        "r": 75.0,
+        "f1": 85.7,
+        "steps": 3
+      },
+      "b1": {
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "steps": 4
+      },
+      "b2": {
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "steps": 4
+      }
+    },
+    {
+      "instance_id": "sympy__sympy-22005",
+      "raw_steps": 12,
+      "gold_steps": 3,
+      "b0": {
+        "p": 100.0,
+        "r": 66.7,
+        "f1": 80.0,
+        "steps": 2
+      },
+      "b1": {
+        "p": 28.6,
+        "r": 66.7,
+        "f1": 40.0,
+        "steps": 7
+      },
+      "b2": {
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "steps": 3
+      }
+    },
+    {
+      "instance_id": "dsh_e2e_session",
+      "raw_steps": 9,
+      "gold_steps": 3,
+      "b0": {
+        "p": 66.7,
+        "r": 66.7,
+        "f1": 66.7,
+        "steps": 3
+      },
+      "b1": {
+        "p": 100.0,
+        "r": 66.7,
+        "f1": 80.0,
+        "steps": 2
+      },
+      "b2": {
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "steps": 3
+      }
+    },
+    {
+      "instance_id": "dsh_long_lifecycle_session",
+      "raw_steps": 27,
+      "gold_steps": 8,
+      "b0": {
+        "p": 85.7,
+        "r": 75.0,
+        "f1": 80.0,
+        "steps": 7
+      },
+      "b1": {
+        "p": 70.0,
+        "r": 87.5,
+        "f1": 77.8,
+        "steps": 10
+      },
+      "b2": {
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "steps": 8
+      }
+    },
+    {
+      "instance_id": "dsh_multiturn_complex_session",
+      "raw_steps": 17,
+      "gold_steps": 4,
+      "b0": {
+        "p": 75.0,
+        "r": 75.0,
+        "f1": 75.0,
+        "steps": 4
+      },
+      "b1": {
+        "p": 75.0,
+        "r": 75.0,
+        "f1": 75.0,
+        "steps": 4
+      },
+      "b2": {
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "steps": 4
+      }
+    }
+  ]
+}

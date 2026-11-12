@@ -22,9 +22,15 @@ from tmem import logger
 from tmem.adapters.base import (
     ParsedSession,
     extract_symbols_from_text,
+    extract_traceback_files,
     is_code_file,
+    is_doc_file,
     is_filler_user_intent,
     is_high_entropy_error_signature,
+    is_inline_script_command,
+    is_meta_non_task_intent,
+    is_source_code_file,
+    is_test_file,
     scrub_secrets,
 )
 from tmem.models import (
@@ -333,7 +339,7 @@ class BackwardTraceSlicer:
 
         # 2. Extract Error -> Fix Causal Pairs (L2 Universal Invariants)
         causal_repairs, repair_step_indices = self._extract_causal_repairs_with_indices(
-            raw_actions, effective_files
+            raw_actions, effective_files, workspace_root=session.workspace_root
         )
 
         # 3. Backward Slicing: Filter READ, MUTATE, ENV_EXEC into minimal critical path
@@ -461,6 +467,8 @@ class BackwardTraceSlicer:
             sorted_symbols=sorted(touched_symbols),
             commit_subject=commit_subject,
         )
+        if problem_intent == "non_task":
+            return None
         error_sigs = sorted(
             {r.error_signature for r in causal_repairs if r.error_signature}
             | set(session.active_errors)
@@ -601,25 +609,53 @@ class BackwardTraceSlicer:
         is_trivial, trivial_reason = assess_playbook_triviality(playbook)
         playbook.is_trivial = is_trivial
         if is_trivial:
-            playbook.confidence = 0.5
             playbook.pitfalls.append(f"Trivial trace: {trivial_reason}")
 
+        # Recalibrate confidence based on deterministic evidence:
+        # - Base confidence: 0.30
+        # - Verified verification command executed successfully: +0.15
+        # - Genuine L2 causal repair with matching stack/fix: +0.15
+        # - Multi-file co-change or concrete AST symbols touched: +0.10
+        # - Single-session cap: maximum 0.70 (trivial capped at 0.40)
+        conf = 0.30
+        if verification_cmds:
+            conf += 0.15
+        if causal_repairs:
+            conf += 0.15
+        if len(sorted_files) > 1 or touched_symbols:
+            conf += 0.10
+
+        if is_trivial:
+            conf = min(conf, 0.40)
+        else:
+            conf = min(conf, 0.70)
+
+        playbook.confidence = round(conf, 2)
         return playbook
 
     slice = slice_session
 
     def _extract_causal_repairs(
-        self, actions: List[ActionNode], effective_files: Set[str]
+        self,
+        actions: List[ActionNode],
+        effective_files: Set[str],
+        workspace_root: str = "",
     ) -> List[CausalRepairPair]:
-        repairs, _ = self._extract_causal_repairs_with_indices(actions, effective_files)
+        repairs, _ = self._extract_causal_repairs_with_indices(
+            actions, effective_files, workspace_root=workspace_root
+        )
         return repairs
 
     def _extract_causal_repairs_with_indices(
-        self, actions: List[ActionNode], effective_files: Set[str]
+        self,
+        actions: List[ActionNode],
+        effective_files: Set[str],
+        workspace_root: str = "",
     ) -> Tuple[List[CausalRepairPair], List[int]]:
         """
         Scan action trajectory within a bounded causal window for pattern:
         [Failed canonical test/build/install or command with error signature] -> [Intervening MUTATE or toolchain install] -> [Succeeded verification ENV_EXEC]
+        Subject to rigorous L2 causal gate conditions (rejecting inline scripts, traceback mismatch, and doc/test-only fixes on source errors).
         """
         repairs: List[CausalRepairPair] = []
         step_indices: List[int] = []
@@ -631,6 +667,10 @@ class BackwardTraceSlicer:
                 act.exit_code not in (0, None) or bool(act.error_signature)
             )
             if not is_failure:
+                continue
+
+            # Condition ①: Reject inline scripts or heredocs (python -c, node -e, multiline scripts)
+            if is_inline_script_command(act.command):
                 continue
 
             failed_canonical = self._extract_canonical_verification_cmd(act.command or "")
@@ -652,6 +692,7 @@ class BackwardTraceSlicer:
 
             intervening_fixes: List[str] = []
             intervening_indices: List[int] = []
+            intervening_mutated_files: Set[str] = set()
             is_env = False
             verified_cmd = ""
             verify_idx: Optional[int] = None
@@ -659,6 +700,7 @@ class BackwardTraceSlicer:
             for j in range(i + 1, min(len(actions), i + 36)):
                 nxt = actions[j]
                 if nxt.kind == ActionKind.MUTATE and nxt.target_file in effective_files:
+                    intervening_mutated_files.add(nxt.target_file)
                     sym_note = f" ({', '.join(nxt.symbols_touched[:3])})" if nxt.symbols_touched else ""
                     fix_desc = f"edit {nxt.target_file}{sym_note}"
                     if fix_desc not in intervening_fixes:
@@ -683,14 +725,32 @@ class BackwardTraceSlicer:
 
             # Quality gate on causal repair pairs:
             # Must have non-empty fixes and verified command.
-            # If pure code edit, must have concrete symbols or multi-file topology to avoid trivial "edit file" noise.
             if intervening_fixes and verified_cmd:
                 if not is_env:
+                    # Reject if intervening edits only modified documentation files
+                    if all(is_doc_file(f) for f in intervening_mutated_files):
+                        continue
+
+                    # Condition ②: Traceback files vs intervening mutated files intersection check
+                    tb_files = extract_traceback_files(
+                        act.raw_output or act.output_snippet, workspace_root
+                    )
+                    if tb_files and not (tb_files & intervening_mutated_files):
+                        continue
+
+                    # Condition ③: Error comes from source code, but fix only touched tests or docs
+                    if any(is_source_code_file(f) for f in tb_files):
+                        if all(
+                            is_test_file(f) or is_doc_file(f) for f in intervening_mutated_files
+                        ):
+                            continue
+
                     has_concrete_target = any(
                         "(" in fix or len(effective_files) > 1 for fix in intervening_fixes
                     )
                     if not has_concrete_target:
                         continue
+
                 seen_sigs.add(err_sig)
                 repairs.append(
                     CausalRepairPair(
@@ -797,15 +857,17 @@ class BackwardTraceSlicer:
         elif session.user_intents:
             raw_user = session.user_intents[-1].strip()
 
-        if commit_subject and raw_user:
-            if len(raw_user) < 24 and commit_subject not in raw_user:
-                problem_intent = f"{commit_subject} — {raw_user}"
-            else:
-                problem_intent = raw_user
+        # Quality Gate 0.4: Detect meta-request (evaluation, review, generic optimize project)
+        # and mark as non_task so it does not pollute project memory.
+        if is_meta_non_task_intent(raw_user) or any(
+            is_meta_non_task_intent(u) for u in clean_intents
+        ):
+            return "non_task", "non_task"
+
+        if raw_user:
+            problem_intent = raw_user
         elif commit_subject:
             problem_intent = commit_subject
-        elif raw_user:
-            problem_intent = raw_user
         else:
             problem_intent = f"Modify {', '.join(sorted_files[:3])}"
 

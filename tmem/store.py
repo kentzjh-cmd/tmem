@@ -306,23 +306,31 @@ class ProjectMemoryStore:
                 for (tid,) in cur.fetchall():
                     scores[tid] = scores.get(tid, 0.0) + 6.0
 
-                # 4. FTS5 BM25 keyword fallback
+                # 4. FTS5 Multi-Token Keyword Match
                 tokens = [
-                    t for t in re.findall(r"[A-Za-z0-9_]+|[\u4e00-\u9fff]+", query_text)
-                    if len(t) >= 2
+                    t.lower()
+                    for t in re.findall(r"[A-Za-z0-9_]+|[\u4e00-\u9fff]+", query_text)
+                    if len(t) >= 3 and t.lower() not in COMMON_QUERY_STOPWORDS
                 ]
                 if tokens:
-                    fts_query = " OR ".join(f'"{t}"' for t in tokens[:12])
-                    try:
-                        cur = conn.execute(
-                            "SELECT trace_id, rank FROM playbooks_fts WHERE playbooks_fts MATCH ? ORDER BY rank LIMIT 10",
-                            (fts_query,),
-                        )
-                        for (tid, rank_val) in cur.fetchall():
-                            bm25_score = max(0.1, -float(rank_val))
-                            scores[tid] = scores.get(tid, 0.0) + bm25_score
-                    except sqlite3.OperationalError:
-                        pass
+                    cand_tokens = tokens[:15]
+                    token_hits: Dict[str, int] = {}
+                    for t in cand_tokens:
+                        try:
+                            cur = conn.execute(
+                                "SELECT trace_id FROM playbooks_fts WHERE playbooks_fts MATCH ?",
+                                (f'"{t}"',),
+                            )
+                            for (tid,) in cur.fetchall():
+                                token_hits[tid] = token_hits.get(tid, 0) + 1
+                        except sqlite3.OperationalError:
+                            pass
+
+                    min_hits = 2 if len(cand_tokens) >= 3 else 1
+                    for tid, hits in token_hits.items():
+                        coverage = hits / len(cand_tokens)
+                        if hits >= min_hits and coverage >= 0.20:
+                            scores[tid] = scores.get(tid, 0.0) + (hits * 2.0)
 
             results: List[Tuple[TracePlaybook, float]] = []
             for tid, score in scores.items():
@@ -484,5 +492,12 @@ class ProjectMemoryStore:
         proj_pbs = self.get_all_project_playbooks()
         return sync_memories_file(self.workspace_root, proj_pbs)
 
+
+COMMON_QUERY_STOPWORDS = {
+    "the", "a", "an", "and", "or", "in", "on", "at", "to", "for", "of", "with", "by", "from",
+    "as", "is", "was", "are", "were", "it", "this", "that", "when", "if", "be", "not", "have",
+    "has", "had", "do", "does", "did", "so", "can", "we", "you", "my", "your", "i", "me", "our",
+    "all", "any", "some", "what", "which", "who", "whom", "how", "there", "their", "then", "into",
+}
 
 DualTierMemoryStore = ProjectMemoryStore  # Backward compatibility alias

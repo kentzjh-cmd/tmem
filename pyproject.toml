@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "tmem"
 version = "0.2.0"
-description = "Invisible Backward-Slicing Execution Trace Memory Compiler for Coding Agents (agy, dsh, codex, opencode, pi)"
+description = "Deterministic Execution Trace Memory for Coding Agents (Antigravity & DeepSeek Harness)"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }

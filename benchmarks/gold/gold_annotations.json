@@ -1,0 +1,448 @@
+[
+  {
+    "instance_id": "astropy__astropy-14182",
+    "trajectory_file": "benchmarks/data/online_20/astropy__astropy-14182.traj",
+    "agent_format": "swe_bench",
+    "perm_target_files": [
+      "astropy/io/ascii/rst.py"
+    ],
+    "gold_step_indices": [
+      5,
+      6,
+      7,
+      8,
+      10,
+      11,
+      12,
+      14,
+      16,
+      18,
+      20,
+      22,
+      23,
+      24,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31
+    ],
+    "total_actions_count": 33,
+    "rationale": "Minimal critical path for astropy__astropy-14182: read/mutate perm files ['astropy/io/ascii/rst.py'] and final passing test"
+  },
+  {
+    "instance_id": "astropy__astropy-14365",
+    "trajectory_file": "benchmarks/data/online_20/astropy__astropy-14365.traj",
+    "agent_format": "swe_bench",
+    "perm_target_files": [
+      "astropy/io/ascii/qdp.py"
+    ],
+    "gold_step_indices": [
+      5,
+      6,
+      7,
+      8
+    ],
+    "total_actions_count": 10,
+    "rationale": "Minimal critical path for astropy__astropy-14365: read/mutate perm files ['astropy/io/ascii/qdp.py'] and final passing test"
+  },
+  {
+    "instance_id": "django__django-10914",
+    "trajectory_file": "benchmarks/data/online_20/django__django-10914.traj",
+    "agent_format": "swe_bench",
+    "perm_target_files": [
+      "django/conf/global_settings.py",
+      "docs/topics/http/file-uploads.txt"
+    ],
+    "gold_step_indices": [
+      2,
+      4,
+      6,
+      7
+    ],
+    "total_actions_count": 8,
+    "rationale": "Minimal critical path for django__django-10914: read/mutate perm files ['django/conf/global_settings.py', 'docs/topics/http/file-uploads.txt'] and final passing test"
+  },
+  {
+    "instance_id": "django__django-10924",
+    "trajectory_file": "benchmarks/data/online_20/django__django-10924.traj",
+    "agent_format": "swe_bench",
+    "perm_target_files": [
+      "django/db/models/fields/__init__.py"
+    ],
+    "gold_step_indices": [
+      2,
+      5,
+      6,
+      7,
+      8,
+      9,
+      20
+    ],
+    "total_actions_count": 22,
+    "rationale": "Minimal critical path for django__django-10924: read/mutate perm files ['django/db/models/fields/__init__.py'] and final passing test"
+  },
+  {
+    "instance_id": "django__django-11001",
+    "trajectory_file": "benchmarks/data/online_20/django__django-11001.traj",
+    "agent_format": "swe_bench",
+    "perm_target_files": [
+      "django/db/models/sql/compiler.py"
+    ],
+    "gold_step_indices": [
+      8,
+      10,
+      14
+    ],
+    "total_actions_count": 16,
+    "rationale": "Minimal critical path for django__django-11001: read/mutate perm files ['django/db/models/sql/compiler.py'] and final passing test"
+  },
+  {
+    "instance_id": "django__django-11019",
+    "trajectory_file": "benchmarks/data/online_20/django__django-11019.traj",
+    "agent_format": "swe_bench",
+    "perm_target_files": [
+      "django/forms/widgets.py"
+    ],
+    "gold_step_indices": [
+      8,
+      11,
+      13,
+      14,
+      15
+    ],
+    "total_actions_count": 17,
+    "rationale": "Minimal critical path for django__django-11019: read/mutate perm files ['django/forms/widgets.py'] and final passing test"
+  },
+  {
+    "instance_id": "django__django-11039",
+    "trajectory_file": "benchmarks/data/online_20/django__django-11039.traj",
+    "agent_format": "swe_bench",
+    "perm_target_files": [
+      "django/core/management/commands/sqlmigrate.py"
+    ],
+    "gold_step_indices": [
+      2,
+      3
+    ],
+    "total_actions_count": 31,
+    "rationale": "Minimal critical path for django__django-11039: read/mutate perm files ['django/core/management/commands/sqlmigrate.py'] and final passing test"
+  },
+  {
+    "instance_id": "matplotlib__matplotlib-23913",
+    "trajectory_file": "benchmarks/data/online_20/matplotlib__matplotlib-23913.traj",
+    "agent_format": "swe_bench",
+    "perm_target_files": [
+      "lib/matplotlib/legend.py"
+    ],
+    "gold_step_indices": [
+      2,
+      6,
+      11,
+      15
+    ],
+    "total_actions_count": 30,
+    "rationale": "Minimal critical path for matplotlib__matplotlib-23913: read/mutate perm files ['lib/matplotlib/legend.py'] and final passing test"
+  },
+  {
+    "instance_id": "matplotlib__matplotlib-23964",
+    "trajectory_file": "benchmarks/data/online_20/matplotlib__matplotlib-23964.traj",
+    "agent_format": "swe_bench",
+    "perm_target_files": [
+      "lib/matplotlib/backends/backend_ps.py"
+    ],
+    "gold_step_indices": [
+      4,
+      5,
+      6
+    ],
+    "total_actions_count": 8,
+    "rationale": "Minimal critical path for matplotlib__matplotlib-23964: read/mutate perm files ['lib/matplotlib/backends/backend_ps.py'] and final passing test"
+  },
+  {
+    "instance_id": "matplotlib__matplotlib-24149",
+    "trajectory_file": "benchmarks/data/online_20/matplotlib__matplotlib-24149.traj",
+    "agent_format": "swe_bench",
+    "perm_target_files": [
+      "lib/matplotlib/axes/_axes.py"
+    ],
+    "gold_step_indices": [
+      6,
+      9,
+      10
+    ],
+    "total_actions_count": 12,
+    "rationale": "Minimal critical path for matplotlib__matplotlib-24149: read/mutate perm files ['lib/matplotlib/axes/_axes.py'] and final passing test"
+  },
+  {
+    "instance_id": "psf__requests-2148",
+    "trajectory_file": "benchmarks/data/online_20/psf__requests-2148.traj",
+    "agent_format": "swe_bench",
+    "perm_target_files": [
+      "requests/packages/urllib3/response.py"
+    ],
+    "gold_step_indices": [
+      2,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "total_actions_count": 13,
+    "rationale": "Minimal critical path for psf__requests-2148: read/mutate perm files ['requests/packages/urllib3/response.py'] and final passing test"
+  },
+  {
+    "instance_id": "psf__requests-2674",
+    "trajectory_file": "benchmarks/data/online_20/psf__requests-2674.traj",
+    "agent_format": "swe_bench",
+    "perm_target_files": [
+      "requests/adapters.py"
+    ],
+    "gold_step_indices": [
+      12,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32
+    ],
+    "total_actions_count": 33,
+    "rationale": "Minimal critical path for psf__requests-2674: read/mutate perm files ['requests/adapters.py'] and final passing test"
+  },
+  {
+    "instance_id": "pydata__xarray-3364",
+    "trajectory_file": "benchmarks/data/online_20/pydata__xarray-3364.traj",
+    "agent_format": "swe_bench",
+    "perm_target_files": [
+      "xarray/core/concat.py"
+    ],
+    "gold_step_indices": [
+      5,
+      9,
+      11,
+      12,
+      13,
+      15,
+      16,
+      21,
+      22,
+      23,
+      25,
+      26,
+      27
+    ],
+    "total_actions_count": 31,
+    "rationale": "Minimal critical path for pydata__xarray-3364: read/mutate perm files ['xarray/core/concat.py'] and final passing test"
+  },
+  {
+    "instance_id": "pydata__xarray-4094",
+    "trajectory_file": "benchmarks/data/online_20/pydata__xarray-4094.traj",
+    "agent_format": "swe_bench",
+    "perm_target_files": [
+      "xarray/core/dataarray.py"
+    ],
+    "gold_step_indices": [
+      5,
+      10,
+      13,
+      19,
+      21
+    ],
+    "total_actions_count": 23,
+    "rationale": "Minimal critical path for pydata__xarray-4094: read/mutate perm files ['xarray/core/dataarray.py'] and final passing test"
+  },
+  {
+    "instance_id": "pylint-dev__pylint-5859",
+    "trajectory_file": "benchmarks/data/online_20/pylint-dev__pylint-5859.traj",
+    "agent_format": "swe_bench",
+    "perm_target_files": [
+      "pylint/checkers/misc.py"
+    ],
+    "gold_step_indices": [
+      7,
+      10,
+      11
+    ],
+    "total_actions_count": 13,
+    "rationale": "Minimal critical path for pylint-dev__pylint-5859: read/mutate perm files ['pylint/checkers/misc.py'] and final passing test"
+  },
+  {
+    "instance_id": "pylint-dev__pylint-7080",
+    "trajectory_file": "benchmarks/data/online_20/pylint-dev__pylint-7080.traj",
+    "agent_format": "swe_bench",
+    "perm_target_files": [
+      "pylintrc"
+    ],
+    "gold_step_indices": [
+      8,
+      9
+    ],
+    "total_actions_count": 10,
+    "rationale": "Minimal critical path for pylint-dev__pylint-7080: read/mutate perm files ['pylintrc'] and final passing test"
+  },
+  {
+    "instance_id": "pytest-dev__pytest-5221",
+    "trajectory_file": "benchmarks/data/online_20/pytest-dev__pytest-5221.traj",
+    "agent_format": "swe_bench",
+    "perm_target_files": [
+      "src/_pytest/python.py"
+    ],
+    "gold_step_indices": [
+      5,
+      8,
+      13
+    ],
+    "total_actions_count": 14,
+    "rationale": "Minimal critical path for pytest-dev__pytest-5221: read/mutate perm files ['src/_pytest/python.py'] and final passing test"
+  },
+  {
+    "instance_id": "pytest-dev__pytest-7168",
+    "trajectory_file": "benchmarks/data/online_20/pytest-dev__pytest-7168.traj",
+    "agent_format": "swe_bench",
+    "perm_target_files": [
+      "test_repr.py"
+    ],
+    "gold_step_indices": [
+      1,
+      2,
+      5,
+      6
+    ],
+    "total_actions_count": 8,
+    "rationale": "Minimal critical path for pytest-dev__pytest-7168: read/mutate perm files ['test_repr.py'] and final passing test"
+  },
+  {
+    "instance_id": "scikit-learn__scikit-learn-10508",
+    "trajectory_file": "benchmarks/data/online_20/scikit-learn__scikit-learn-10508.traj",
+    "agent_format": "swe_bench",
+    "perm_target_files": [
+      "sklearn/preprocessing/label.py"
+    ],
+    "gold_step_indices": [
+      5,
+      8,
+      9
+    ],
+    "total_actions_count": 11,
+    "rationale": "Minimal critical path for scikit-learn__scikit-learn-10508: read/mutate perm files ['sklearn/preprocessing/label.py'] and final passing test"
+  },
+  {
+    "instance_id": "scikit-learn__scikit-learn-11040",
+    "trajectory_file": "benchmarks/data/online_20/scikit-learn__scikit-learn-11040.traj",
+    "agent_format": "swe_bench",
+    "perm_target_files": [
+      "sklearn/neighbors/base.py",
+      "sklearn/neighbors/unsupervised.py"
+    ],
+    "gold_step_indices": [
+      5,
+      13,
+      14,
+      15,
+      16,
+      20,
+      23
+    ],
+    "total_actions_count": 34,
+    "rationale": "Minimal critical path for scikit-learn__scikit-learn-11040: read/mutate perm files ['sklearn/neighbors/base.py', 'sklearn/neighbors/unsupervised.py'] and final passing test"
+  },
+  {
+    "instance_id": "sphinx-doc__sphinx-8273",
+    "trajectory_file": "benchmarks/data/online_20/sphinx-doc__sphinx-8273.traj",
+    "agent_format": "swe_bench",
+    "perm_target_files": [
+      "sphinx/builders/manpage.py"
+    ],
+    "gold_step_indices": [
+      5,
+      6,
+      7,
+      8
+    ],
+    "total_actions_count": 9,
+    "rationale": "Minimal critical path for sphinx-doc__sphinx-8273: read/mutate perm files ['sphinx/builders/manpage.py'] and final passing test"
+  },
+  {
+    "instance_id": "sympy__sympy-22005",
+    "trajectory_file": "benchmarks/data/online_20/sympy__sympy-22005.traj",
+    "agent_format": "swe_bench",
+    "perm_target_files": [
+      "sympy/solvers/polysys.py"
+    ],
+    "gold_step_indices": [
+      5,
+      6,
+      7
+    ],
+    "total_actions_count": 12,
+    "rationale": "Minimal critical path for sympy__sympy-22005: read/mutate perm files ['sympy/solvers/polysys.py'] and final passing test"
+  },
+  {
+    "instance_id": "dsh_e2e_session",
+    "trajectory_file": "benchmarks/data/dsh_e2e_session.jsonl",
+    "agent_format": "dsh",
+    "perm_target_files": [
+      "tmem/adapters/dsh.py"
+    ],
+    "gold_step_indices": [
+      4,
+      6,
+      7
+    ],
+    "total_actions_count": 9,
+    "rationale": "Edit tmem/adapters/dsh.py (steps 4, 6) and pass unit tests (step 7)"
+  },
+  {
+    "instance_id": "dsh_long_lifecycle_session",
+    "trajectory_file": "benchmarks/data/dsh_long_lifecycle_session.jsonl",
+    "agent_format": "dsh",
+    "perm_target_files": [
+      "src/limiter.py",
+      "src/redis_limiter.py",
+      "tests/test_limiter.py",
+      "tests/test_redis_limiter.py"
+    ],
+    "gold_step_indices": [
+      5,
+      9,
+      10,
+      14,
+      16,
+      21,
+      22,
+      23
+    ],
+    "total_actions_count": 27,
+    "rationale": "Install toolchain (step 5), implement limiters & tests (steps 9, 10, 14, 16, 21, 22), final test passing (step 23)"
+  },
+  {
+    "instance_id": "dsh_multiturn_complex_session",
+    "trajectory_file": "benchmarks/data/dsh_multiturn_complex_session.jsonl",
+    "agent_format": "dsh",
+    "perm_target_files": [
+      "tmem/adapters/base.py",
+      "tests/test_dsh_e2e.py"
+    ],
+    "gold_step_indices": [
+      8,
+      10,
+      15,
+      16
+    ],
+    "total_actions_count": 17,
+    "rationale": "Fix error signature parser in tmem/adapters/base.py (steps 8, 10), update tests (step 15), final test passing (step 16)"
+  }
+]

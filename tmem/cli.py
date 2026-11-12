@@ -175,7 +175,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     # 3. capture
     p_cap = sub.add_parser("capture", help="Compile and save current session execution trace to .tmem/")
     p_cap.add_argument("--workspace", default=os.getcwd(), help="Workspace root directory")
-    p_cap.add_argument("--agent", default="agy", choices=["agy", "dsh", "codex", "opencode", "pi"], help="Agent source")
+    p_cap.add_argument("--agent", default="agy", choices=["agy", "dsh", "codex", "opencode", "pi"], help="Agent source (primary: agy, dsh; experimental: codex, opencode, pi)")
     p_cap.add_argument("--transcript", default=None, help="Explicit path to session transcript")
     p_cap.add_argument("--scope", default="project", choices=["project", "auto"], help="Storage scope")
     p_cap.add_argument("--intent", default=None, help="User intent or problem summary")

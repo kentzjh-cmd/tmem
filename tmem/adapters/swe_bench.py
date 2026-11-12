@@ -79,6 +79,8 @@ class SweBenchAdapter(AgentAdapter):
             for h in data["history"]:
                 if isinstance(h, dict) and h.get("role") == "user":
                     cnt = str(h.get("content", ""))
+                    if "demonstration of how to correctly accomplish this task" in cnt:
+                        continue
                     if "ISSUE:" in cnt:
                         problem_stmt = cnt.split("ISSUE:", 1)[1].strip()
                         break

@@ -175,7 +175,7 @@ class TracePlaybook:
     pitfalls: List[str] = field(default_factory=list)
 
     # Metabolism & telemetry
-    confidence: float = 1.0
+    confidence: float = 0.5
     hit_count: int = 0
     status: str = "active"             # "active" | "stale" | "invalidated"
     is_trivial: bool = False

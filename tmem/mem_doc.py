@@ -9,11 +9,38 @@ and human visibility into compiled execution playbooks and forensic raw traces.
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from tmem.guards import evaluate_guards
 from tmem.models import CausalRepairPair, TracePlaybook
+
+
+def sanitize_table_cell(
+    text: Optional[str], max_chars: int = 120, as_code: bool = False
+) -> str:
+    """
+    Sanitize text for a Markdown table cell:
+    - Normalizes newlines and tabs to single spaces so table rows don't break.
+    - Escapes unescaped '|' characters.
+    - Truncates to max_chars (command/text max 120 chars).
+    - If as_code is True and non-empty, wraps in single backticks.
+    """
+    if not text:
+        return "`-`" if as_code else "-"
+    # Normalize newlines and consecutive whitespace into single spaces
+    cleaned = re.sub(r"[\r\n\t]+", " ", str(text)).strip()
+    # Escape pipe characters that are not already escaped
+    cleaned = re.sub(r"(?<!\\)\|", r"\|", cleaned)
+    if len(cleaned) > max_chars:
+        cleaned = cleaned[: max_chars - 3].rstrip() + "..."
+    if not cleaned:
+        return "`-`" if as_code else "-"
+    if as_code:
+        cleaned = cleaned.replace("`", "'")
+        return f"`{cleaned}`"
+    return cleaned
 
 
 def render_memories_markdown(
@@ -66,23 +93,23 @@ def render_memories_markdown(
             elif ev.effective_tier == "L2_INVARIANT":
                 tier_badge = "🔵 `L2_INVARIANT`"
 
-            intent = pb.problem_intent.replace("|", "\\|").strip()
+            intent_title = sanitize_table_cell(pb.problem_intent, max_chars=120, as_code=False)
+            intent = f"**{intent_title}**"
             if pb.semantic_summary:
-                clean_sum = pb.semantic_summary.replace("|", "\\|").strip()
-                intent = f"**{intent}**<br>_{clean_sum}_"
+                clean_sum = sanitize_table_cell(pb.semantic_summary, max_chars=160, as_code=False)
+                if clean_sum and clean_sum != "-":
+                    intent += f"<br>_{clean_sum}_"
             if pb.root_cause:
-                clean_rc = pb.root_cause.replace("|", "\\|").strip()
-                intent += f"<br>🎯 <i>{clean_rc}</i>"
+                clean_rc = sanitize_table_cell(pb.root_cause, max_chars=120, as_code=False)
+                if clean_rc and clean_rc != "-":
+                    intent += f"<br>🎯 <i>{clean_rc}</i>"
 
             files_str = "<br>".join(f"`{f}`" for f in pb.touched_files[:3]) or "`-`"
             if len(pb.touched_files) > 3:
                 files_str += f"<br>_+{len(pb.touched_files) - 3} more_"
 
-            verify_cmd = (
-                f"`{pb.l1_verification_cmds[-1]}`"
-                if pb.l1_verification_cmds
-                else "`-`"
-            )
+            raw_cmd = pb.l1_verification_cmds[-1] if pb.l1_verification_cmds else ""
+            verify_cmd = sanitize_table_cell(raw_cmd, max_chars=120, as_code=True)
 
             raw_file = raw_dir / f"{pb.trace_id}.raw.json"
             raw_link = (
@@ -132,11 +159,11 @@ def render_memories_markdown(
             ]
         )
         for r in all_repairs:
-            err = r.error_signature.replace("|", "\\|")
-            failed = f"`{r.failed_command}`" if r.failed_command else "`-`"
-            repair = r.repair_action.replace("|", "\\|")
-            verify = f"`{r.verification_cmd}`" if r.verification_cmd else "`-`"
-            lines.append(f"| `{err}` | {failed} | `{repair}` | {verify} |")
+            err = sanitize_table_cell(r.error_signature, max_chars=120, as_code=True)
+            failed = sanitize_table_cell(r.failed_command, max_chars=120, as_code=True)
+            repair = sanitize_table_cell(r.repair_action, max_chars=120, as_code=True)
+            verify = sanitize_table_cell(r.verification_cmd, max_chars=120, as_code=True)
+            lines.append(f"| {err} | {failed} | {repair} | {verify} |")
         lines.append("")
 
     # Section 3: Co-Change Architectural Topologies

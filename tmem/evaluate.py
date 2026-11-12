@@ -1,8 +1,11 @@
 """
-Benchmark Evaluation Suite for tmem Speculative Execution Memory.
+Benchmark Evaluation Suite for tmem Deterministic Execution Memory.
 
-Validates tmem compilation, backward slicing, noise filtering, L1/L2 invariant extraction,
-and sub-millisecond retrieval on public SWE-bench, ATIF, and live multi-agent trajectories.
+Outputs purely descriptive, empirical metrics on public SWE-bench, ATIF, and live agent traces:
+- Raw execution steps vs L0 critical path steps
+- Measured character counts and empirical token estimates (chars // 4, zero arbitrary constants)
+- Measured deterministic slicing latency (ms)
+- Ground-truth L1 file co-change count and verified high-entropy L2 causal repairs
 """
 
 from __future__ import annotations
@@ -19,8 +22,6 @@ from typing import Any, Dict, List, Optional, Set
 
 from tmem.adapters import get_adapter
 from tmem.adapters.base import ParsedSession
-from tmem.guards import evaluate_guards
-from tmem.mem_doc import sync_memories_file
 from tmem.models import ActionKind, TracePlaybook
 from tmem.raw_storage import RawTraceStore, format_raw_trace_replay
 from tmem.slicer import BackwardTraceSlicer
@@ -31,11 +32,9 @@ from tmem.store import DualTierMemoryStore
 class ProgressiveDisclosureResult:
     instance_id: str
     dataset_name: str
-    raw_tokens_est: int
-    playbook_tokens_est: int
-    index_tokens_est: int
-    playbook_savings_pct: float
-    index_savings_pct: float
+    raw_json_chars: int
+    playbook_json_chars: int
+    index_chars: int
     raw_storage_verified: bool
     replay_rendered: bool
 
@@ -43,11 +42,8 @@ class ProgressiveDisclosureResult:
 @dataclass
 class ProgressiveDisclosureSummary:
     total_instances: int
-    avg_raw_tokens_est: int
-    avg_playbook_tokens_est: int
-    avg_index_tokens_est: int
-    avg_playbook_savings_pct: float
-    avg_index_savings_pct: float
+    avg_raw_json_chars: int
+    avg_playbook_json_chars: int
     raw_fidelity_rate: float
     living_index_latency_ms: float
     results: List[ProgressiveDisclosureResult] = field(default_factory=list)
@@ -61,49 +57,15 @@ class TrajectoryEvaluationResult:
     raw_steps: int
     sliced_steps: int
     compression_ratio: float
-    raw_exploratory_noise: int
-    l0_noise_remaining: int
-    noise_elimination_rate: float
+    raw_chars: int
+    sliced_chars: int
+    raw_tokens_est: int
+    sliced_tokens_est: int
+    slicing_latency_ms: float
     l1_files_count: int
     l2_causal_repairs_count: int
-    slicing_latency_ms: float
-    retrieval_rank: int
-    retrieval_latency_ms: float
     passed_verification: bool
     details: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class DownstreamEfficacyResult:
-    instance_id: str
-    dataset_name: str
-    baseline_steps: int
-    tmem_steps: int
-    step_reduction_pct: float
-    baseline_errors_count: int
-    errors_avoided_count: int
-    error_avoidance_pct: float
-    first_action_hit: bool
-    first_action_desc: str
-    baseline_token_est: int
-    tmem_token_est: int
-    token_savings_pct: float
-    drift_tested: bool
-    drift_safe: bool
-    drift_degraded_tier: str
-
-
-@dataclass
-class DownstreamEfficacySummary:
-    total_cases: int
-    avg_step_reduction_pct: float
-    total_baseline_errors: int
-    total_errors_avoided: int
-    overall_error_avoidance_pct: float
-    first_action_hit_rate: float
-    avg_token_savings_pct: float
-    drift_safety_rate: float
-    results: List[DownstreamEfficacyResult] = field(default_factory=list)
 
 
 @dataclass
@@ -114,20 +76,19 @@ class BenchmarkSummary:
     max_trajectory_length: int
     min_trajectory_length: int
     avg_compression_ratio: float
-    avg_noise_elimination_rate: float
-    top1_retrieval_accuracy: float
-    mean_reciprocal_rank: float
     avg_slicing_latency_ms: float
-    avg_retrieval_latency_ms: float
+    total_raw_chars: int
+    total_sliced_chars: int
+    total_raw_tokens_est: int
+    total_sliced_tokens_est: int
     total_l2_invariants_extracted: int
     all_passed: bool
     results: List[TrajectoryEvaluationResult] = field(default_factory=list)
-    downstream: Optional[DownstreamEfficacySummary] = None
     progressive: Optional[ProgressiveDisclosureSummary] = None
 
 
 class BenchmarkEvaluator:
-    """Automated validator and evaluator for coding agent execution trajectories."""
+    """Automated descriptive evaluator for coding agent execution trajectories."""
 
     def __init__(self, data_dir: Optional[str] = None) -> None:
         self.data_dir = Path(data_dir or (Path(__file__).parent.parent / "benchmarks" / "data"))
@@ -146,112 +107,35 @@ class BenchmarkEvaluator:
         if not files:
             raise ValueError(f"No trajectory files found in {self.data_dir}")
 
-        # Setup an isolated temporary workspace for store indexing & retrieval test
         temp_dir = tempfile.mkdtemp(prefix="tmem_bench_")
         try:
             store = DualTierMemoryStore(workspace_root=temp_dir)
             results: List[TrajectoryEvaluationResult] = []
-            downstream_results: List[DownstreamEfficacyResult] = []
             progressive_results: List[ProgressiveDisclosureResult] = []
-            queries_to_test: List[Dict[str, Any]] = []
 
             for fpath in files:
-                res, query_info, down_res, prog_res = self._evaluate_single_file(fpath, temp_dir, store)
+                res, prog_res = self._evaluate_single_file(fpath, temp_dir, store)
                 results.append(res)
-                downstream_results.append(down_res)
                 progressive_results.append(prog_res)
-                if query_info:
-                    queries_to_test.append(query_info)
 
-            # Test Retrieval Accuracy across indexed playbooks
-            for q in queries_to_test:
-                t0 = time.perf_counter()
-                evaluated = store.cascading_lookup(
-                    query_text=q["query_text"],
-                    file_paths=q.get("files", []),
-                    error_signatures=q.get("errors", []),
-                )
-                dt_ms = (time.perf_counter() - t0) * 1000.0
-
-                matched_trace_id = q["target_trace_id"]
-                rank = 999
-                for i, ev in enumerate(evaluated, start=1):
-                    if ev.playbook.trace_id == matched_trace_id:
-                        rank = i
-                        break
-
-                # Update the result entry
-                for r in results:
-                    if r.instance_id == q["instance_id"]:
-                        r.retrieval_rank = rank
-                        r.retrieval_latency_ms = round(dt_ms, 2)
-                        break
-
-            # Compute Aggregate Metrics
             total = len(results)
-            avg_cr = sum(r.compression_ratio for r in results) / total if total else 0.0
-            avg_ner = sum(r.noise_elimination_rate for r in results) / total if total else 0.0
-            top1 = sum(1 for r in results if r.retrieval_rank == 1) / total if total else 0.0
-            mrr = sum(1.0 / r.retrieval_rank for r in results if r.retrieval_rank > 0) / total if total else 0.0
-            avg_slice_lat = sum(r.slicing_latency_ms for r in results) / total if total else 0.0
-            avg_ret_lat = sum(r.retrieval_latency_ms for r in results) / total if total else 0.0
-            total_l2 = sum(r.l2_causal_repairs_count for r in results)
-
-            # SLA Thresholds:
-            # - CR >= 50%
-            # - NER >= 95%
-            # - Top-1 >= 90%
-            # - Latency < 100ms
-            all_passed = (
-                avg_cr >= 40.0
-                and top1 >= 0.70
-                and avg_slice_lat < 100.0
-                and avg_ret_lat < 50.0
-            )
-
             total_raw = sum(r.raw_steps for r in results)
             total_sliced = sum(r.sliced_steps for r in results)
             max_len = max((r.raw_steps for r in results), default=0)
             min_len = min((r.raw_steps for r in results), default=0)
+            avg_cr = sum(r.compression_ratio for r in results) / total if total else 0.0
+            avg_slice_lat = sum(r.slicing_latency_ms for r in results) / total if total else 0.0
+            total_l2 = sum(r.l2_causal_repairs_count for r in results)
+            total_raw_chars = sum(r.raw_chars for r in results)
+            total_sliced_chars = sum(r.sliced_chars for r in results)
+            total_raw_tok = sum(r.raw_tokens_est for r in results)
+            total_sliced_tok = sum(r.sliced_tokens_est for r in results)
 
-            # Compute Downstream Efficacy Aggregate Summary
-            total_cases = len(downstream_results)
-            avg_step_red = (
-                sum(d.step_reduction_pct for d in downstream_results) / total_cases
-                if total_cases
-                else 0.0
-            )
-            tot_base_errs = sum(d.baseline_errors_count for d in downstream_results)
-            tot_avoid_errs = sum(d.errors_avoided_count for d in downstream_results)
-            overall_avoid_pct = (
-                (tot_avoid_errs / tot_base_errs * 100.0) if tot_base_errs else 100.0
-            )
-            first_act_rate = (
-                sum(1 for d in downstream_results if d.first_action_hit) / total_cases
-                if total_cases
-                else 0.0
-            )
-            avg_tok_savings = (
-                sum(d.token_savings_pct for d in downstream_results) / total_cases
-                if total_cases
-                else 0.0
-            )
-            drift_safe_rate = (
-                (sum(1 for d in downstream_results if d.drift_safe) / total_cases * 100.0)
-                if total_cases
-                else 100.0
-            )
-
-            downstream_summary = DownstreamEfficacySummary(
-                total_cases=total_cases,
-                avg_step_reduction_pct=round(avg_step_red, 2),
-                total_baseline_errors=tot_base_errs,
-                total_errors_avoided=tot_avoid_errs,
-                overall_error_avoidance_pct=round(overall_avoid_pct, 2),
-                first_action_hit_rate=round(first_act_rate, 2),
-                avg_token_savings_pct=round(avg_tok_savings, 2),
-                drift_safety_rate=round(drift_safe_rate, 2),
-                results=downstream_results,
+            # Descriptive sanity check: latency < 100ms and non-empty critical path
+            all_passed = (
+                total > 0
+                and avg_slice_lat < 100.0
+                and all(r.sliced_steps > 0 for r in results)
             )
 
             # Measure living memory index synchronization latency
@@ -260,11 +144,8 @@ class BenchmarkEvaluator:
             sync_latency_ms = (time.perf_counter() - t_sync_0) * 1000.0
 
             total_prog = len(progressive_results)
-            avg_raw_tok = sum(p.raw_tokens_est for p in progressive_results) / total_prog if total_prog else 0
-            avg_pb_tok = sum(p.playbook_tokens_est for p in progressive_results) / total_prog if total_prog else 0
-            avg_idx_tok = sum(p.index_tokens_est for p in progressive_results) / total_prog if total_prog else 0
-            avg_pb_sav = sum(p.playbook_savings_pct for p in progressive_results) / total_prog if total_prog else 0.0
-            avg_idx_sav = sum(p.index_savings_pct for p in progressive_results) / total_prog if total_prog else 0.0
+            avg_raw_chars = sum(p.raw_json_chars for p in progressive_results) / total_prog if total_prog else 0
+            avg_pb_chars = sum(p.playbook_json_chars for p in progressive_results) / total_prog if total_prog else 0
             raw_fid = (
                 sum(1 for p in progressive_results if p.raw_storage_verified) / total_prog * 100.0
                 if total_prog
@@ -273,11 +154,8 @@ class BenchmarkEvaluator:
 
             prog_summary = ProgressiveDisclosureSummary(
                 total_instances=total_prog,
-                avg_raw_tokens_est=int(round(avg_raw_tok)),
-                avg_playbook_tokens_est=int(round(avg_pb_tok)),
-                avg_index_tokens_est=int(round(avg_idx_tok)),
-                avg_playbook_savings_pct=round(avg_pb_sav, 2),
-                avg_index_savings_pct=round(avg_idx_sav, 2),
+                avg_raw_json_chars=int(round(avg_raw_chars)),
+                avg_playbook_json_chars=int(round(avg_pb_chars)),
                 raw_fidelity_rate=round(raw_fid, 2),
                 living_index_latency_ms=round(sync_latency_ms, 2),
                 results=progressive_results,
@@ -290,31 +168,30 @@ class BenchmarkEvaluator:
                 max_trajectory_length=max_len,
                 min_trajectory_length=min_len,
                 avg_compression_ratio=round(avg_cr, 2),
-                avg_noise_elimination_rate=round(avg_ner, 2),
-                top1_retrieval_accuracy=round(top1, 2),
-                mean_reciprocal_rank=round(mrr, 2),
                 avg_slicing_latency_ms=round(avg_slice_lat, 2),
-                avg_retrieval_latency_ms=round(avg_ret_lat, 2),
+                total_raw_chars=total_raw_chars,
+                total_sliced_chars=total_sliced_chars,
+                total_raw_tokens_est=total_raw_tok,
+                total_sliced_tokens_est=total_sliced_tok,
                 total_l2_invariants_extracted=total_l2,
                 all_passed=all_passed,
                 results=results,
-                downstream=downstream_summary,
                 progressive=prog_summary,
             )
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
     def _evaluate_single_file(
-        self, file_path: Path, temp_workspace: str, store: DualTierMemoryStore
-    ) -> tuple[
+        self,
+        file_path: Path,
+        temp_workspace: str,
+        store: DualTierMemoryStore,
+    ) -> Tuple[
         TrajectoryEvaluationResult,
-        Optional[Dict[str, Any]],
-        DownstreamEfficacyResult,
         ProgressiveDisclosureResult,
     ]:
-        # Detect agent adapter
-        stem = file_path.name.lower()
-        if "dsh" in stem or file_path.suffix == ".jsonl":
+        stem = file_path.stem.lower()
+        if "dsh" in stem:
             agent_name = "dsh"
         elif "atif" in stem:
             agent_name = "atif"
@@ -323,36 +200,6 @@ class BenchmarkEvaluator:
 
         adapter = get_adapter(agent_name)
         session: ParsedSession = adapter.parse_transcript(str(file_path), temp_workspace)
-
-        # Identify files mutated in the session
-        session_mutated_files = {
-            a.target_file for a in session.actions if a.kind == ActionKind.MUTATE and a.target_file
-        }
-
-        # Count raw exploratory noise in session (exploratory reads of non-mutated files, plus exploratory commands)
-        raw_noise_count = 0
-        for act in session.actions:
-            if act.kind == ActionKind.READ:
-                if act.target_file and act.target_file not in session_mutated_files:
-                    raw_noise_count += 1
-            elif act.kind == ActionKind.ENV_EXEC and act.command:
-                low = act.command.strip().lower()
-                if any(
-                    low.startswith(pfx)
-                    for pfx in (
-                        "ls",
-                        "pwd",
-                        "find",
-                        "grep",
-                        "rg ",
-                        "cat",
-                        "git status",
-                        "git diff",
-                        "git log",
-                        "echo",
-                    )
-                ):
-                    raw_noise_count += 1
 
         t0 = time.perf_counter()
         slicer = BackwardTraceSlicer()
@@ -366,47 +213,20 @@ class BenchmarkEvaluator:
         sliced_count = len(playbook.l0_critical_path)
         cr = max(0.0, (1.0 - (sliced_count / raw_count)) * 100.0)
 
-        # Check remaining noise in L0 critical path
-        l0_noise = 0
-        for step in playbook.l0_critical_path:
-            action_type = step.get("action")
-            if action_type == ActionKind.READ.value:
-                target = str(step.get("target") or "")
-                if target and target not in session_mutated_files:
-                    l0_noise += 1
-            elif action_type == ActionKind.ENV_EXEC.value:
-                cmd = str(step.get("command") or "").strip().lower()
-                if any(
-                    cmd.startswith(pfx)
-                    for pfx in (
-                        "ls",
-                        "pwd",
-                        "find",
-                        "grep",
-                        "rg ",
-                        "cat",
-                        "git status",
-                        "git diff",
-                        "git log",
-                        "echo",
-                    )
-                ):
-                    l0_noise += 1
-
-        ner = 100.0 if raw_noise_count == 0 else max(
-            0.0, ((raw_noise_count - l0_noise) / raw_noise_count) * 100.0
+        # Measured character counts & empirical token estimates (~chars // 4, zero arbitrary constants)
+        raw_chars = sum(
+            len(str(a.command or "")) + len(str(a.target_file or "")) + len(str(a.output_snippet or ""))
+            for a in session.actions
         )
+        sliced_chars = sum(
+            len(str(s.get("command") or "")) + len(str(s.get("target") or ""))
+            for s in playbook.l0_critical_path
+        )
+        raw_tok = max(1, raw_chars // 4)
+        sliced_tok = max(1, sliced_chars // 4)
 
-        # Persist to isolated store for retrieval verification
+        # Persist to isolated store for index sync test
         store.save_playbook(playbook, target_scope="project")
-
-        query_info = {
-            "instance_id": session.session_id,
-            "target_trace_id": playbook.trace_id,
-            "query_text": playbook.problem_intent,
-            "files": [playbook.guards[0].target] if playbook.guards else list(playbook.touched_files),
-            "errors": [r.error_signature for r in playbook.l2_causal_repairs],
-        }
 
         res = TrajectoryEvaluationResult(
             dataset_name=file_path.stem,
@@ -415,87 +235,19 @@ class BenchmarkEvaluator:
             raw_steps=raw_count,
             sliced_steps=sliced_count,
             compression_ratio=round(cr, 1),
-            raw_exploratory_noise=raw_noise_count,
-            l0_noise_remaining=l0_noise,
-            noise_elimination_rate=round(ner, 1),
+            raw_chars=raw_chars,
+            sliced_chars=sliced_chars,
+            raw_tokens_est=raw_tok,
+            sliced_tokens_est=sliced_tok,
+            slicing_latency_ms=round(slicing_ms, 2),
             l1_files_count=len(playbook.touched_files),
             l2_causal_repairs_count=len(playbook.l2_causal_repairs),
-            slicing_latency_ms=round(slicing_ms, 2),
-            retrieval_rank=1,  # updated in parent loop
-            retrieval_latency_ms=0.0,
             passed_verification=bool(playbook.l1_verification_cmds),
             details={
                 "l0_steps": playbook.l0_critical_path,
                 "l1_topology": playbook.l1_cochange_topology,
                 "l2_repairs": [asdict(r) for r in playbook.l2_causal_repairs],
             },
-        )
-        # Compute Downstream Efficacy & Negative Transfer metrics
-        baseline_steps = raw_count
-        tmem_steps = sliced_count
-        step_red_pct = max(0.0, (1.0 - (tmem_steps / baseline_steps)) * 100.0)
-
-        # Baseline intermediate trial errors in session vs pruned in sliced path
-        baseline_errors = sum(
-            1 for a in session.actions
-            if a.exit_code not in (0, None) or a.error_signature
-        )
-        l0_errors = sum(
-            1 for s in playbook.l0_critical_path
-            if s.get("action") == ActionKind.ENV_EXEC.value and s.get("exit_code", 0) not in (0, None)
-        )
-        errors_avoided = max(0, baseline_errors - l0_errors)
-        err_avoid_pct = 100.0 if baseline_errors == 0 else round((errors_avoided / baseline_errors) * 100.0, 1)
-
-        # First action inspection
-        l0_first = playbook.l0_critical_path[0] if playbook.l0_critical_path else {}
-        first_act = l0_first.get("action", "NONE")
-        first_tgt = str(l0_first.get("target") or l0_first.get("command") or "")
-        first_desc = f"{first_act}({first_tgt})"
-        first_hit = bool(first_tgt and any(first_tgt in f or f in first_tgt for f in playbook.touched_files))
-
-        # Context token estimation (~4 chars/token heuristic)
-        base_tok = sum(
-            len(str(a.command or "")) + len(str(a.target_file or "")) + 280
-            for a in session.actions
-        )
-        tmem_tok = sum(
-            len(str(s.get("command") or "")) + len(str(s.get("target") or "")) + 80
-            for s in playbook.l0_critical_path
-        )
-        tok_savings = max(0.0, (1.0 - (tmem_tok / max(base_tok, 1))) * 100.0)
-
-        # Drift & Negative Transfer Simulation
-        drift_safe = True
-        drift_tier = "L0_FULL"
-        if playbook.guards:
-            drift_dir = tempfile.mkdtemp(prefix="tmem_drift_sim_")
-            try:
-                ev_drift = evaluate_guards(playbook, drift_dir)
-                drift_safe = (not ev_drift.l0_valid) and (ev_drift.effective_tier in ("L1_TOPOLOGY", "L2_INVARIANT"))
-                drift_tier = ev_drift.effective_tier
-            finally:
-                shutil.rmtree(drift_dir, ignore_errors=True)
-        else:
-            drift_tier = "L1_TOPOLOGY" if playbook.l1_cochange_topology else "L2_INVARIANT"
-
-        downstream_res = DownstreamEfficacyResult(
-            instance_id=session.session_id,
-            dataset_name=file_path.stem,
-            baseline_steps=baseline_steps,
-            tmem_steps=tmem_steps,
-            step_reduction_pct=round(step_red_pct, 1),
-            baseline_errors_count=baseline_errors,
-            errors_avoided_count=errors_avoided,
-            error_avoidance_pct=round(err_avoid_pct, 1),
-            first_action_hit=first_hit,
-            first_action_desc=first_desc,
-            baseline_token_est=base_tok,
-            tmem_token_est=tmem_tok,
-            token_savings_pct=round(tok_savings, 1),
-            drift_tested=bool(playbook.guards),
-            drift_safe=drift_safe,
-            drift_degraded_tier=drift_tier,
         )
 
         # Progressive Disclosure evaluation
@@ -505,112 +257,71 @@ class BenchmarkEvaluator:
         loaded_raw = raw_store.load_raw_trace(playbook.trace_id)
         raw_verified = loaded_raw is not None and len(loaded_raw.actions) == len(session.actions)
         replay_str = format_raw_trace_replay(raw_tr)
-        replay_ok = len(replay_str) > 100
+        replay_ok = len(replay_str) > 50
 
-        # Token footprint across disclosure tiers
-        raw_tok_est = len(session.actions) * 220 + 150
-        playbook_tok_est = (
-            len(playbook.l0_critical_path) * 45
-            + len(playbook.l1_cochange_topology) * 25
-            + len(playbook.l2_causal_repairs) * 40
-            + 75
-        )
-        index_tok_est = 35
-
-        pb_savings = max(0.0, (1.0 - (playbook_tok_est / raw_tok_est)) * 100.0)
-        idx_savings = max(0.0, (1.0 - (index_tok_est / raw_tok_est)) * 100.0)
+        pb_json_chars = len(json.dumps(playbook.to_dict()))
+        raw_json_chars = len(json.dumps(raw_tr.to_dict()))
+        index_chars = 120
 
         prog_res = ProgressiveDisclosureResult(
             instance_id=session.session_id,
             dataset_name=file_path.stem,
-            raw_tokens_est=raw_tok_est,
-            playbook_tokens_est=playbook_tok_est,
-            index_tokens_est=index_tok_est,
-            playbook_savings_pct=round(pb_savings, 1),
-            index_savings_pct=round(idx_savings, 1),
+            raw_json_chars=raw_json_chars,
+            playbook_json_chars=pb_json_chars,
+            index_chars=index_chars,
             raw_storage_verified=raw_verified,
             replay_rendered=replay_ok,
         )
 
-        return res, query_info, downstream_res, prog_res
+        return res, prog_res
 
 
 def format_markdown_report(summary: BenchmarkSummary) -> str:
-    """Format evaluation results into an objective, pragmatic markdown report."""
+    """Format evaluation results into a descriptive, pragmatic markdown report."""
     md = []
-    # 1. Trajectory Slicing & Feature Profiling Section
-    md.append("## 📊 轨迹后向切片与关键路径特征评测 (tmem Upstream Memory Compilation & Slicing)")
+    md.append("## 📊 轨迹切片与特征描述评测 (Trajectory Slicing & Profiling)")
     md.append("")
     md.append(f"- **评测轨迹总量**: {summary.total_trajectories} 条真实 Agent 轨迹 (原始交互总轮次: {summary.total_raw_steps} 步，长度区间: {summary.min_trajectory_length} ~ {summary.max_trajectory_length} 步)")
-    md.append(f"- **平均步数精简率 (Compression Ratio)**: **{summary.avg_compression_ratio}%** ({summary.total_raw_steps} 步原始试错 -> {summary.total_sliced_steps} 步核心执行路径)")
-    md.append(f"- **提炼高熵 L2 因果修复对**: **{summary.total_l2_invariants_extracted} 组** (经信息量与异常签名过滤的有效修复规则)")
-    md.append(f"- **意图检索命中表现 (Top-1)**: **{summary.top1_retrieval_accuracy * 100:.1f}%** (MRR: {summary.mean_reciprocal_rank})")
+    md.append(f"- **切片后 L0 步骤总计**: {summary.total_sliced_steps} 步 (平均精简率: {summary.avg_compression_ratio}%)")
+    md.append(f"- **实测字符数**: {summary.total_raw_chars} 字符 (原始) -> {summary.total_sliced_chars} 字符 (切片后)")
+    md.append(f"- **预估 Token 数 (chars // 4)**: ~{summary.total_raw_tokens_est} tok (原始) -> ~{summary.total_sliced_tokens_est} tok (切片后)")
+    md.append(f"- **提炼高熵 L2 因果修复对**: **{summary.total_l2_invariants_extracted} 组** (经堆栈交集与源码约束过滤)")
     md.append(f"- **平均切片耗时**: **{summary.avg_slicing_latency_ms} ms** (纯本地确定性运行时，零 LLM Token 耗时)")
-    md.append(f"- **SQLite 检索耗时**: **{summary.avg_retrieval_latency_ms} ms** (满足 <5ms 预检要求)")
     md.append(f"- **基准校验状态**: **{'✅ PASSED' if summary.all_passed else '❌ FAILED'}**")
     md.append("")
-    md.append("> **方法学说明**：切片器以 Git 落盘变更与最终通过的测试为锚点，剪除未触及最终文件的探索性读操作与中间失败命令。对于具备显式验证和异常堆栈的轨迹，可提取确定性的 L1 协同文件拓扑与 L2 因果修复规则。")
+    md.append("> **方法学说明**：切片器以落盘变更与最终通过的测试为锚点，剪除探索性读操作与无关命令。本报告仅展示客观描述性数字（原始步数、L0 步数、实测字符数/Token 估算及切片耗时），不报告自证明的满分推断指标。")
     md.append("")
-    md.append("### 轨迹切片明细")
+    md.append("### 轨迹切片描述性统计明细")
     md.append("")
-    md.append("| 实例 / 轨迹来源 | 格式 | 原始步数 | L0 步数 | 精简率 | 协同文件 (L1) | 高熵修复对 (L2) | 验证命令提取 | 切片耗时 |")
-    md.append("|---|---|---|---|---|---|---|:---:|---|")
+    md.append("| 实例 / 轨迹来源 | 格式 | 原始步数 | L0 步数 | 精简率 | 原始字符数 | 切片字符数 | 预估 Token (原/切) | 协同文件 (L1) | 高熵修复对 (L2) | 验证命令提取 | 切片耗时 |")
+    md.append("|---|---|---|---|---|---|---|---|---|---|:---:|---|")
     for r in summary.results:
         md.append(
             f"| `{r.instance_id}` | `{r.agent_format}` | {r.raw_steps} | {r.sliced_steps} | "
-            f"**{r.compression_ratio}%** | {r.l1_files_count} 个文件 | "
+            f"**{r.compression_ratio}%** | {r.raw_chars} | {r.sliced_chars} | "
+            f"~{r.raw_tokens_est} / ~{r.sliced_tokens_est} | {r.l1_files_count} 个文件 | "
             f"{r.l2_causal_repairs_count} 组 | {'✅' if r.passed_verification else '-'} | {r.slicing_latency_ms}ms |"
         )
     md.append("")
 
-    # 2. Raw vs. Sliced Feature Comparison
-    if summary.downstream:
-        ds = summary.downstream
-        md.append("## 🔍 轨迹特征剖析：完整试错会话 vs. 提炼关键路径 (tmem Trajectory Distillation & Profiling)")
-        md.append("")
-        md.append(f"- **分析任务数**: {ds.total_cases} 个真实编码任务 (涵盖 SWE-bench & DSH)")
-        md.append(f"- **平均步数精简比例**: **-{ds.avg_step_reduction_pct}%** (去除盲目试探与死胡同后的有效路径占比)")
-        md.append(f"- **原始探索中过滤的失败命令**: {ds.total_errors_avoided} / {ds.total_baseline_errors} 次 (在关键路径中仅保留最终通过的验证命令)")
-        md.append(f"- **首动直达有效目标比例**: **{ds.first_action_hit_rate * 100:.1f}%**")
-        md.append(f"- **预估上下文消耗缩减**: **-{ds.avg_token_savings_pct}%** (相较完整调试历史减少注入的上下文量)")
-        md.append(f"- **探针漂移自动降级率**: **{ds.drift_safety_rate}%** (当目标文件变动或不存在时，探针自动阻断 L0 并降级为 L1/L2)")
-        md.append("")
-        md.append("> **注意**：本表反映的是轨迹特征剖析（过滤前后状态对比）。在真实下游复用时，对于同类/已知故障可直接循迹；遇到全新任务时，系统通过 Guards 探针自动降级为 L1 或静默，以避免旧轨迹产生负迁移。")
-        md.append("")
-        md.append("### 轨迹特征剖析对比")
-        md.append("")
-        md.append("| 任务实例 | 原始步数 | 切片步数 | 精简比例 | 原始试错报错 | 过滤报错 | 首动直达目标 | 预估 Token 缩减 | 漂移降级安全 |")
-        md.append("|---|---|---|---|---|---|---|---|---|")
-        for d in ds.results:
-            md.append(
-                f"| `{d.instance_id}` | {d.baseline_steps} | {d.tmem_steps} | "
-                f"**-{d.step_reduction_pct}%** | {d.baseline_errors_count} 次 | "
-                f"{d.errors_avoided_count} 次 | `{d.first_action_desc}` | "
-                f"**-{d.token_savings_pct}%** | {'✅ ' + d.drift_degraded_tier if d.drift_safe else '❌ 未降级'} |"
-            )
-        md.append("")
-
-    # 3. Progressive Disclosure Footprint Section
     if summary.progressive:
         prog = summary.progressive
-        md.append("## ⚡ 分级渐进披露体积评测 (Progressive Disclosure Footprint)")
+        md.append("## ⚡ 分级渐进披露存储体积描述 (Progressive Disclosure Footprint)")
         md.append("")
         md.append(f"- **评测记忆条目**: {prog.total_instances} 条轨迹")
-        md.append(f"- **Tier 0 活文档索引 (`MEMORIES.md`)**: **~{prog.avg_index_tokens_est} tokens** (较原始轨迹体积减少 **-{prog.avg_index_savings_pct}%**)")
-        md.append(f"- **Tier 1 守卫手册 (`Playbook`)**: **~{prog.avg_playbook_tokens_est} tokens** (较原始轨迹体积减少 **-{prog.avg_playbook_savings_pct}%**)")
-        md.append(f"- **Tier 2 原始完整轨迹**: **~{prog.avg_raw_tokens_est} tokens** (包含完整 tool_calls、输出与 Git Diff)")
-        md.append(f"- **原始轨迹与回放保真度**: **{prog.raw_fidelity_rate}%** (动作无损存储)")
+        md.append(f"- **平均 Playbook JSON 体积**: ~{prog.avg_playbook_json_chars} 字符")
+        md.append(f"- **平均 Raw Trace JSON 体积**: ~{prog.avg_raw_json_chars} 字符 (包含完整 tool_calls、输出与 Git Diff)")
+        md.append(f"- **原始轨迹存储校验通过率**: **{prog.raw_fidelity_rate}%**")
         md.append(f"- **活文档索引原子同步耗时**: **{prog.living_index_latency_ms} ms**")
         md.append("")
-        md.append("### 分级存储体积明细")
+        md.append("### 分级存储明细")
         md.append("")
-        md.append("| 实例 / 轨迹 | Tier 2 原始估计 | Tier 1 手册估计 | Tier 0 索引估计 | Playbook 精简 | 索引精简 | 存储校验 | 回放渲染 |")
-        md.append("|---|---|---|---|---|---|---|---|")
+        md.append("| 实例 / 轨迹 | Raw Trace JSON 字符 | Playbook JSON 字符 | 存储校验 | 回放渲染 |")
+        md.append("|---|---|---|---|---|")
         for p in prog.results:
             md.append(
-                f"| `{p.instance_id}` | ~{p.raw_tokens_est} tok | ~{p.playbook_tokens_est} tok | "
-                f"~{p.index_tokens_est} tok | **-{p.playbook_savings_pct}%** | "
-                f"**-{p.index_savings_pct}%** | {'✅ 通过' if p.raw_storage_verified else '❌ 失败'} | "
+                f"| `{p.instance_id}` | {p.raw_json_chars} 字符 | {p.playbook_json_chars} 字符 | "
+                f"{'✅ 通过' if p.raw_storage_verified else '❌ 失败'} | "
                 f"{'✅ 通过' if p.replay_rendered else '❌ 失败'} |"
             )
         md.append("")

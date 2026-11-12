@@ -287,6 +287,100 @@ SYMBOL_STOPWORDS = {
 }
 
 
+DOC_EXTENSIONS = {".md", ".markdown", ".rst", ".txt", ".adoc", ".pdf", ".html", ".htm"}
+
+TEST_FILE_PATTERNS = [
+    re.compile(r"(?:^|[/\\])(?:tests?|testing|__tests__)(?:[/\\]|$)", re.IGNORECASE),
+    re.compile(r"(?:^|[/\\])test_[^/\\]+\.[a-zA-Z0-9]+$", re.IGNORECASE),
+    re.compile(r"_[a-zA-Z0-9]+_test\.[a-zA-Z0-9]+$", re.IGNORECASE),
+    re.compile(r"[-_.](?:test|spec)\.[a-zA-Z0-9]+$", re.IGNORECASE),
+]
+
+INLINE_SCRIPT_PATTERNS = [
+    re.compile(r"\b(?:python[0-9.]*|pypy[0-9.]*)\s+-c\b", re.IGNORECASE),
+    re.compile(r"\b(?:node|deno|bun)\s+-e\b", re.IGNORECASE),
+    re.compile(r"\b(?:bash|sh|zsh)\s+-c\b", re.IGNORECASE),
+    re.compile(r"\b(?:ruby|perl)\s+-e\b", re.IGNORECASE),
+    re.compile(r"<<-?\s*['\"]?(?:EOF|END|STOP)['\"]?", re.IGNORECASE),
+]
+
+META_NON_TASK_PATTERNS = [
+    re.compile(r"(?:评审|评价|打分|评分|审查|审计|不留情面)", re.IGNORECASE),
+    re.compile(r"\b(?:review|audit|critique|evaluate|scoring)\b", re.IGNORECASE),
+    re.compile(r"(?:rate\s+(?:the\s+|this\s+)?(?:project|code|repo|codebase)|rating\s+(?:the\s+|this\s+)?project)", re.IGNORECASE),
+    re.compile(r"(?:优化项目|根据反馈优化|优化工程|优化仓库|重构项目)", re.IGNORECASE),
+    re.compile(r"^(?:explain|describe|what is|how does|介绍|总结|讲讲)\b", re.IGNORECASE),
+]
+
+
+def is_test_file(file_path: Optional[str]) -> bool:
+    """Return True if path points to a test file or test directory."""
+    if not file_path:
+        return False
+    p = str(file_path).strip()
+    return any(pat.search(p) for pat in TEST_FILE_PATTERNS)
+
+
+def is_doc_file(file_path: Optional[str]) -> bool:
+    """Return True if path points to documentation or non-executable text."""
+    if not file_path:
+        return False
+    p = Path(str(file_path).strip())
+    if p.suffix.lower() in DOC_EXTENSIONS:
+        return True
+    return any(part.lower() in ("docs", "doc", "documentation") for part in p.parts)
+
+
+def is_source_code_file(file_path: Optional[str]) -> bool:
+    """Return True if path represents genuine application source code (not test, not doc)."""
+    if not file_path:
+        return False
+    if is_doc_file(file_path) or is_test_file(file_path):
+        return False
+    return is_code_file(file_path)
+
+
+def is_inline_script_command(cmd: Optional[str]) -> bool:
+    """Return True if command is an inline script (-c, -e) or heredoc."""
+    if not cmd:
+        return False
+    s = cmd.strip()
+    if "\n" in s:
+        return True
+    return any(pat.search(s) for pat in INLINE_SCRIPT_PATTERNS)
+
+
+def is_meta_non_task_intent(text: str) -> bool:
+    """Return True if intent is a meta-request (evaluation, review, generic feedback) rather than a concrete task."""
+    if not text:
+        return False
+    s = text.strip()
+    return any(pat.search(s) for pat in META_NON_TASK_PATTERNS)
+
+
+TRACEBACK_FILE_PATTERNS = [
+    re.compile(r'File "([^"]+)", line \d+'),
+    re.compile(r'^\s*([A-Za-z0-9_./\\-]+\.[a-zA-Z0-9_]+):(\d+):(?:\s*(?:in |error|fatal|warning))?', re.MULTILINE),
+    re.compile(r'^\s*(?:FAIL|ERROR):\s+[A-Za-z0-9_.]+\s+\(([A-Za-z0-9_./\\-]+\.[a-zA-Z0-9_]+)\)', re.MULTILINE),
+]
+
+
+def extract_traceback_files(text: Optional[str], workspace_root: str = "") -> Set[str]:
+    """Deterministically extract referenced source/test file paths from error output / traceback."""
+    if not text:
+        return set()
+    found = set()
+    for pat in TRACEBACK_FILE_PATTERNS:
+        for m in pat.finditer(text):
+            raw_f = m.group(1).strip()
+            if any(pfx in raw_f for pfx in ("<stdin>", "<string>", "site-packages", "/usr/lib", ".local/lib")):
+                continue
+            norm = normalize_rel_path(raw_f, workspace_root)
+            if norm and not norm.startswith("/"):
+                found.add(norm)
+    return found
+
+
 def is_code_file(file_path: Optional[str]) -> bool:
     """Return True if file_path represents a source code file suitable for AST/symbol guards."""
     if not file_path:
