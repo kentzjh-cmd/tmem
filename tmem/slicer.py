@@ -44,7 +44,7 @@ TOOLCHAIN_INSTALL_RE = re.compile(
 )
 
 RE_TEST_SCRIPT_CMD = re.compile(
-    r"\b(?:python\d*(?:\.\d+)?|node|bash|sh)\s+[\w\./\\-]*?(?:test|tests|reproduce|repro|simulate|check|verify|runtests)[\w\./\\-]*\b",
+    r"\b(?:python\d*(?:\.\d+)?|node|bash|sh)\s+(?!-c\b)[\w\./\\-]*?(?:test|tests|reproduce|repro|simulate|check|verify|runtests)[\w\./\\-]*\b",
     re.I
 )
 
@@ -838,6 +838,8 @@ class BackwardTraceSlicer:
             if "tmem.cli" in base_part:
                 continue
             if EXPLORATORY_CLAUSE_RE.match(base_part):
+                continue
+            if re.match(r"^(?:python\d*(?:\.\d+)?\s+-c\b|node\s+-e\b)", base_part):
                 continue
             if (
                 VERIFY_WHITELIST_RE.search(base_part)

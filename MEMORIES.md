@@ -15,13 +15,16 @@
 
 | Trace ID | Tier Status | Problem Intent / Summary | Key Files & Symbols | Verification Command | Confidence | Raw Trace |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| [`tr_580560d0b4`](.tmem/traces/tr_580560d0b4.json) | 🟢 `L0_FULL` | **Modify tmem/slicer.py**<br>_Key symbols: BackwardTraceSlicer_<br>🎯 <i>Error 'Command failed (exit 2): python3 -m tmem.cli inspect tr_464b40ddcd --level l0' resolved by 'edit tmem/slicer.py'</i> | `tmem/slicer.py` | `python3 -m unittest discover -s tests -v` | 100% | [`raw`](.tmem/raw/tr_580560d0b4.raw.json) |
 | [`tr_cc3a687f02`](.tmem/traces/tr_cc3a687f02.json) | ⚪ `TRIVIAL` | **Modify tmem/slicer.py**<br>_Key symbols: AgyAdapter, BackwardTraceSlicer, _extract_canonical_verification_cmd, _extract_toolchain_install_clause_ | `tmem/slicer.py` | `python3 -m unittest discover -s tests -v` | 50% | `-` |
 
 ---
 
 ## 2. Universal Causal Invariant Repairs (L2)
 
-_No error-to-fix invariant pairs extracted yet._
+| Error Signature | Failed Command | Minimal Repair Action | Verification Command |
+| :--- | :--- | :--- | :--- |
+| `Command failed (exit 2): python3 -m tmem.cli inspect tr_464b40ddcd --level l0` | `python3 -m tmem.cli inspect tr_464b40ddcd --level l0` | `edit tmem/slicer.py` | `python3 -m unittest discover -s tests -v` |
 
 ---
 
