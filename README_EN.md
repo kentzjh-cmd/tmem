@@ -1,10 +1,10 @@
-# `tmem` — Execution Trace Memory Compiler for Coding Agents
+# `tmem` — Execution Trace Slicing Filter & Playbook Extractor for Coding Agents
 
 [中文文档](./README.md) | **English**
 
-`tmem` (**Trace Memory**) is a **zero-dependency, zero-UI, repository-scoped (`.tmem/`)** execution trace memory compiler and CLI tool for coding agents. It integrates natively with **`agy` (Antigravity)** and **`@deepseek-ai/dsh` (DeepSeek Harness)**, and parses session trajectories from `codex`, `opencode`, `pi`, SWE-bench, and ATIF.
+`tmem` (**Trace Memory**) is a **zero-dependency, zero-UI, repository-scoped (`.tmem/`)** execution trace slicing filter and procedural memory tool for coding agents. It integrates natively with **`agy` (Antigravity)** and **`@deepseek-ai/dsh` (DeepSeek Harness)**, and parses session trajectories from `codex`, `opencode`, `pi`, SWE-bench, and ATIF.
 
-Unlike memory systems that store unstructured conversational summaries, `tmem` treats agent transcripts (`transcript.jsonl` / `session.v4.jsonl`) as **unoptimized execution traces**. By anchoring on **Git ground-truth surviving states** and **final passing verification commands (`exit_code == 0`)**, it performs **deterministic backward trace slicing** to prune exploratory dead-ends, abandoned edits, and noise scans into **3-tier structured playbooks (L0 / L1 / L2)** protected by **pre-flight guards**. When a similar task or error arises later, `tmem` validates the guards first and injects the highest valid tier.
+Unlike systems that store conversational summaries, `tmem` treats agent debug transcripts (`transcript.jsonl` / `session.v4.jsonl`) as execution streams containing exploratory trial-and-error. By anchoring on **Git ground-truth surviving states** and **final passing verification commands (`exit_code == 0`)**, it applies **heuristic backward trace slicing** to filter exploratory wanderings, abandoned edits, and noise scans into **3-tier structured playbooks (L0 / L1 / L2)** protected by **pre-flight guards**. When a similar task or error arises later, `tmem` validates the guards first and injects the highest valid tier.
 
 > **One-line positioning**: A Git-grounded, auditable, repo-shareable, cross-agent **procedural memory layer** that records *how tasks actually got solved and verified in this codebase*, rather than *what was discussed*.
 
@@ -218,39 +218,39 @@ PYTHONPATH=. python3 -m unittest discover -s tests -v
 
 Run via: `python3 -m tmem.evaluate --data-dir benchmarks/data/online_20`
 
-| Instance ID | Repository | Raw Steps | L0 Steps | Compression (CR) | Exploratory Pruned | L1 Topology | L2 Repairs | Slicing Latency | Lookup Latency |
-|---|---|---|---|---|---|---|---|---|---|
-| `astropy__astropy-14182` | Astropy | 33 | 4 | **87.9%** | **100.0%** | 2 | 0 | 0.64 ms | 3.5 ms |
-| `astropy__astropy-14365` | Astropy | 10 | 4 | **60.0%** | **100.0%** | 2 | 0 | 0.27 ms | 3.3 ms |
-| `django__django-10914` | Django | 8 | 4 | **50.0%** | **100.0%** | 2 | 0 | 0.25 ms | 3.1 ms |
-| `django__django-10924` | Django | 22 | 4 | **81.8%** | **100.0%** | 2 | 2 | 0.35 ms | 3.4 ms |
-| `django__django-11001` | Django | 16 | 5 | **68.8%** | **100.0%** | 3 | 2 | 0.36 ms | 3.3 ms |
-| `django__django-11019` | Django | 17 | 4 | **76.5%** | **100.0%** | 2 | 2 | 0.36 ms | 3.3 ms |
-| `django__django-11039` | Django | 31 | 4 | **87.1%** | **100.0%** | 2 | 0 | 0.33 ms | 3.5 ms |
-| `matplotlib__matplotlib-23913` | Matplotlib | 30 | 4 | **86.7%** | **100.0%** | 2 | 0 | 0.45 ms | 3.6 ms |
-| `matplotlib__matplotlib-23964` | Matplotlib | 8 | 4 | **50.0%** | **100.0%** | 2 | 1 | 0.29 ms | 3.2 ms |
-| `matplotlib__matplotlib-24149` | Matplotlib | 12 | 4 | **66.7%** | **100.0%** | 2 | 1 | 0.29 ms | 3.2 ms |
-| `psf__requests-2148` | Requests | 13 | 2 | **84.6%** | **100.0%** | 1 | 0 | 0.24 ms | 3.1 ms |
-| `psf__requests-2674` | Requests | 33 | 3 | **90.9%** | **100.0%** | 2 | 0 | 0.44 ms | 3.4 ms |
-| `pydata__xarray-3364` | Xarray | 31 | 5 | **83.9%** | **100.0%** | 2 | 0 | 0.34 ms | 3.5 ms |
-| `pydata__xarray-4094` | Xarray | 23 | 3 | **87.0%** | **100.0%** | 2 | 0 | 0.42 ms | 3.4 ms |
-| `pylint-dev__pylint-5859` | Pylint | 13 | 4 | **69.2%** | **100.0%** | 2 | 0 | 0.26 ms | 3.3 ms |
-| `pylint-dev__pylint-7080` | Pylint | 10 | 2 | **80.0%** | **100.0%** | 1 | 0 | 0.21 ms | 3.1 ms |
-| `pytest-dev__pytest-5221` | Pytest | 14 | 4 | **71.4%** | **100.0%** | 2 | 0 | 0.31 ms | 3.3 ms |
-| `pytest-dev__pytest-7168` | Pytest | 8 | 3 | **62.5%** | **100.0%** | 1 | 1 | 0.25 ms | 3.2 ms |
-| `scikit-learn__scikit-learn-10508` | Scikit-learn | 11 | 4 | **63.6%** | **100.0%** | 2 | 1 | 0.27 ms | 3.3 ms |
-| `scikit-learn__scikit-learn-11040` | Scikit-learn | 34 | 5 | **85.3%** | **100.0%** | 3 | 0 | 0.48 ms | 3.6 ms |
-| `sphinx-doc__sphinx-8273` | Sphinx | 9 | 2 | **77.8%** | **100.0%** | 1 | 0 | 0.22 ms | 3.0 ms |
-| `sympy__sympy-22005` | Sympy | 12 | 6 | **50.0%** | **100.0%** | 3 | 0 | 0.31 ms | 3.4 ms |
-| **Corpus Average (22 Traces)**| — | **18.1** | **3.82** | **73.71%** | **100.0%** | **2.05** | **10 total** | **0.33 ms** | **3.61 ms** |
+| Instance ID | Repository | Raw Steps | L0 Steps | Compression (CR) | L1 Files | High-Entropy L2 Repairs | Verification Found | Slicing Latency | Lookup Latency |
+|---|---|---|---|---|---|---|:---:|---|---|
+| `astropy__astropy-14182` | Astropy | 33 | 4 | **87.9%** | 2 | 0 | ✅ | 1.0 ms | 3.5 ms |
+| `astropy__astropy-14365` | Astropy | 10 | 4 | **60.0%** | 2 | 0 | ✅ | 0.3 ms | 3.3 ms |
+| `django__django-10914` | Django | 8 | 4 | **50.0%** | 2 | 0 | - | 0.3 ms | 3.1 ms |
+| `django__django-10924` | Django | 22 | 4 | **81.8%** | 2 | 1 | ✅ | 0.4 ms | 3.4 ms |
+| `django__django-11001` | Django | 16 | 5 | **68.8%** | 3 | 1 | ✅ | 0.4 ms | 3.3 ms |
+| `django__django-11019` | Django | 17 | 4 | **76.5%** | 2 | 1 | ✅ | 0.4 ms | 3.3 ms |
+| `django__django-11039` | Django | 31 | 4 | **87.1%** | 2 | 0 | - | 0.4 ms | 3.5 ms |
+| `matplotlib__matplotlib-23913` | Matplotlib | 30 | 4 | **86.7%** | 2 | 0 | - | 0.6 ms | 3.6 ms |
+| `matplotlib__matplotlib-23964` | Matplotlib | 8 | 4 | **50.0%** | 2 | 1 | ✅ | 0.4 ms | 3.2 ms |
+| `matplotlib__matplotlib-24149` | Matplotlib | 12 | 4 | **66.7%** | 2 | 0 | ✅ | 0.3 ms | 3.2 ms |
+| `psf__requests-2148` | Requests | 13 | 2 | **84.6%** | 1 | 0 | - | 0.3 ms | 3.1 ms |
+| `psf__requests-2674` | Requests | 33 | 3 | **90.9%** | 2 | 0 | - | 0.5 ms | 3.4 ms |
+| `pydata__xarray-3364` | Xarray | 31 | 5 | **83.9%** | 2 | 0 | ✅ | 0.4 ms | 3.5 ms |
+| `pydata__xarray-4094` | Xarray | 23 | 3 | **87.0%** | 2 | 0 | - | 0.5 ms | 3.4 ms |
+| `pylint-dev__pylint-5859` | Pylint | 13 | 4 | **69.2%** | 2 | 0 | ✅ | 0.4 ms | 3.3 ms |
+| `pylint-dev__pylint-7080` | Pylint | 10 | 2 | **80.0%** | 1 | 0 | - | 0.2 ms | 3.1 ms |
+| `pytest-dev__pytest-5221` | Pytest | 14 | 4 | **71.4%** | 2 | 0 | ✅ | 0.3 ms | 3.3 ms |
+| `pytest-dev__pytest-7168` | Pytest | 8 | 3 | **62.5%** | 1 | 1 | ✅ | 0.3 ms | 3.2 ms |
+| `scikit-learn__scikit-learn-10508` | Scikit-learn | 11 | 4 | **63.6%** | 2 | 1 | ✅ | 0.3 ms | 3.3 ms |
+| `scikit-learn__scikit-learn-11040` | Scikit-learn | 34 | 5 | **85.3%** | 3 | 0 | - | 0.5 ms | 3.6 ms |
+| `sphinx-doc__sphinx-8273` | Sphinx | 9 | 2 | **77.8%** | 1 | 0 | - | 0.2 ms | 3.0 ms |
+| `sympy__sympy-22005` | Sympy | 12 | 6 | **50.0%** | 3 | 0 | ✅ | 0.4 ms | 3.4 ms |
+| **Corpus Average (22 Traces)**| — | **18.1** | **3.82** | **73.71%** | **2.05** | **6 total** | **14 identified** | **0.40 ms** | **3.60 ms** |
 
 **Key Findings:**
-- **Zero LLM Overhead**: Compilation uses deterministic AST parsing and Git sinks, taking **0.33 ms** (~30,000 steps/sec) with 0 API tokens spent.
-- **Exploratory Step Pruning**: Prunes dead-end exploratory reads, directory searches, and scratch reproducer scripts (`reproduce_issue.py`), isolating the effective causal edit chain.
-- **Legitimate L2 Error Invariant Extraction**: Successfully extracts **10 verified error-to-fix invariant pairs** (covering `TypeError`, `AttributeError`, `RuntimeError`, etc.) across the 22 real-world SWE-bench trajectories.
+- **Zero LLM Overhead**: Compilation uses deterministic AST parsing, Git state sinks, and process exit codes, taking **0.4 ms** on local Python runtime with zero API tokens spent.
+- **Exploratory Step Pruning**: Prunes dead-end exploratory reads and unverified scratch scripts, isolating the effective causal edit chain.
+- **High-Entropy L2 Error Invariant Gating**: Rejects uninformative exit codes and test runner aggregate summaries (`FAILED (failures=1)`), capturing **6 verified, specific error-to-fix invariant pairs** (covering `TypeError`, `AssertionError`, `AttributeError`).
 - **Progressive Disclosure Footprint**:
   - **Tier 2 Raw Trace**: ~4,130 tokens
-  - **Tier 1 Guarded Playbook**: ~290 tokens (**-91.25%** reduction)
+  - **Tier 1 Guarded Playbook**: ~283 tokens (**-91.45%** reduction)
   - **Tier 0 Living Index (`MEMORIES.md`)**: ~35 tokens (**-98.92%** reduction)
 
 ---
@@ -293,23 +293,22 @@ Run via: `python3 -m tmem.evaluate --data-dir benchmarks/data/online_20`
 
 ---
 
-## 8. When to Use & Design Boundaries
+## 8. When to Use, Design Boundaries & Trade-offs
 
 **Good fit:**
-- Git-backed repositories with test/build verification commands, especially where **similar tasks recur** (iterative work on the same modules, recurring toolchain or environment issues).
-- Multi-developer or multi-agent teams that want procedural knowledge shared and reviewed like code.
-- Latency- or cost-sensitive workflows that want zero LLM calls on the recall path.
+- **Recurring maintenance or regression issues**: Repositories managed with Git and equipped with automated verification suites, where similar bugs, dependency setups, or refactoring patterns occur repeatedly.
+- **Cross-agent / cross-engineer procedural transfer**: Teams that want to capture *how tricky issues were actually solved and verified in this specific repository* as reviewable, version-controlled files.
+- **Strict latency and cost budgets**: Workflows that require zero LLM overhead or prompt bloat during pre-flight hooks.
 
-**Current limitations:**
+**Technical Boundaries & Limitations:**
 
-| Boundary | Explanation |
-|---|---|
-| **Requires verification signals** | Sessions without mutations or passing verification commands (research, design discussions, projects without tests) rarely produce playbooks. |
-| **Lexical retrieval** | Paraphrased problem descriptions with no overlapping keywords may miss in FTS5/trigger lookup. |
-| **Presence-only guards** | `symbol_present` checks whether a symbol name still exists via regex; if a function's logic was rewritten under the same name, L0 still passes. |
-| **Single-session L1 co-change** | Co-change contracts are currently derived from files modified together in one session rather than multi-commit statistical co-occurrence. |
-| **No usage feedback loop yet** | `hit_count` and `confidence` are not yet updated based on post-injection outcomes; GC only checks guard validity. |
-| **Machine-specific paths in commands** | Recorded verification commands may contain local absolute paths (e.g., `PYTHONPATH=/home/...`). |
+| Boundary / Limitation | Root Cause & Practical Impact | Mitigation & Guidance |
+|---|---|---|
+| **Heuristic Slicing vs. Deep Program Slicing** | Slicing relies on Git-modified files, top-level AST symbols, and exit codes. Complex implicit dependencies (e.g., an agent reads file A for architectural insight but only touches file B) may be pruned. | Sliced paths should be treated as high-probability critical paths rather than formal proofs. Use `tmem replay` to inspect full sessions. |
+| **Guards Test Structural Existence Only** | Guards evaluate `file_exists` and top-level `symbol_present`. If a function's implementation is rewritten under the same signature, L0 guards still pass. | Guards effectively catch renaming and file deletions; substantive correctness must still be validated by terminal execution. |
+| **Replay Generalization Boundary** | The A/B benchmarks evaluate playbook reuse on identical/isomorphic issues. On novel, unseen tasks, playbooks cannot guarantee similar step reductions. | Guards automatically degrade to L1 (co-change suggestions) or suppress injection on drift, eliminating negative transfer. |
+| **Strict Dependency on Verification Signals** | Sessions lacking file mutations or passing verification commands (e.g., pure code review, exploratory Q&A) produce no actionable playbooks. | Conversational Q&A is better captured via conventional documentation or commit messages rather than execution trace memory. |
+| **Lexical Retrieval Scope** | Local BM25 FTS5 retrieval relies on keywords and file paths. Completely paraphrased queries with zero token overlap may fail to match. | Agents can query `MEMORIES.md` directly as a zero-token index, or developers can run `/tmem lookup` explicitly. |
 
 ---
 

@@ -18,7 +18,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tmem.adapters.base import ParsedSession
+from tmem.adapters.base import (
+    ParsedSession,
+    extract_error_signature,
+    is_high_entropy_error_signature,
+)
 from tmem.cli import execute_capture, handle_agy_hook
 from tmem.models import ActionKind, ActionNode, GuardProbe, TracePlaybook
 from tmem.slicer import (
@@ -217,6 +221,85 @@ class TestPragmaticOptimizations(unittest.TestCase):
         ]
         has_milestone = any("<tmem_milestone_reached>" in t for t in m_texts)
         self.assertFalse(has_milestone, "Milestone prompt should not trigger for non-code files like README.md")
+
+    def test_high_entropy_error_signature_quality_gate(self) -> None:
+        """Verify that specific exceptions are accepted and generic runner summaries are rejected."""
+        # Genuine diagnostic signatures
+        valid_sigs = [
+            "TypeError: unexpected keyword argument 'header_rows'",
+            "ModuleNotFoundError: No module named 'six'",
+            "AssertionError: assert 1 == 2",
+            "AttributeError: 'NoneType' object has no attribute 'split'",
+            "error[E0432]: unresolved import `std::collections`",
+            "Cannot find module 'express'",
+        ]
+        for sig in valid_sigs:
+            self.assertTrue(is_high_entropy_error_signature(sig), f"Should accept high-entropy sig: {sig}")
+
+        # Trivial / tautological / generic failure lines
+        invalid_sigs = [
+            "FAILED (failures=1)",
+            "FAILED (errors=2)",
+            "FAIL: test_feature",
+            "Command failed (exit 2): python3 -m tmem.cli inspect ...",
+            "Process exited with code 1",
+            "Exit code 1",
+            "Error",
+            "failed",
+        ]
+        for sig in invalid_sigs:
+            self.assertFalse(is_high_entropy_error_signature(sig), f"Should reject low-entropy sig: {sig}")
+
+    def test_slicer_rejects_generic_failure_as_l2_invariant(self) -> None:
+        """Verify slicer does not create L2 causal pairs from generic 'FAILED (failures=1)' summaries."""
+        code_file = self.workspace / "logic.py"
+        code_file.write_text("def add(a, b): return a + b\n")
+        subprocess.run(["git", "add", "."], cwd=self.workspace, check=True)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=self.workspace, check=True)
+
+        # Agent runs tests (fails with summary only), edits file, tests pass
+        actions = [
+            ActionNode(
+                step_idx=1,
+                kind=ActionKind.ENV_EXEC,
+                tool_name="run_command",
+                command="pytest",
+                exit_code=1,
+                error_signature="FAILED (failures=1)",
+            ),
+            ActionNode(
+                step_idx=2,
+                kind=ActionKind.MUTATE,
+                tool_name="edit_file",
+                target_file="logic.py",
+                symbols_touched=[],
+            ),
+            ActionNode(
+                step_idx=3,
+                kind=ActionKind.ENV_EXEC,
+                tool_name="run_command",
+                command="pytest",
+                exit_code=0,
+            ),
+        ]
+        session = ParsedSession(
+            agent_name="agy",
+            session_id="test_sess_01",
+            workspace_root=str(self.workspace),
+            actions=actions,
+        )
+        slicer = BackwardTraceSlicer()
+        pb = slicer.slice_session(session, use_git_ground_truth=False)
+        self.assertIsNotNone(pb)
+        # Low-entropy FAILED summary must be filtered out of L2
+        self.assertEqual(len(pb.l2_causal_repairs), 0, "Generic failure summary should not yield L2 repair")
+
+    def test_slicer_rejects_inline_assignment_as_verification_cmd(self) -> None:
+        """Verify slicer rejects inline script assignments like 'r = re.compile(...) && print(...)'."""
+        slicer = BackwardTraceSlicer()
+        cmd = "r = re.compile(r'test') && print(bool(r.search('python3 test.py')))"
+        res = slicer._extract_canonical_verification_cmd(cmd)
+        self.assertIsNone(res, "Inline assignment expression should be rejected as verification command")
 
 
 if __name__ == "__main__":

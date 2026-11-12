@@ -24,6 +24,7 @@ from tmem.adapters.base import (
     extract_symbols_from_text,
     is_code_file,
     is_filler_user_intent,
+    is_high_entropy_error_signature,
     scrub_secrets,
 )
 from tmem.models import (
@@ -44,8 +45,9 @@ TOOLCHAIN_INSTALL_RE = re.compile(
 )
 
 RE_TEST_SCRIPT_CMD = re.compile(
-    r"\b(?:python\d*(?:\.\d+)?|node|bash|sh)\s+(?!-c\b)[\w\./\\-]*?(?:test|tests|reproduce|repro|simulate|check|verify|runtests)[\w\./\\-]*\b",
-    re.I
+    r"^(?:sudo\s+)?(?:env\s+)?(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*"
+    r"(?:python\d*(?:\.\d+)?|node|bash|sh)\s+(?!-c\b)[\w\./\\-]*?(?:test|tests|reproduce|repro|simulate|check|verify|runtests)[\w\./\\-]*\b",
+    re.I,
 )
 
 VERIFY_WHITELIST_RE = re.compile(
@@ -642,7 +644,9 @@ class BackwardTraceSlicer:
             ):
                 continue
 
-            err_sig = act.error_signature or f"Command failed (exit {act.exit_code}): {failed_cmd}"
+            err_sig = act.error_signature
+            if not err_sig or not is_high_entropy_error_signature(err_sig):
+                continue
             if err_sig in seen_sigs:
                 continue
 
@@ -677,7 +681,16 @@ class BackwardTraceSlicer:
                             verify_idx = nxt.step_idx
                             break
 
+            # Quality gate on causal repair pairs:
+            # Must have non-empty fixes and verified command.
+            # If pure code edit, must have concrete symbols or multi-file topology to avoid trivial "edit file" noise.
             if intervening_fixes and verified_cmd:
+                if not is_env:
+                    has_concrete_target = any(
+                        "(" in fix or len(effective_files) > 1 for fix in intervening_fixes
+                    )
+                    if not has_concrete_target:
+                        continue
                 seen_sigs.add(err_sig)
                 repairs.append(
                     CausalRepairPair(
@@ -852,10 +865,16 @@ class BackwardTraceSlicer:
                 continue
             if re.match(r"^(?:python\d*(?:\.\d+)?\s+-c\b|node\s+-e\b)", base_part):
                 continue
+            # Reject lines with code assignment syntax or python/js statement keywords
+            if re.search(r"\s+=\s+", base_part) or re.match(
+                r"^(?:[A-Za-z_]\w*\s*=\s*|print\(|def\s+|class\s+|import\s+|from\s+)",
+                base_part,
+            ):
+                continue
             if (
                 VERIFY_WHITELIST_RE.search(base_part)
                 or TOOLCHAIN_INSTALL_RE.search(base_part)
-                or RE_TEST_SCRIPT_CMD.search(base_part)
+                or RE_TEST_SCRIPT_CMD.match(base_part)
             ):
                 if base_part not in kept_clauses:
                     kept_clauses.append(base_part)

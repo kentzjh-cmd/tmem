@@ -12,13 +12,72 @@ from typing import Dict, List, Optional
 from tmem.models import ActionNode, Requirement
 
 ERROR_PATTERNS = [
-    re.compile(r"([A-Za-z0-9_.]*(?:Error|Exception|Fault|Panic|FAIL)[A-Za-z0-9_.:]*[^\n]{0,120})"),
+    re.compile(r"([A-Za-z0-9_.]*(?:Error|Exception|Fault|Panic)[A-Za-z0-9_.:]*[^\n]{0,120})"),
     re.compile(r"(error\[E\d+\]:[^\n]{0,120})"),
-    re.compile(r"(Cannot find module [^\n]{0,100})"),
-    re.compile(r"(ModuleNotFoundError: [^\n]{0,100})"),
-    re.compile(r"(ImportError: [^\n]{0,100})"),
+    re.compile(r"(Cannot find module\s+['\"][^'\"]+['\"][^\n]{0,80})"),
+    re.compile(r"(ModuleNotFoundError:[^\n]{0,100})"),
+    re.compile(r"(ImportError:[^\n]{0,100})"),
     re.compile(r"(linker `[^`]+` not found)"),
 ]
+
+GENERIC_FAILURE_SUMMARY_RE = re.compile(
+    r"^(?:FAILED\s*\([^)]*\)|FAIL:\s*\S+|ERRORS?!?\s*\([^)]*\)|"
+    r"Process exited with code \d+|Command failed \(exit \d+\)|Exit code \d+|"
+    r".*tests? failed.*)$",
+    re.IGNORECASE,
+)
+
+LOW_ENTROPY_SIGNATURES = {
+    "error",
+    "failed",
+    "failure",
+    "test failed",
+    "tests failed",
+    "command failed",
+    "exit code 1",
+    "exit code 2",
+    "exit code 127",
+}
+
+
+def is_high_entropy_error_signature(sig: Optional[str]) -> bool:
+    """
+    Validate whether an extracted error signature has genuine diagnostic value.
+    Rejects generic test runner summaries (e.g., 'FAILED (failures=1)'),
+    generic exit code fallbacks (e.g., 'Command failed (exit 2): ...'),
+    and overly short or low-entropy strings.
+    """
+    if not sig:
+        return False
+    s = sig.strip()
+    if len(s) < 8:
+        return False
+    if s.lower() in LOW_ENTROPY_SIGNATURES:
+        return False
+    if GENERIC_FAILURE_SUMMARY_RE.match(s):
+        return False
+    if s.startswith("Command failed (exit ") or s.startswith("Process exited with code "):
+        return False
+    if re.match(r"^FAILED\b", s, re.IGNORECASE) or re.match(r"^FAIL:\s*", s, re.IGNORECASE):
+        return False
+    # Must contain a recognizable error archetype or specific diagnosis
+    has_archetype = any(
+        kw in s
+        for kw in (
+            "Error",
+            "Exception",
+            "Fault",
+            "Panic",
+            "error[E",
+            "Cannot find module",
+            "not found",
+            "unresolved",
+            "undefined",
+            "Assertion",
+            "syntax error",
+        )
+    )
+    return has_archetype
 
 SECRET_REDACT_RE = re.compile(
     r"\b(github_pat_[A-Za-z0-9_]+|ghp_[A-Za-z0-9]+|gho_[A-Za-z0-9]+|sk-[A-Za-z0-9_-]{16,}|AIza[0-9A-Za-z_-]{35})\b"
@@ -141,22 +200,32 @@ def normalize_rel_path(raw_path: Optional[str], workspace_root: str) -> Optional
 
 
 def extract_error_signature(text: str) -> Optional[str]:
-    """Deterministically extract canonical error signature from tool stderr/stdout."""
+    """Deterministically extract high-entropy canonical error signature from tool stderr/stdout."""
     if not text:
         return None
-    # Prioritize the last traceback/error line rather than matching inside quoted strings
-    lines = [
-        ln.strip()
-        for ln in text.splitlines()
-        if ln.strip() and not ln.strip().startswith(("AssertionError:", "E   "))
-    ]
-    search_space = "\n".join(reversed(lines[-30:])) if lines else text
-    for pat in ERROR_PATTERNS:
-        m = pat.search(search_space)
-        if m:
-            sig = m.group(1).strip()
-            if len(sig) > 6 and "=>" not in sig:
-                return sig[:160]
+    # Normalize and inspect from the end backwards (traceback bottom contains the exact exception)
+    raw_lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    if not raw_lines:
+        return None
+
+    # Clean lines: remove pytest 'E   ' prefix if present
+    cleaned_lines = []
+    for ln in raw_lines:
+        if ln.startswith("E   ") or ln.startswith("E "):
+            cleaned_lines.append(ln[2:].strip())
+        else:
+            cleaned_lines.append(ln)
+
+    # Search window: check the last 40 lines in reverse order
+    search_lines = list(reversed(cleaned_lines[-40:]))
+    for ln in search_lines:
+        for pat in ERROR_PATTERNS:
+            m = pat.search(ln)
+            if m:
+                sig = m.group(1).strip()
+                if "=>" not in sig and is_high_entropy_error_signature(sig):
+                    return sig[:160]
+
     return None
 
 
