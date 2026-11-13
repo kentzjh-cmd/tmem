@@ -118,7 +118,7 @@ def format_raw_trace_replay(
     lines = [
         f"════════════════════════════════════════════════════════════════════════════",
         f"🎬 Forensic Trace Replay: [{raw_trace.trace_id}]",
-        f"   Agent: {raw_trace.agent_source} | Commit: {raw_trace.git_commit or 'HEAD'} | Time: {raw_trace.created_at}",
+        f"   Session: {raw_trace.session_id} | Agent: {raw_trace.agent_source} | Commit: {raw_trace.git_commit or 'HEAD'} | Time: {raw_trace.created_at}",
         f"   Trajectory Stats: {raw_trace.total_steps} total steps -> {len(raw_trace.sliced_step_indices)} critical path steps",
     ]
     if raw_trace.user_intents:
@@ -194,8 +194,11 @@ def format_progressive_view(
         files_str = ", ".join(playbook.touched_files[:3]) or "None"
         verify_cmd = playbook.l1_verification_cmds[-1] if playbook.l1_verification_cmds else "None"
         raw_ref = f"raw/{playbook.trace_id}.raw.json" if playbook.raw_trace_path else "None"
+        sess_str = ", ".join(playbook.source_session_ids[-3:]) if playbook.source_session_ids else (
+            raw_trace.session_id if raw_trace else "None"
+        )
         return (
-            f"[{playbook.trace_id}] Scope: {playbook.scope} | Status: {playbook.status} | "
+            f"[{playbook.trace_id}] Session(s): {sess_str} | Scope: {playbook.scope} | Status: {playbook.status} | "
             f"Intent: {playbook.problem_intent} | Files: {files_str} | "
             f"Verify: `{verify_cmd}` | Confidence: {playbook.confidence:.2f} | Raw: {raw_ref}"
         )
@@ -214,18 +217,18 @@ def format_progressive_view(
         )
 
     # Default: "playbook"
+    sess_ids = list(playbook.source_session_ids)
+    if not sess_ids and raw_trace and raw_trace.session_id:
+        sess_ids = [raw_trace.session_id]
     doc_lines = [
         f"### 📋 Playbook: `{playbook.trace_id}` ({playbook.scope.upper()})",
+        f"- **Session ID(s)**: {', '.join(f'`{s}`' for s in sess_ids) or 'None'}",
         f"- **Intent**: {playbook.problem_intent}",
     ]
     if playbook.semantic_summary:
         doc_lines.append(f"- **Summary**: {playbook.semantic_summary}")
     if playbook.root_cause:
         doc_lines.append(f"- **Root Cause**: {playbook.root_cause}")
-    if playbook.requirements:
-        doc_lines.append("- **Requirements & Intent Nodes**:")
-        for r in playbook.requirements:
-            doc_lines.append(f"  - `[{r.req_id}]` ({r.source}): {r.text}")
     doc_lines.append(f"- **Created At**: {playbook.created_at} (Commit: {playbook.git_commit or 'HEAD'})")
     doc_lines.append(f"- **Files Touched**: {', '.join(playbook.touched_files) or 'None'}")
 
@@ -244,11 +247,6 @@ def format_progressive_view(
             diff_clause = f" [diff: {s['diff_summary']}]" if s.get("diff_summary") else ""
             rat_clause = f" — {s['rationale']}" if s.get("rationale") else ""
             doc_lines.append(f"  - `{act}`: `{tgt}`{sym_clause}{diff_clause}{rat_clause}")
-
-    if playbook.intent_edges:
-        doc_lines.append("- **Execution-Intent Graph Relations**:")
-        for edge in playbook.intent_edges[:8]:
-            doc_lines.append(f"  - `{edge.src}` --[{edge.relation}]--> `{edge.dst}`: {edge.why}")
 
     if playbook.l1_cochange_topology:
         doc_lines.append("- **L1 Co-Change Topology**:")

@@ -7,9 +7,9 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set, Tuple
 
-from tmem.models import ActionNode, Requirement
+from tmem.models import ActionNode
 
 ERROR_PATTERNS = [
     re.compile(r"([A-Za-z0-9_.]*(?:Error|Exception|Fault|Panic)[A-Za-z0-9_.:]*[^\n]{0,120})"),
@@ -118,7 +118,6 @@ class ParsedSession:
     assistant_conclusions: List[str] = field(default_factory=list)
     actions: List[ActionNode] = field(default_factory=list)
     active_errors: List[str] = field(default_factory=list)
-    user_requirements: List[Requirement] = field(default_factory=list)
 
 
 FILLER_INTENT_SET = {
@@ -419,6 +418,101 @@ def extract_symbols_from_text(text: str, file_path: Optional[str] = None) -> Lis
         if cand.lower() not in SYMBOL_STOPWORDS:
             symbols.add(cand)
     return sorted(symbols)
+
+
+def _ranges_overlap(a_start: int, a_end: int, ranges: List[Tuple[int, int]]) -> bool:
+    for r_start, r_end in ranges:
+        if a_start <= r_end and r_start <= a_end:
+            return True
+    return False
+
+
+def extract_python_symbols_for_line_ranges(
+    content: str, line_ranges: List[Tuple[int, int]]
+) -> List[str]:
+    """
+    Parse a full Python file via AST and return symbols (`func`, `Class`, `Class.method`)
+    whose `[lineno, end_lineno]` intervals overlap any modified line range from `git diff -U0`.
+    Returns [] on non-parseable input (never falls back to fragile regex).
+    """
+    if not content or not line_ranges:
+        return []
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        return []
+
+    found: Set[str] = set()
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            end_ln = getattr(node, "end_lineno", None) or node.lineno
+            if _ranges_overlap(node.lineno, end_ln, line_ranges):
+                found.add(node.name)
+        elif isinstance(node, ast.ClassDef):
+            cls_end = getattr(node, "end_lineno", None) or node.lineno
+            if not _ranges_overlap(node.lineno, cls_end, line_ranges):
+                continue
+            method_matched = False
+            for item in node.body:
+                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    m_end = getattr(item, "end_lineno", None) or item.lineno
+                    if _ranges_overlap(item.lineno, m_end, line_ranges):
+                        found.add(f"{node.name}.{item.name}")
+                        method_matched = True
+            if not method_matched:
+                found.add(node.name)
+    return sorted(found)
+
+
+def extract_python_local_imports(
+    content: str, file_path: str, candidate_files: Set[str]
+) -> Set[str]:
+    """
+    Identify which files in `candidate_files` are statically imported by the given Python file.
+    """
+    if not content or not candidate_files:
+        return set()
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        return set()
+
+    imported_modules: Set[str] = set()
+    cur_parts = list(Path(file_path).parent.parts)
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                imported_modules.add(alias.name)
+        elif isinstance(node, ast.ImportFrom):
+            mod = node.module or ""
+            if node.level > 0:
+                base_parts = cur_parts[: max(0, len(cur_parts) - (node.level - 1))]
+                full_mod = ".".join(base_parts + ([mod] if mod else []))
+                if full_mod:
+                    imported_modules.add(full_mod)
+                for alias in node.names:
+                    sub = f"{full_mod}.{alias.name}" if full_mod else alias.name
+                    imported_modules.add(sub)
+            elif mod:
+                imported_modules.add(mod)
+                for alias in node.names:
+                    imported_modules.add(f"{mod}.{alias.name}")
+
+    matched: Set[str] = set()
+    for cand in candidate_files:
+        if not cand.endswith(".py"):
+            continue
+        p = Path(cand)
+        if p.stem == "__init__":
+            mod_name = ".".join(p.parent.parts)
+        else:
+            mod_name = ".".join(p.with_suffix("").parts)
+        if mod_name and any(
+            m == mod_name or m.startswith(mod_name + ".") for m in imported_modules
+        ):
+            matched.add(cand)
+    return matched
 
 
 class AgentAdapter:

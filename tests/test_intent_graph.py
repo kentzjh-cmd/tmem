@@ -16,16 +16,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tmem.adapters.agy import AgyAdapter
 from tmem.adapters.base import ParsedSession, clean_rationale
+from tmem.adapters.dsh import DshAdapter
 from tmem.guards import evaluate_guards, format_injected_context
 from tmem.models import (
     ActionKind,
     ActionNode,
     CausalRepairPair,
     GuardProbe,
-    IntentEdge,
-    Requirement,
     TracePlaybook,
 )
 from tmem.slicer import BackwardTraceSlicer, extract_compact_diff_summary
@@ -79,87 +77,73 @@ class TestIntentGraph(unittest.TestCase):
         # Should ignore other files
         self.assertNotIn("def other():", summary)
 
-    def test_agy_adapter_rationale_and_requirement_binding(self) -> None:
-        """Test that AgyAdapter binds toolSummary/content to ActionNode.rationale and extracts requirements."""
-        transcript_path = self.workspace / "transcript.jsonl"
+    def test_dsh_adapter_rationale_and_intent_binding(self) -> None:
+        """Test that DshAdapter extracts intents and tool actions from v4 transcripts."""
+        transcript_path = self.workspace / "session.v4.jsonl"
         lines = [
+            json.dumps({"version": 4, "id": "sess_intent_01", "createdAt": 1731225600000}),
             json.dumps({
-                "type": "USER_INPUT",
-                "step_index": 1,
-                "created_at": "2026-11-11T12:00:00Z",
-                "content": "<USER_REQUEST>Fix guards verification bug in evaluate_guards</USER_REQUEST>",
+                "type": "user/message",
+                "seq": 1,
+                "time": 1731225601000,
+                "data": {
+                    "id": "u1",
+                    "role": "user",
+                    "content": [{"type": "text", "text": "Fix guards verification bug in evaluate_guards"}],
+                    "source": {"kind": "user"},
+                },
             }),
             json.dumps({
-                "type": "PLANNER_RESPONSE",
-                "step_index": 2,
-                "created_at": "2026-11-11T12:00:10Z",
-                "content": "I will examine the guards module to locate the assertion check.",
-                "tool_calls": [{
-                    "name": "read_file",
-                    "args": {"Path": "tmem/guards.py", "toolSummary": "Inspect evaluate_guards implementation"},
-                }],
+                "type": "tool/call",
+                "seq": 2,
+                "time": 1731225602000,
+                "data": {"callId": "c1", "name": "read", "arguments": json.dumps({"file_path": "tmem/guards.py"})},
             }),
             json.dumps({
-                "type": "GENERIC",
-                "step_index": 3,
-                "created_at": "2026-11-11T12:00:15Z",
-                "content": "def evaluate_guards(): pass",
+                "type": "tool/result",
+                "seq": 3,
+                "time": 1731225603000,
+                "data": {"message": {"callId": "c1", "content": [{"type": "text", "text": "def evaluate_guards(): pass"}], "isError": False}},
             }),
             json.dumps({
-                "type": "PLANNER_RESPONSE",
-                "step_index": 4,
-                "created_at": "2026-11-11T12:00:20Z",
-                "content": "Now updating evaluate_guards to add symbol checking.",
-                "tool_calls": [{
-                    "name": "edit_file",
-                    "args": {
-                        "Path": "tmem/guards.py",
-                        "Replacement": "def evaluate_guards(): return True",
-                        "toolSummary": "Implement symbol checking logic",
-                    },
-                }],
+                "type": "tool/call",
+                "seq": 4,
+                "time": 1731225604000,
+                "data": {"callId": "c2", "name": "edit", "arguments": json.dumps({"file_path": "tmem/guards.py", "old_string": "pass", "new_string": "return True"})},
             }),
             json.dumps({
-                "type": "GENERIC",
-                "step_index": 5,
-                "created_at": "2026-11-11T12:00:25Z",
-                "content": "File modified successfully.",
+                "type": "tool/result",
+                "seq": 5,
+                "time": 1731225605000,
+                "data": {"message": {"callId": "c2", "content": [{"type": "text", "text": "Edited tmem/guards.py"}], "isError": False}},
             }),
             json.dumps({
-                "type": "PLANNER_RESPONSE",
-                "step_index": 6,
-                "created_at": "2026-11-11T12:00:30Z",
-                "content": "Running test suite to verify fix.",
-                "tool_calls": [{
-                    "name": "run_command",
-                    "args": {"CommandLine": "pytest tests/test_guards.py", "toolSummary": "Run guards unit tests"},
-                }],
+                "type": "tool/call",
+                "seq": 6,
+                "time": 1731225606000,
+                "data": {"callId": "c3", "name": "bash", "arguments": json.dumps({"command": "pytest tests/test_guards.py"})},
             }),
             json.dumps({
-                "type": "GENERIC",
-                "step_index": 7,
-                "created_at": "2026-11-11T12:00:35Z",
-                "content": "1 passed in 0.05s\nCommand exited with code 0",
+                "type": "tool/result",
+                "seq": 7,
+                "time": 1731225607000,
+                "data": {"message": {"callId": "c3", "content": [{"type": "text", "text": "1 passed in 0.05s\n[exit code: 0]"}], "isError": False}},
             }),
         ]
         transcript_path.write_text("\n".join(lines), encoding="utf-8")
 
-        adapter = AgyAdapter()
+        adapter = DshAdapter()
         session = adapter.parse_transcript(str(transcript_path), str(self.workspace))
 
-        # Check requirements parsed
-        self.assertEqual(len(session.user_requirements), 1)
-        self.assertEqual(session.user_requirements[0].req_id, "R1")
-        self.assertIn("Fix guards verification bug", session.user_requirements[0].text)
-
-        # Check rationales bound on actions
+        self.assertTrue(len(session.user_intents) >= 1)
+        self.assertIn("Fix guards verification bug", session.user_intents[0])
         self.assertEqual(len(session.actions), 3)
-        self.assertEqual(session.actions[0].rationale, "Inspect evaluate_guards implementation")
-        self.assertEqual(session.actions[1].rationale, "Implement symbol checking logic")
-        self.assertEqual(session.actions[2].rationale, "Run guards unit tests")
+        self.assertEqual(session.actions[0].target_file, "tmem/guards.py")
+        self.assertEqual(session.actions[1].target_file, "tmem/guards.py")
+        self.assertEqual(session.actions[2].command, "pytest tests/test_guards.py")
 
-    def test_slicer_intent_graph_generation(self) -> None:
-        """Test BackwardTraceSlicer generates deterministic IntentEdges and Requirement nodes."""
+    def test_slicer_chronological_path_and_schema_v3(self) -> None:
+        """Test BackwardTraceSlicer compiles schema_version=3 with chronologically ordered L0 steps."""
         act1 = ActionNode(
             step_idx=1,
             kind=ActionKind.READ,
@@ -185,76 +169,55 @@ class TestIntentGraph(unittest.TestCase):
         )
 
         session = ParsedSession(
-            agent_name="agy",
+            agent_name="dsh",
             session_id="test_sess_graph",
             workspace_root=str(self.workspace),
             user_intents=["Fix clock skew error in auth token verification"],
-            user_requirements=[
-                Requirement(req_id="R1", text="Fix clock skew error in auth token verification", source="user")
-            ],
             actions=[act1, act2, act3],
         )
 
         slicer = BackwardTraceSlicer()
         playbook = slicer.slice_session(session, use_git_ground_truth=False)
         self.assertIsNotNone(playbook)
-        self.assertEqual(playbook.schema_version, 2)
-        self.assertEqual(len(playbook.requirements), 1)
-        self.assertEqual(playbook.requirements[0].req_id, "R1")
+        self.assertEqual(playbook.schema_version, 3)
+        step_nums = [s.get("step") for s in playbook.l0_critical_path]
+        self.assertEqual(step_nums, sorted(step_nums))
+        self.assertEqual(playbook.l0_critical_path[0].get("rationale"), "Locate auth token verification logic")
 
-        # Check intent_edges
-        self.assertTrue(len(playbook.intent_edges) >= 3)
-        edge_relations = {e.relation for e in playbook.intent_edges}
-        self.assertIn("served_by", edge_relations)
-        self.assertIn("informs", edge_relations)
-        self.assertIn("modifies", edge_relations)
-        self.assertIn("verifies", edge_relations)
-
-        # Check informs edge connects s1 to s2
-        informs_edge = next(e for e in playbook.intent_edges if e.relation == "informs")
-        self.assertEqual(informs_edge.src, "s1")
-        self.assertEqual(informs_edge.dst, "s2")
-        self.assertIn(1, informs_edge.evidence)
-        self.assertIn(2, informs_edge.evidence)
-
-        # Check modifies edge references symbol
-        modifies_edge = next(e for e in playbook.intent_edges if e.relation == "modifies")
-        self.assertEqual(modifies_edge.src, "s2")
-        self.assertIn("file:src/auth.py#verify_token", modifies_edge.dst)
-
-    def test_schema_v1_backwards_compatibility(self) -> None:
-        """Test that legacy v1 playbook JSONs load cleanly with default graph fields."""
-        v1_data = {
+    def test_schema_v1_v2_backwards_compatibility(self) -> None:
+        """Test that legacy v1/v2 playbook JSONs with removed fields load cleanly."""
+        v2_data = {
             "trace_id": "tr_legacy_001",
             "agent_source": "agy",
             "scope": "project",
             "created_at": "2026-11-10T10:00:00Z",
-            "problem_intent": "Legacy intent without graph schema",
+            "schema_version": 2,
+            "problem_intent": "Legacy intent with deprecated fields",
             "semantic_summary": "Legacy summary",
             "error_signatures": ["SomeError"],
             "touched_files": ["src/legacy.py"],
             "touched_symbols": ["legacy_func"],
             "guards": [{"probe_type": "file_exists", "target": "src/legacy.py", "expected": ""}],
             "l0_critical_path": [{"action": "MUTATE", "target": "src/legacy.py"}],
-            "l1_cochange_topology": ["Primary target: src/legacy.py"],
+            "l1_cochange_topology": ["Co-edited in session: src/legacy.py <-> tests/test_legacy.py"],
             "l1_verification_cmds": ["pytest"],
             "l2_causal_repairs": [],
+            "requirements": [{"req_id": "R1", "text": "legacy req", "source": "user"}],
+            "intent_edges": [{"src": "R1", "dst": "s1", "relation": "served_by", "why": "legacy"}],
             "confidence": 0.95,
             "hit_count": 0,
             "status": "active",
         }
-        pb = TracePlaybook.from_dict(v1_data)
+        pb = TracePlaybook.from_dict(v2_data)
         self.assertEqual(pb.trace_id, "tr_legacy_001")
-        self.assertEqual(pb.schema_version, 1)
-        self.assertEqual(pb.requirements, [])
-        self.assertEqual(pb.intent_edges, [])
+        self.assertEqual(pb.schema_version, 2)
         self.assertIsNone(pb.root_cause)
         self.assertEqual(pb.pitfalls, [])
 
-        # Re-serializing to dict works
+        # Re-serializing to dict omits removed bloat fields
         d = pb.to_dict()
-        self.assertEqual(d["requirements"], [])
-        self.assertEqual(d["intent_edges"], [])
+        self.assertNotIn("requirements", d)
+        self.assertNotIn("intent_edges", d)
 
     def test_partial_guard_degradation(self) -> None:
         """Test partial guard degradation when one file drifts while another file survives."""
@@ -311,33 +274,21 @@ class TestIntentGraph(unittest.TestCase):
             root_cause="Concurrent refresh requests invalidated rotating tokens",
             touched_files=["src/auth_session.py"],
             touched_symbols=["refresh_mutex_lock", "validate_token_rotation"],
-            requirements=[
-                Requirement(req_id="R1", text="Prevent duplicate token rotation in high concurrency", source="user")
-            ],
-            intent_edges=[
-                IntentEdge(
-                    src="s1",
-                    dst="file:src/auth_session.py#refresh_mutex_lock",
-                    relation="modifies",
-                    why="Applied atomic compare-and-swap on token version",
-                    evidence=[1],
-                )
-            ],
             l0_critical_path=[
                 {
                     "step": 1,
                     "action": "MUTATE",
                     "target": "src/auth_session.py",
-                    "rationale": "Implemented atomic CAS token rotation lock",
+                    "rationale": "Implemented atomic compare-and-swap token rotation lock",
                 }
             ],
-            l1_cochange_topology=["Primary target: src/auth_session.py"],
+            l1_cochange_topology=[],
             l1_verification_cmds=["pytest tests/test_auth_session.py"],
         )
 
         store.save_playbook(playbook, target_scope="project")
 
-        # 1. Lookup by term present ONLY in rationale ("compare-and-swap")
+        # 1. Lookup by term present ONLY in step rationale ("compare-and-swap")
         res1 = store.cascading_lookup(query_text="compare-and-swap")
         self.assertTrue(len(res1) >= 1)
         self.assertEqual(res1[0].playbook.trace_id, "tr_graph_indexed")
@@ -347,17 +298,12 @@ class TestIntentGraph(unittest.TestCase):
         self.assertTrue(len(res2) >= 1)
         self.assertEqual(res2[0].playbook.trace_id, "tr_graph_indexed")
 
-        # 3. Lookup by term present ONLY in requirement ("high concurrency")
-        res3 = store.cascading_lookup(query_text="high concurrency")
-        self.assertTrue(len(res3) >= 1)
-        self.assertEqual(res3[0].playbook.trace_id, "tr_graph_indexed")
-
-        # 4. Check trace_links table
+        # 3. Check trace_links table
         linked = store.get_linked_traces("refresh_mutex_lock", exclude_trace_id="tr_other")
         self.assertIn("tr_graph_indexed", linked)
 
-    def test_repeated_mutations_symbol_merge_and_causal_fixed_by_edge(self) -> None:
-        """Verify multiple mutations to same file merge symbols and fixed_by edge cites actual repair step."""
+    def test_repeated_mutations_symbol_merge_and_causal_attribution(self) -> None:
+        """Verify multiple mutations to same file merge symbols and L2 repair matches exact repair step."""
         act1 = ActionNode(
             step_idx=1,
             kind=ActionKind.MUTATE,
@@ -411,24 +357,22 @@ class TestIntentGraph(unittest.TestCase):
         auth_mut = next(s for s in pb.l0_critical_path if s.get("target") == "src/auth.py")
         self.assertEqual(auth_mut["symbols"], ["parse_header", "verify_signature"])
         self.assertEqual(auth_mut.get("rationale"), "Fix signature verification padding")
-
-        fixed_edge = next(e for e in pb.intent_edges if e.relation == "fixed_by")
-        self.assertEqual(fixed_edge.src, "E1")
-        self.assertEqual(fixed_edge.dst, "s4")
-        self.assertEqual(fixed_edge.evidence, [4])
+        self.assertEqual(len(pb.l2_causal_repairs), 1)
+        self.assertIn("src/auth.py", pb.l2_causal_repairs[0].repair_action)
 
     def test_sqlite_orphan_cleanup_and_gc_db_sync(self) -> None:
         """Verify deleted JSON traces are purged from SQLite and GC updates SQLite confidence/status."""
         store = DualTierMemoryStore(workspace_root=str(self.workspace))
         pb = TracePlaybook(
             trace_id="tr_orphan_check",
-            agent_source="agy",
+            agent_source="dsh",
             scope="project",
             created_at="2026-11-11T12:00:00Z",
             problem_intent="Fix missing config parser",
-            touched_files=["src/missing_cfg.py"],
+            touched_files=["src/missing_cfg.py", "src/missing_schema.py"],
             guards=[GuardProbe(probe_type="file_exists", target="src/missing_cfg.py")],
             l0_critical_path=[{"step": 1, "action": "MUTATE", "target": "src/missing_cfg.py"}],
+            l1_verification_cmds=["pytest tests/test_cfg.py"],
             confidence=1.0,
         )
         store.save_playbook(pb)
@@ -464,7 +408,7 @@ class TestIntentGraph(unittest.TestCase):
 
         pb_valid = TracePlaybook(
             trace_id="tr_ast_valid",
-            agent_source="agy",
+            agent_source="dsh",
             scope="project",
             created_at="2026-11-11T12:00:00Z",
             problem_intent="Worker service process task",
@@ -498,7 +442,7 @@ class TestIntentGraph(unittest.TestCase):
         # Docstring mention must NOT pass AST check
         pb_doc = TracePlaybook(
             trace_id="tr_ast_doc",
-            agent_source="agy",
+            agent_source="dsh",
             scope="project",
             created_at="2026-11-11T12:00:00Z",
             problem_intent="Deprecated method",
@@ -512,23 +456,20 @@ class TestIntentGraph(unittest.TestCase):
         self.assertIn("missing_symbol:src/service.py#deprecated_method", ev_doc.failed_guards)
 
     def test_portable_init_contracts(self) -> None:
-        """Verify that tmem init outputs portable relative configurations without hardcoded absolute paths."""
+        """Verify that tmem init outputs portable DSH relative configurations without hardcoded absolute paths."""
         from tmem.cli import install_invisible_integration
         temp_dir = tempfile.mkdtemp(prefix="tmem_init_test_")
         try:
-            info = install_invisible_integration(temp_dir, ["agy", "dsh"])
-            hooks_json = Path(temp_dir) / ".agents" / "plugins" / "tmem" / "hooks.json"
-            self.assertTrue(hooks_json.exists())
-            hooks_content = hooks_json.read_text(encoding="utf-8")
-            self.assertNotIn("/usr/bin/python3", hooks_content)
-            self.assertNotIn("PYTHONPATH=", hooks_content)
-            self.assertIn("python3 -m tmem.cli hook agy", hooks_content)
+            info = install_invisible_integration(temp_dir, ["dsh"])
+            self.assertFalse((Path(temp_dir) / ".agents" / "plugins" / "tmem").exists())
 
             dsh_patch = Path(temp_dir) / ".dsh" / "tmem.patch.yml"
             self.assertTrue(dsh_patch.exists())
             patch_content = dsh_patch.read_text(encoding="utf-8")
             self.assertIn("./.dsh/plugins/tmem-dsh-plugin.mjs", patch_content)
             self.assertNotIn("pythonBin: /usr/bin/python3", patch_content)
+            self.assertTrue((Path(temp_dir) / ".dsh" / "plugins" / "tmem-dsh-plugin.mjs").exists())
+            self.assertEqual(len(info["agents"]), 1)
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 

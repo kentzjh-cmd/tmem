@@ -23,7 +23,7 @@ from tmem.adapters.base import (
     extract_symbols_from_text,
     normalize_rel_path,
 )
-from tmem.models import ActionKind, ActionNode, Requirement
+from tmem.models import ActionKind, ActionNode
 
 
 class SweBenchAdapter(AgentAdapter):
@@ -91,9 +91,6 @@ class SweBenchAdapter(AgentAdapter):
         if problem_stmt:
             stmt_str = str(problem_stmt).strip()[:1000]
             session.user_intents.append(stmt_str)
-            session.user_requirements.append(
-                Requirement(req_id="R1", text=stmt_str, source="user")
-            )
 
         # Detect schema: SWE-agent .traj vs ATIF vs OpenHands
         if "trajectory" in data and isinstance(data["trajectory"], list):
@@ -266,8 +263,6 @@ class SweBenchAdapter(AgentAdapter):
             if stype in ("user", "human"):
                 u_text = str(content)[:1000]
                 session.user_intents.append(u_text)
-                req_id = f"R{len(session.user_requirements) + 1}"
-                session.user_requirements.append(Requirement(req_id=req_id, text=u_text, source="user"))
                 continue
 
             if stype in ("thought", "assistant", "model"):

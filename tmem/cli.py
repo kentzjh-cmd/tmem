@@ -9,7 +9,7 @@ Commands:
 - `tmem sync`: Re-index SQLite FTS5, validate guards, and regenerate MEMORIES.md living index.
 - `tmem status`: Display active memory trace counts and store paths.
 - `tmem gc`: Run guard evaluation and mark drifted paths stale.
-- `tmem init`: Automated zero-config installer for agy, dsh, and git hooks.
+- `tmem init`: Automated zero-config installer for DeepSeek Harness (dsh) and git hooks.
 """
 
 from __future__ import annotations
@@ -26,15 +26,15 @@ from tmem import logger
 from tmem.adapters import get_adapter
 from tmem.adapters.dsh import DshAdapter
 from tmem.guards import format_injected_context
+from tmem.mem_doc import record_verified_env_cmd
 from tmem.hooks import (
     SLASH_TMEM_RE,
-    handle_agy_hook,
+    _parse_inspect_args,
     handle_dsh_hook,
     load_runtime_state,
     parse_slash_tmem_command,
     save_runtime_state,
 )
-from tmem.hooks.agy import _parse_inspect_args
 from tmem.installer import install_invisible_integration
 from tmem.raw_storage import (
     RawTraceStore,
@@ -44,6 +44,7 @@ from tmem.raw_storage import (
 )
 from tmem.slicer import BackwardTraceSlicer, assess_playbook_triviality
 from tmem.store import DualTierMemoryStore
+from tmem.telemetry import compute_telemetry_summary
 
 
 def _read_stdin_json() -> Dict[str, Any]:
@@ -61,7 +62,7 @@ def _read_stdin_json() -> Dict[str, Any]:
 
 def execute_capture(
     workspace_root: str,
-    agent_name: str = "agy",
+    agent_name: str = "dsh",
     transcript_path: Optional[str] = None,
     scope: str = "project",
     custom_intent: Optional[str] = None,
@@ -104,16 +105,22 @@ def execute_capture(
     if not pb:
         return {"status": "skipped", "reason": "no_effective_actions"}
 
-    # Triviality filter: prevent low-value tautological traces from cluttering memory
+    # Triviality filter (default-deny): prevent low-value tautological traces from cluttering memory.
+    # Even when skipped, preserve any verified commands in `.tmem/env_facts.json` for micro-skills.
     if pb.is_trivial and not force:
-        if not custom_intent or len(custom_intent.strip()) < 10:
-            return {
-                "status": "skipped_trivial",
-                "reason": pb.pitfalls[0] if pb.pitfalls else "Trivial single-file trace without error-fix causality or multi-file topology",
-                "problem_intent": pb.problem_intent,
-                "touched_files": pb.touched_files,
-                "message": "Trace was evaluated as a routine single-file edit. Pass --force to capture anyway.",
-            }
+        if pb.l1_verification_cmds:
+            record_verified_env_cmd(
+                workspace_root,
+                pb.l1_verification_cmds,
+                source_id=session.session_id or pb.trace_id,
+            )
+        return {
+            "status": "skipped_trivial",
+            "reason": pb.pitfalls[0] if pb.pitfalls else "Routine/unverified edit without causal repair or multi-file verification",
+            "problem_intent": pb.problem_intent,
+            "touched_files": pb.touched_files,
+            "message": "Trace was evaluated as routine/unverified (default-deny gate). Pass --force to capture anyway.",
+        }
 
     if custom_intent:
         pb.problem_intent = custom_intent.strip()[:300]
@@ -163,19 +170,19 @@ def main(argv: Optional[List[str]] = None) -> int:
     sub = parser.add_subparsers(dest="subcommand", help="Subcommand to execute")
 
     # 1. init
-    p_init = sub.add_parser("init", help="Install invisible hooks, rules, and skills for agents")
-    p_init.add_argument("--agents", default="agy,dsh", help="Comma-separated agent names (agy, dsh)")
+    p_init = sub.add_parser("init", help="Install DSH plugin hooks, skill, and git hooks")
+    p_init.add_argument("--agents", default="dsh", help="Target agent name (default: dsh)")
     p_init.add_argument("--workspace", default=os.getcwd(), help="Target workspace root")
 
     # 2. hook
-    p_hook = sub.add_parser("hook", help="Headless hook handler invoked by agent harnesses")
-    p_hook.add_argument("agent", choices=["agy", "dsh"], help="Agent type")
-    p_hook.add_argument("event", help="Lifecycle event (e.g. pre_invocation, post_tool_use, pre_step)")
+    p_hook = sub.add_parser("hook", help="Headless hook handler invoked by DeepSeek Harness (dsh)")
+    p_hook.add_argument("agent", choices=["dsh"], help="Agent type (dsh)")
+    p_hook.add_argument("event", help="Lifecycle event (e.g. pre_invocation, post_tool_use, pre_step, command)")
 
     # 3. capture
     p_cap = sub.add_parser("capture", help="Compile and save current session execution trace to .tmem/")
     p_cap.add_argument("--workspace", default=os.getcwd(), help="Workspace root directory")
-    p_cap.add_argument("--agent", default="agy", choices=["agy", "dsh", "codex", "opencode", "pi"], help="Agent source (primary: agy, dsh; experimental: codex, opencode, pi)")
+    p_cap.add_argument("--agent", default="dsh", choices=["dsh", "swe_bench", "codex", "opencode", "pi"], help="Agent source (primary: dsh)")
     p_cap.add_argument("--transcript", default=None, help="Explicit path to session transcript")
     p_cap.add_argument("--scope", default="project", choices=["project", "auto"], help="Storage scope")
     p_cap.add_argument("--intent", default=None, help="User intent or problem summary")
@@ -194,6 +201,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     # 5. gc
     p_gc = sub.add_parser("gc", help="Run guard validation metabolism and prune stale paths")
     p_gc.add_argument("--workspace", default=os.getcwd(), help="Workspace root directory")
+    p_gc.add_argument("--prune", action="store_true", help="Delete expired stale traces without L2 invariants")
 
     # 6. status
     p_stat = sub.add_parser("status", help="Show execution memory store status and statistics")
@@ -236,6 +244,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     p_sync = sub.add_parser("sync", help="Synchronize indexes, run GC, and regenerate MEMORIES.md living index")
     p_sync.add_argument("--workspace", default=os.getcwd(), help="Workspace root directory")
 
+    # 14. telemetry
+    p_tel = sub.add_parser("telemetry", help="Show runtime L2 repair & L1 co-change adoption telemetry")
+    p_tel.add_argument("--workspace", default=os.getcwd(), help="Workspace root directory")
+
     args = parser.parse_args(argv)
 
     if getattr(args, "verbose", False) or os.environ.get("TMEM_DEBUG") == "1":
@@ -251,10 +263,6 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if args.subcommand == "hook":
         payload = _read_stdin_json()
-        if args.agent == "agy":
-            out = handle_agy_hook(args.event, payload, capture_fn=execute_capture)
-            print(json.dumps(out, ensure_ascii=False))
-            return 0
         if args.agent == "dsh":
             out = handle_dsh_hook(args.event, payload, capture_fn=execute_capture)
             print(json.dumps(out, ensure_ascii=False))
@@ -307,18 +315,20 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if args.subcommand == "gc":
         store = DualTierMemoryStore(args.workspace)
-        stats = store.run_metabolism_gc()
+        stats = store.run_metabolism_gc(prune_stale=bool(args.prune))
         print(json.dumps(stats, indent=2, ensure_ascii=False))
         return 0
 
     if args.subcommand == "status":
         store = DualTierMemoryStore(args.workspace)
         proj_count = len(list(store.project_traces_dir.glob("*.json"))) if store.project_traces_dir.exists() else 0
+        telemetry = compute_telemetry_summary(args.workspace)
         print(
             json.dumps(
                 {
                     "project_store": str(store.project_dir),
                     "project_traces": proj_count,
+                    "telemetry": telemetry,
                 },
                 indent=2,
                 ensure_ascii=False,
@@ -357,7 +367,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         target_pb = None
         if tid:
             for pb in store.get_all_project_playbooks():
-                if pb.trace_id == tid or pb.trace_id.startswith(tid):
+                if (
+                    pb.trace_id == tid
+                    or pb.trace_id.startswith(tid)
+                    or any(s == tid or s.startswith(tid) for s in pb.source_session_ids)
+                ):
                     target_pb = pb
                     break
         if not target_pb:
@@ -408,6 +422,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                 ensure_ascii=False,
             )
         )
+        return 0
+
+    if args.subcommand == "telemetry":
+        print(json.dumps(compute_telemetry_summary(args.workspace), indent=2, ensure_ascii=False))
         return 0
 
     parser.print_help()

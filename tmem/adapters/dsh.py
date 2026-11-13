@@ -20,7 +20,7 @@ from tmem.adapters.base import (
     normalize_rel_path,
     scrub_secrets,
 )
-from tmem.models import ActionKind, ActionNode, Requirement
+from tmem.models import ActionKind, ActionNode
 
 DSH_EXIT_CODE_RE = re.compile(r"\[exit code:\s*(-?\d+)\]", re.IGNORECASE)
 APPLY_PATCH_FILE_RE = re.compile(
@@ -179,10 +179,6 @@ class DshAdapter(AgentAdapter):
                         and not is_filler_user_intent(text)
                     ):
                         session.user_intents.append(text[:500])
-                        req_id = f"R{len(session.user_requirements) + 1}"
-                        session.user_requirements.append(
-                            Requirement(req_id=req_id, text=text[:500], source="user")
-                        )
                     continue
 
                 # 1b. Native dsh `assistant/message` or generic `assistant` role

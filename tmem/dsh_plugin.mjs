@@ -1,15 +1,20 @@
 /**
- * @tmem/dsh-plugin — Invisible Execution Trace Memory Plugin for DeepSeek Harness (@deepseek-ai/dsh)
+ * @tmem/dsh-plugin — Zero-Token Historical Session Digest & Runtime Memory Plugin for DeepSeek Harness (@deepseek-ai/dsh)
  *
- * Capabilities:
- * 1. Pre-Step Speculative Memory Recall (`agent/pre-step`):
- *    Silently queries Project (`.tmem/`) memory tier on new user turns or
- *    after tool errors, injecting `<tmem_speculative_memory>` (L0_FULL / L1_TOPOLOGY / L2_INVARIANT).
- * 2. Post-Tool Execution Observation & Milestone Detection (`tools/post-execute`):
- *    Tracks file mutations (`write`, `edit`, `str_replace_editor`, `apply_patch`) and verification commands
- *    (`bash`, `pwsh`). Injects L2 repair hints on errors and `<tmem_milestone_reached>` when `MUTATE -> VERIFY(0)` completes.
+ * Core Definition:
+ * Compiles historical DSH trajectories into zero-LLM-token requirement-and-behavior summaries
+ * with inline `session_id` lineage (`.tmem/traces/`, `MEMORIES.md`, `.tmem/raw/`), eliminating
+ * token overhead for session recap & forensic replay while guarding live execution:
+ *
+ * 1. Explicit-Anchor Pre-Step & Env Facts (`agent/pre-step`):
+ *    Skips unchanged repeated steps cleanly; injects cross-task verified commands once per session
+ *    and recalls matching traces only on explicit file-path or error-signature anchors.
+ * 2. Strong-Signal Post-Execute Interception (`tools/post-execute`):
+ *    Skips routine reads when idle; intercepts command errors with same-origin L2 fixes, surfaces
+ *    statistical L1 co-change partner hints on code edits, emits `<tmem_milestone_reached>` on
+ *    `MUTATE -> VERIFY(0)`, and records deterministic resolution telemetry.
  * 3. Native `/tmem` Slash Command (`commands.register`):
- *    Registers `/tmem [status|list|forget|gc|inspect|replay|diff|sync] [<intent|trace_id>]` directly in `dsh-commands`.
+ *    Registers `/tmem [status|list|forget|gc|telemetry|inspect|replay|diff|sync]` in `dsh-commands`.
  */
 
 import { spawn } from "node:child_process";
@@ -162,6 +167,18 @@ export function apply(ctx, config = {}) {
   const tmemRoot = resolve(config.tmemRoot || resolveDefaultTmemRoot(configuredWorkspace || process.cwd()));
   const pythonBin = config.pythonBin || process.env.TMEM_PYTHON || "python3";
 
+  const MUTATE_TOOLS = new Set([
+    "write",
+    "edit",
+    "str_replace_editor",
+    "apply_patch",
+    "write_file",
+    "edit_file",
+  ]);
+  const SHELL_TOOLS = new Set(["bash", "pwsh", "run_command"]);
+  const seenPreStepInputBySession = new Map();
+  const activeCochangeWatch = new Set();
+
   // 1. Register `/tmem` slash command whenever `dsh-commands` service is available
   const registerSlashCommand = (commandService) => {
     if (!commandService || typeof commandService.register !== "function") return;
@@ -238,6 +255,17 @@ export function apply(ctx, config = {}) {
 
     const workspaceRoot = resolveSessionWorkspace(ctx, agent, configuredWorkspace);
     const sessionId = agent?.session?.id || "default";
+
+    // Hot-path optimization: avoid spawning Python on every agent loop step when user input hasn't changed.
+    const prevSeenInput = seenPreStepInputBySession.get(sessionId);
+    if (typeof step === "number" && step > 0 && prevSeenInput === lastUserInput) {
+      return decision;
+    }
+    if (seenPreStepInputBySession.size > 64) {
+      seenPreStepInputBySession.clear();
+    }
+    seenPreStepInputBySession.set(sessionId, lastUserInput);
+
     const out = await invokeTmemHook(
       "pre_invocation",
       {
@@ -302,12 +330,27 @@ export function apply(ctx, config = {}) {
 
     const workspaceRoot = resolveSessionWorkspace(ctx, exec?.agent, configuredWorkspace);
     const sessionId = exec?.agent?.session?.id || "default";
+    const toolName = String(exec?.name || "");
+
+    // Hot-path optimization: skip Python cold-start on routine read/search calls unless an error
+    // occurred or an L1 co-change watch is active for this session.
+    const shouldInvokePython =
+      isError ||
+      (exitCode !== null && exitCode !== 0) ||
+      MUTATE_TOOLS.has(toolName) ||
+      SHELL_TOOLS.has(toolName) ||
+      activeCochangeWatch.has(sessionId);
+
+    if (!shouldInvokePython) {
+      return downstream;
+    }
+
     const out = await invokeTmemHook(
       "post_tool_use",
       {
         sessionId,
         toolCall: {
-          name: exec?.name || "",
+          name: toolName,
           args: parsedArgs,
         },
         resultText,
@@ -318,7 +361,14 @@ export function apply(ctx, config = {}) {
     );
 
     if (out && typeof out.additionalContext === "string" && out.additionalContext.trim()) {
-      const notice = createNoticeMessage(out.additionalContext.trim(), "tmem-milestone");
+      const ctxText = out.additionalContext.trim();
+      if (ctxText.includes("<tmem_cochange_hint>")) {
+        activeCochangeWatch.add(sessionId);
+      }
+      if (ctxText.includes("<tmem_milestone_reached>")) {
+        activeCochangeWatch.delete(sessionId);
+      }
+      const notice = createNoticeMessage(ctxText, "tmem-milestone");
       return {
         ...downstream,
         additionalContexts: [notice, ...(downstream?.additionalContexts || [])],

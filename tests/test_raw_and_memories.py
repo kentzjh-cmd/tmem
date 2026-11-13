@@ -14,7 +14,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 
 from tmem.cli import main as cli_main
-from tmem.cli import SLASH_TMEM_RE, handle_agy_hook
+from tmem.cli import SLASH_TMEM_RE, handle_dsh_hook
 from tmem.mem_doc import render_memories_markdown, sync_memories_file
 from tmem.models import (
     ActionKind,
@@ -332,8 +332,8 @@ class TestRawAndMemories(unittest.TestCase):
         self.assertIn("synchronized", buf.getvalue())
         self.assertIn("MEMORIES.md", buf.getvalue())
 
-    def test_slash_command_regex_and_agy_hook(self) -> None:
-        """Test slash command regex and hook dispatch for new actions."""
+    def test_slash_command_regex_and_dsh_hook(self) -> None:
+        """Test slash command regex and DSH command hook dispatch for inspect/replay/diff/sync."""
         # Regex tests
         m_inspect = SLASH_TMEM_RE.search("/tmem inspect tr_123 --level raw")
         self.assertIsNotNone(m_inspect)
@@ -354,49 +354,46 @@ class TestRawAndMemories(unittest.TestCase):
         self.assertIsNotNone(m_sync)
         self.assertEqual(m_sync.group(1), "sync")
 
-        # Setup workspace for hook
+        # Setup workspace for DSH hook
         store = DualTierMemoryStore(workspace_root=str(self.workspace))
         raw_store = RawTraceStore(str(self.workspace))
         raw_store.save_raw_trace(self.sample_raw_trace)
         store.save_playbook(self.sample_playbook, target_scope="project")
 
-        # Test agy hook execution for inspect (both positional level and --level flag)
+        # Test DSH hook execution for inspect (both positional level and --level flag)
         payload = {
-            "conversationId": "conv_test_1",
-            "lastUserInput": "/tmem inspect tr_unit_test_001 index",
-            "workspacePaths": [str(self.workspace)],
+            "sessionId": "conv_test_1",
+            "workspaceRoot": str(self.workspace),
+            "args": "inspect tr_unit_test_001 index",
         }
-        hook_resp = handle_agy_hook("pre_invocation", payload)
-        msg = hook_resp["injectSteps"][0]["systemMessage"]["systemMessage"]
-        self.assertIn("[tr_unit_test_001]", msg)
+        hook_resp = handle_dsh_hook("command", payload)
+        self.assertEqual(hook_resp["kind"], "success")
+        self.assertIn("[tr_unit_test_001]", hook_resp["text"])
 
-        payload["lastUserInput"] = "/tmem inspect tr_unit_test_001 --level raw"
-        hook_resp = handle_agy_hook("pre_invocation", payload)
-        msg = hook_resp["injectSteps"][0]["systemMessage"]["systemMessage"]
-        self.assertIn("Forensic Trace Replay", msg)
+        payload["args"] = "inspect tr_unit_test_001 --level raw"
+        hook_resp = handle_dsh_hook("command", payload)
+        self.assertIn("Forensic Trace Replay", hook_resp["text"])
 
-        payload["lastUserInput"] = "/tmem inspect"
-        hook_resp = handle_agy_hook("pre_invocation", payload)
-        msg = hook_resp["injectSteps"][0]["systemMessage"]["systemMessage"]
-        self.assertIn("not found in project memory", msg)
+        payload["args"] = "inspect"
+        hook_resp = handle_dsh_hook("command", payload)
+        self.assertEqual(hook_resp["kind"], "error")
+        self.assertIn("not found in project memory", hook_resp["text"])
 
-        # Test agy hook execution for replay
-        payload["lastUserInput"] = "/tmem replay tr_unit_test_001"
-        hook_resp = handle_agy_hook("pre_invocation", payload)
-        msg = hook_resp["injectSteps"][0]["systemMessage"]["systemMessage"]
-        self.assertIn("Forensic Trace Replay", msg)
+        # Test DSH hook execution for replay
+        payload["args"] = "replay tr_unit_test_001"
+        hook_resp = handle_dsh_hook("command", payload)
+        self.assertIn("Forensic Trace Replay", hook_resp["text"])
 
-        # Test agy hook execution for diff
-        payload["lastUserInput"] = "/tmem diff tr_unit_test_001"
-        hook_resp = handle_agy_hook("pre_invocation", payload)
-        msg = hook_resp["injectSteps"][0]["systemMessage"]["systemMessage"]
-        self.assertIn("diff --git a/src/calc.py", msg)
+        # Test DSH hook execution for diff
+        payload["args"] = "diff tr_unit_test_001"
+        hook_resp = handle_dsh_hook("command", payload)
+        self.assertIn("diff --git a/src/calc.py", hook_resp["text"])
 
-        # Test agy hook execution for sync
-        payload["lastUserInput"] = "/tmem sync"
-        hook_resp = handle_agy_hook("pre_invocation", payload)
-        msg = hook_resp["injectSteps"][0]["systemMessage"]["systemMessage"]
-        self.assertIn("Command `/tmem sync` completed successfully", msg)
+        # Test DSH hook execution for sync
+        payload["args"] = "sync"
+        hook_resp = handle_dsh_hook("command", payload)
+        self.assertEqual(hook_resp["kind"], "success")
+        self.assertIn("Synchronized indexes", hook_resp["text"])
 
 
 if __name__ == "__main__":

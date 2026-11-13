@@ -1,43 +1,45 @@
-# `tmem` — Execution Trace Slicing and Reuse for Coding Agents
+# `tmem` — Deterministic Engineering Memory Engine for DeepSeek Harness (`dsh`)
 
 [中文文档](./README.md) | **English**
 
-`tmem` (**Trace Memory**) is a **zero-dependency, repository-scoped (`.tmem/`)** execution trace slicer and reuse tool for coding agents. It natively integrates with **`agy` (Antigravity)** and **`@deepseek-ai/dsh` (DeepSeek Harness)**.
+`tmem` (**Trace Memory**) is a **zero-dependency, repository-scoped (`.tmem/`)** deterministic engineering memory & **zero-token historical session digest engine** built specifically for **`@deepseek-ai/dsh` (DeepSeek Harness)**.
 
-Treating agent session logs (`transcript.jsonl` / `session.v4.jsonl`) as exploratory execution streams, `tmem` anchors on **final landed Git changes** and **successful verification commands (`exit_code == 0`)** to perform **heuristic backward slicing**. It strips blind wandering and discarded experiments, distilling reproducible execution paths into an L0/L1/L2 Playbook guarded by **lightweight file and symbol probes**, shared and versioned directly inside the Git repository.
+By deterministically slicing and indexing past DSH trajectories without spending a single LLM summarization token, `tmem` turns noisy historical sessions into **free, structured requirement-and-behavior summaries (`Intent` + `Read -> Edit -> Repair -> Verify` + `MEMORIES.md`) with inline historical `session_id` lineage**—paired at runtime with strong-signal DSH interception (L2 error repairs, L1 co-change partner hints, and `.tmem/env_facts.json`).
 
 ---
 
 ## 1. Empirical Benchmarks
 
-Constructed on SWE-bench trajectories and live repository tasks. All data and benchmarks are reproducible under `benchmarks/`.
+All scripts and datasets are reproducible under `benchmarks/`:
 
-### 1.1 Downstream Holdout Task Transfer (3 tasks × 10 trials = 90 independent runs)
-Evaluates traces captured from Task A transferred onto related but distinct Task B ([Run Log](file:///home/ubuntu/proj/benchmarks/runs/downstream_transfer_report.json)):
-
-| Condition | Success Rate | Negative Transfer Rate | Mean Tool Steps | Mean Tokens |
-|---|:---:|:---:|:---:|:---:|
-| **Control (Cold Start)** | 100.0% | 0.0% | 8.0 steps | 3,005 |
-| **B0 Baseline (Blind Git Diff + Test Command)** | 66.7% | **66.7%** | 8.2 steps | 3,031 |
-| **`tmem` (Probe-Guarded Tiered Injection)** | **100.0%** | **0.0%** | **4.5 steps (-43.8%)** | **1,981 (-34.1%)** |
-
-> **Key Finding**: Blindly injecting raw historical diffs (B0) onto distinct tasks frequently induces negative transfer (spurious edits, merge conflicts, wandering, 33.3% failure rate). `tmem` automatically degrades L0 to L1 topology (co-changed files only) when file/symbol probes detect drift, achieving **0.0% negative transfer** while saving **43.8%** tool steps compared to cold start.
+### 1.1 DSH End-to-End Strong-Signal Replay & Telemetry
+Reproduction command: `python3 benchmarks/eval_dsh_e2e.py` ([Script](file:///home/ubuntu/proj/benchmarks/eval_dsh_e2e.py)):
+- **End-to-End Interaction Step Reduction**: **37.5%** (8 trial-and-error baseline steps → 5 steps with `tmem`)
+- **Runtime Telemetry Resolution**: L2 green error resolution **100%** (`1/1`), L1 co-change partner adoption **100%** (`1/1`)
+- **Natural-Language Holdout False Positive Injection Rate**: **0.0%** (10 vague prompts without file/error anchors stayed silent)
+- **Live Cordis Hot-Path Latency**: **111.98 ms** total across 21 events (6 `agent/pre-step` + 15 routine `read` `tools/post-execute` calls, skipping redundant `python3` spawns)
 
 ### 1.2 Slicing Fidelity (25 SWE-bench / DSH trajectories vs. Human Gold Annotations)
 Reproduction command: `python3 benchmarks/eval_slicing_fidelity.py` ([Run Log](file:///home/ubuntu/proj/benchmarks/runs/slicing_fidelity_report.json)):
 
 | Slicing Strategy | Precision | Recall | F1-Score | Mean Retained Steps |
 |---|:---:|:---:|:---:|:---:|
-| **B0 Trivial Baseline (Landed files + Final test)** | **97.1%** | 70.8% | 81.0% | 4.4 steps |
+| **B0 Trivial Baseline (Landed files + Final test)** | **97.1%** | 70.8% | **81.0%** | 4.4 steps |
 | **B1 `tmem` Heuristic Backward Slicing** | 63.2% | **88.7%** | 70.8% | 8.8 steps |
 | **B2 Oracle Upper Bound (Human Gold)** | 100.0% | 100.0% | 100.0% | 5.6 steps |
 
-> **Honest Limitation**: `tmem` backward dependency tracing effectively retains critical read context (Recall 88.7% vs B0's 70.8%). However, heuristic expansion retains some exploratory reads (Precision 63.2%), leaving room for further pruning.
+> **Honest Limitation**: `tmem` backward tracing retains pre-edit read context well (88.7% Recall vs. B0's 70.8%), but heuristic rules still leave some exploratory reads unpruned (63.2% Precision, trailing B0 in F1).
 
-### 1.3 Raw Issue Retrieval (25 raw issue queries + 6 negative holdout queries)
+### 1.3 Independent Raw Issue Retrieval (25 raw issue queries + 6 negative holdout queries)
 Reproduction command: `python3 benchmarks/eval_retrieval.py` ([Run Log](file:///home/ubuntu/proj/benchmarks/runs/retrieval_report.json)):
-- **Recall@1**: 100.0% / **Recall@3**: 100.0% / **MRR**: 1.0
-- **Negative Holdout False Positive Rate**: 16.7% (BM25 lexical retrieval occasionally matches single negative queries sharing common terms)
+- **Recall@1**: **100.0%** / **Recall@3**: **100.0%** / **MRR**: **1.0**
+- **Negative Holdout False Positive Rate**: 16.7% (raw SQLite FTS5 BM25 lexical lookup can occasionally surface cross-domain queries sharing generic tokens; accordingly, DSH `pre-step` recall now requires explicit file-path or error-signature anchors)
+
+### 1.4 Trajectory Compression & Runtime Footprint (9 real trajectories)
+Reproduction command: `python3 -m tmem.evaluate`:
+- **Mean Step Compression**: **56.97%** (117 -> 47 steps; ~1,423 -> ~349 est. tokens)
+- **High-Entropy L2 Causal Pairs Extracted**: **7 pairs** (verified via traceback file intersection + same-origin command verification)
+- **Mean Deterministic Slicing Latency**: **0.65 ms** (zero external dependencies, zero LLM calls)
 
 ---
 
@@ -45,21 +47,27 @@ Reproduction command: `python3 benchmarks/eval_retrieval.py` ([Run Log](file:///
 
 ```mermaid
 flowchart LR
-    Log["Agent Session Log<br/>transcript / session.v4"] --> Slice["Heuristic Backward Slicer<br/>Git status + exit_code == 0"]
-    Slice --> Traces[".tmem/traces/*.json<br/>Versioned via Git"]
-    Traces --> Sync["MEMORIES.md (MEM.md)<br/>Living Index Document"]
-    Traces --> Guard{"Pre-flight Probes<br/>file_exists / symbol_present"}
-    Guard -->|"All Passed"| L0["L0 Critical Path<br/>Read -> Mutate -> Test"]
-    Guard -->|"Symbol/File Drift"| L1["L1 Topology<br/>Co-changed files + Test cmd"]
-    Guard -->|"Error Matched"| L2["L2 Repair Pair<br/>Error signature -> Fix"]
+    DSH["DSH Cordis Plugin<br/>tmem/dsh_plugin.mjs"] -->|"Turn 0 / Explicit Anchors"| Pre["pre_invocation<br/>env_facts + Exact Anchor Lookup"]
+    DSH -->|"Errors / Edits / Verify (Skip Reads)"| Post["post_tool_use Strong Signals"]
+    Post -->|"Command Failed"| L2["lookup_l2_repair<br/>Immediate Same-Origin L2 Fix"]
+    Post -->|"Code File Edited"| L1["cochange.py<br/>Proactive <tmem_cochange_hint>"]
+    Post -->|"Verify Green"| Tel["telemetry.jsonl + GC<br/>Adoption Rate & Auto-Prune"]
+    Log["session.v4.jsonl + Git Diff"] --> Gate{"Default-Deny + Pre-Write Merge"}
+    Gate -->|"Routine single-file"| Env[".tmem/env_facts.json"]
+    Gate -->|"High-value similar"| Merge["Merge into existing Playbook"]
+    Gate -->|"High-value novel"| Traces[".tmem/traces/*.json + MEMORIES.md"]
 ```
 
-1. **Heuristic Backward Slicing** ([`tmem/slicer.py`](./tmem/slicer.py)): Rooted in final landed files and passing tests, tracing back directly contributory reads, mutations, and verification steps. Discards inline scratch scripts and dead-end experiments.
-2. **Three-Tier Memory & Probe Safeguards** ([`tmem/guards.py`](./tmem/guards.py)):
-   - **L0_FULL**: Injected when both file and symbol exist, offering the proven execution path.
-   - **L1_TOPOLOGY**: Degraded when files or symbols drift; retains co-change reminders.
-   - **L2_INVARIANT**: Injected upon encountering matching runtime error signatures or tracebacks.
-3. **Living Document Index** ([`MEMORIES.md`](./MEMORIES.md) / `MEM.md`): Automatically synced Markdown table readable by any agent (e.g., Cursor, Claude Code) even without plugins.
+1. **DSH Hot-Path Optimization & Strong-Signal Interception** ([`tmem/dsh_plugin.mjs`](./tmem/dsh_plugin.mjs), [`tmem/hooks/dsh.py`](./tmem/hooks/dsh.py)):
+   - **Cold-Start Pruning**: `agent/pre-step` skips spawning Python when user input hasn't changed across loop steps; `tools/post-execute` skips routine `read`/`grep`/`glob` calls unless an error occurred or an L1 co-change watch is active.
+   - **Zero-Noise Pre-Step**: Downgrades fuzzy natural-language BM25 prompt guessing; only injects `env_facts` once per session or recalls when explicit workspace paths or error signatures are mentioned.
+   - **Runtime Interception**: Injects verified L2 fixes immediately via `lookup_l2_repair` on command failure, and emits `<tmem_cochange_hint>` after editing code files with strong Git/trace co-change partners.
+2. **Precision-First Slicing, Pre-Write Merging & Drift GC** ([`tmem/slicer.py`](./tmem/slicer.py), [`tmem/store.py`](./tmem/store.py)):
+   - Uses `git diff -U0` + full-file Python ASTs for symbol attribution, enforces a default-deny gate on routine edits while saving passing test commands to `.tmem/env_facts.json`.
+   - **Pre-Write Similarity Merging**: Merges new playbooks sharing the same L2 causal repair or high file-set + intent overlap in place instead of creating duplicate JSON files.
+   - **Guard-Drift Metabolism**: Tracks `guard_fail_streak` on drifted paths; `tmem gc --prune` retires expired stale entries lacking L2 invariants.
+3. **Runtime Benefit Telemetry** ([`tmem/telemetry.py`](./tmem/telemetry.py)):
+   - Appends structured events to `.tmem/telemetry.jsonl` (gitignored) tracking L2 same-origin green resolution rate and L1 partner-file adoption rate (`tmem telemetry` / `tmem status`).
 
 ---
 
@@ -68,42 +76,28 @@ flowchart LR
 ### Installation & Initialization
 ```bash
 pip install -e .            # Install CLI (zero external dependencies, standard library only)
-tmem init --agents agy,dsh  # Initialize .tmem/ and configure plugin hooks
+tmem init                   # Initialize .tmem/, install DSH Cordis plugin, and set git post-commit hook
+dsh plugin add github:kentzjh-cmd/tmem   # Or install directly via dsh
 ```
 
 ### Common Commands
 ```bash
-tmem status                                      # Display trace statistics and probe status
-tmem capture --agent agy                         # Slice latest session and save to .tmem/
+tmem status                                      # Show trace counts, probes, and runtime telemetry
+tmem telemetry                                   # View L2 repair resolution & L1 co-change adoption stats
+tmem capture --agent dsh                         # Slice latest DSH session and merge/save to .tmem/
 tmem lookup "TypeError" --file src/validator.py  # Lexical retrieval + probe validation preview
 tmem inspect <trace_id> --level playbook         # View three-tier playbook details
-tmem replay <trace_id>                           # Replay original step execution stream
 tmem sync                                        # Validate probes and refresh MEMORIES.md
-tmem gc                                          # Scan and flag drifted/stale memories
+tmem gc --prune                                  # Scan drifted guards and prune expired no-L2 traces
 ```
 
 ---
 
-## 4. Agent Integration Matrix
+## 4. Limitations & Design Boundaries
 
-| Agent | Integration | Auto Recall Hook | `/tmem` Command | Milestone Prompt | Status |
-|---|:---:|:---:|:---:|:---:|:---:|
-| **Antigravity (`agy`)** | Native Plugin [`.agents/plugins/tmem/`](./.agents/plugins/tmem) | ✅ | ✅ | ✅ | First-Class |
-| **DeepSeek Harness (`dsh`)** | Cordis Plugin [`tmem/dsh_plugin.mjs`](./tmem/dsh_plugin.mjs) | ✅ | ✅ | ✅ | First-Class |
-| `codex` / `opencode` / `pi` | Generic JSONL Adapter | ❌ | ❌ | ❌ | Experimental |
-| SWE-bench / ATIF | Offline Trajectory Adapter | — | — | — | Benchmarks |
-
-- **`dsh` One-Click Install**: `dsh plugin add github:kentzjh-cmd/tmem`
-- **Milestone Prompt**: After detecting code mutation and successful verification:
-  > 💡 *Persist verified execution path as memory? (Type `/tmem` or `/remember [note]` to save)*
-
----
-
-## 5. Limitations & Design Boundaries
-
-1. **Heuristic Slicing is not Formal Program Analysis**: Based on Git status, AST top-level symbols, and exit codes. Latent reasoning without code traces may be pruned.
-2. **Probes Validate Syntactic Existence**: Probes check file and symbol presence. If a function signature remains unchanged while its internal logic is completely rewritten, runtime verification commands remain essential.
-3. **Pure Lexical Retrieval**: SQLite FTS5 BM25 avoids external vector models or extra token/latency overhead, but when user query phrasing differs drastically, directly consulting `MEM.md` is recommended.
+1. **Single-Host Focus (DSH)**: Non-DSH runtime hooks were intentionally pruned so all lifecycle hooks and telemetry focus cleanly on `@deepseek-ai/dsh` (`session.v4.jsonl` & Cordis). `SweBenchAdapter` remains only for offline benchmark suites.
+2. **Heuristic Slicing is Not Formal Analysis**: Relies on Git ground truth, Python AST symbols, and exit codes; non-Python languages use file-level probes and shell verification contracts.
+3. **Probes Check Syntactic Presence**: If a function signature remains intact while its internal logic is rewritten, runtime verification commands remain essential.
 
 ---
 

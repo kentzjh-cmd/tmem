@@ -44,8 +44,17 @@ class ProjectMemoryStore:
             self.project_raw_dir.mkdir(parents=True, exist_ok=True)
             self.project_cache_dir.mkdir(parents=True, exist_ok=True)
             gitignore = self.project_dir / ".gitignore"
+            desired_lines = [".cache/", "runtime_state.json", "telemetry.jsonl"]
             if not gitignore.exists():
-                gitignore.write_text(".cache/\nruntime_state.json\n", encoding="utf-8")
+                gitignore.write_text("\n".join(desired_lines) + "\n", encoding="utf-8")
+            else:
+                cur_gi = gitignore.read_text(encoding="utf-8", errors="ignore")
+                missing = [ln for ln in desired_lines if ln not in cur_gi]
+                if missing:
+                    gitignore.write_text(
+                        cur_gi.rstrip() + "\n" + "\n".join(missing) + "\n",
+                        encoding="utf-8",
+                    )
             self._init_sqlite(self.project_db_path)
 
     def _init_sqlite(self, db_path: Path) -> None:
@@ -123,13 +132,127 @@ class ProjectMemoryStore:
                     except Exception:
                         continue
 
+    @staticmethod
+    def _token_jaccard(text_a: str, text_b: str) -> float:
+        toks_a = {
+            t.lower()
+            for t in re.findall(r"[A-Za-z0-9_]+|[\u4e00-\u9fff]+", text_a or "")
+            if len(t) >= 2 and t.lower() not in COMMON_QUERY_STOPWORDS
+        }
+        toks_b = {
+            t.lower()
+            for t in re.findall(r"[A-Za-z0-9_]+|[\u4e00-\u9fff]+", text_b or "")
+            if len(t) >= 2 and t.lower() not in COMMON_QUERY_STOPWORDS
+        }
+        if not toks_a or not toks_b:
+            return 0.0
+        return len(toks_a & toks_b) / len(toks_a | toks_b)
+
+    @staticmethod
+    def _set_jaccard(a: List[str], b: List[str]) -> float:
+        sa = {x.strip().lower() for x in a if x and x.strip()}
+        sb = {x.strip().lower() for x in b if x and x.strip()}
+        if not sa or not sb:
+            return 0.0
+        return len(sa & sb) / len(sa | sb)
+
+    def _find_similar_playbook(self, incoming: TracePlaybook) -> Optional[TracePlaybook]:
+        """Find an existing non-invalidated playbook sharing the same L2 error repair or task file set."""
+        in_errs = {e.strip().lower() for e in incoming.error_signatures if e and e.strip()}
+        in_repairs = {
+            (r.error_signature.strip().lower(), r.repair_action.strip().lower())
+            for r in incoming.l2_causal_repairs
+        }
+        for existing in self.get_all_project_playbooks():
+            if existing.trace_id == incoming.trace_id or existing.status == "invalidated":
+                continue
+
+            file_sim = self._set_jaccard(existing.touched_files, incoming.touched_files)
+
+            # Rule A: Same L2 causal error repair signature + matching repair or file scope
+            ex_errs = {e.strip().lower() for e in existing.error_signatures if e and e.strip()}
+            ex_repairs = {
+                (r.error_signature.strip().lower(), r.repair_action.strip().lower())
+                for r in existing.l2_causal_repairs
+            }
+            if in_repairs and ex_repairs and (in_repairs & ex_repairs):
+                if file_sim >= 0.5 or any(r.is_env_or_toolchain for r in incoming.l2_causal_repairs):
+                    return existing
+            if in_errs and ex_errs and (in_errs & ex_errs) and file_sim >= 0.6:
+                return existing
+
+            # Rule B: High file-set overlap (>=0.8 Jaccard) + matching intent semantics (>=0.45)
+            if (
+                incoming.touched_files
+                and existing.touched_files
+                and file_sim >= 0.8
+                and self._token_jaccard(existing.problem_intent, incoming.problem_intent) >= 0.45
+            ):
+                return existing
+        return None
+
+    @staticmethod
+    def _merge_playbooks(existing: TracePlaybook, incoming: TracePlaybook) -> TracePlaybook:
+        """Merge an incoming session playbook in place into an existing matching playbook."""
+        def _union(seq_a: List[str], seq_b: List[str]) -> List[str]:
+            return list(dict.fromkeys([x for x in (seq_a + seq_b) if x]))
+
+        existing.created_at = incoming.created_at or existing.created_at
+        existing.git_commit = incoming.git_commit or existing.git_commit
+        existing.status = "active"
+        existing.guard_fail_streak = 0
+        existing.merge_count = int(existing.merge_count) + 1
+        existing.confidence = min(1.0, round(max(existing.confidence, incoming.confidence) + 0.08, 3))
+        existing.is_trivial = existing.is_trivial and incoming.is_trivial
+
+        existing.error_signatures = _union(existing.error_signatures, incoming.error_signatures)
+        existing.source_session_ids = _union(existing.source_session_ids, incoming.source_session_ids)
+        existing.touched_files = _union(existing.touched_files, incoming.touched_files)
+        existing.touched_symbols = _union(existing.touched_symbols, incoming.touched_symbols)
+        existing.l1_cochange_topology = _union(
+            existing.l1_cochange_topology, incoming.l1_cochange_topology
+        )
+        existing.l1_verification_cmds = _union(
+            existing.l1_verification_cmds, incoming.l1_verification_cmds
+        )
+        existing.pitfalls = _union(existing.pitfalls, incoming.pitfalls)
+
+        seen_rep = {
+            (r.error_signature.strip().lower(), r.repair_action.strip().lower())
+            for r in existing.l2_causal_repairs
+        }
+        for r in incoming.l2_causal_repairs:
+            key = (r.error_signature.strip().lower(), r.repair_action.strip().lower())
+            if key not in seen_rep:
+                seen_rep.add(key)
+                existing.l2_causal_repairs.append(r)
+
+        # Refresh L0 path/guards when incoming carries equal or richer verified detail
+        if incoming.guards and len(incoming.l0_critical_path) >= len(existing.l0_critical_path):
+            existing.guards = incoming.guards
+            existing.l0_critical_path = incoming.l0_critical_path
+            existing.raw_steps_count = incoming.raw_steps_count or existing.raw_steps_count
+            existing.sliced_steps_count = incoming.sliced_steps_count or existing.sliced_steps_count
+            if incoming.raw_trace_path:
+                existing.raw_trace_path = incoming.raw_trace_path
+                existing.raw_trace_hash = incoming.raw_trace_hash
+
+        if incoming.root_cause and (not existing.root_cause or len(incoming.root_cause) > len(existing.root_cause)):
+            existing.root_cause = incoming.root_cause
+        if incoming.semantic_summary and not existing.semantic_summary:
+            existing.semantic_summary = incoming.semantic_summary
+        return existing
+
     def save_playbook(
         self,
         playbook: TracePlaybook,
         target_scope: str = "project",
+        merge_similar: bool = True,
     ) -> Tuple[Optional[str], Optional[str]]:
         """
         Save playbook to Project Tier (.tmem/traces/<id>.json) and index into SQLite.
+        When `merge_similar=True`, merges into an existing playbook sharing the same L2 repair
+        or high-overlap file set + intent instead of spawning duplicate files.
         Returns (project_trace_id, None).
         """
         self.ensure_initialized(init_project=True)
@@ -141,6 +264,11 @@ class ProjectMemoryStore:
                 playbook.raw_trace_hash = hashlib.sha256(raw_path.read_bytes()).hexdigest()[:16]
 
         playbook.scope = "project"
+        if merge_similar:
+            similar = self._find_similar_playbook(playbook)
+            if similar is not None:
+                playbook = self._merge_playbooks(similar, playbook)
+
         proj_file = self.project_traces_dir / f"{playbook.trace_id}.json"
         proj_file.write_text(
             json.dumps(playbook.to_dict(), indent=2, ensure_ascii=False),
@@ -206,11 +334,9 @@ class ProjectMemoryStore:
         repairs_text = " ".join(
             f"{r.error_signature} {r.repair_action}" for r in pb.l2_causal_repairs
         )
-        reqs_text = " ".join(r.text for r in pb.requirements)
-        edges_text = " ".join(e.why for e in pb.intent_edges if e.why)
         step_rats = " ".join(str(s.get("rationale") or "") for s in pb.l0_critical_path)
         intent_and_summary = (
-            f"{pb.problem_intent} {pb.semantic_summary} {pb.root_cause or ''} {reqs_text} {edges_text} {step_rats}"
+            f"{pb.problem_intent} {pb.semantic_summary} {pb.root_cause or ''} {step_rats}"
         ).strip()
         conn.execute(
             """
@@ -347,35 +473,110 @@ class ProjectMemoryStore:
         results.sort(key=lambda x: x[1], reverse=True)
         return results
 
-    def run_metabolism_gc(self) -> Dict[str, int]:
+    def lookup_l2_repair(
+        self,
+        error_signatures: List[str],
+        file_paths: Optional[List[str]] = None,
+        limit: int = 2,
+    ) -> List[EvaluatedPlaybook]:
+        """
+        Strict error-signature lookup for DSH post_tool_use interception.
+        Requires deterministic error match (exact_triggers type='error') and non-empty L2 repairs.
+        """
+        sigs = [s.strip() for s in (error_signatures or []) if s and len(s.strip()) >= 6]
+        if not sigs:
+            return []
+        self.sync_project_index_if_needed()
+        if not self.project_db_path.exists():
+            return []
+
+        scores: Dict[str, float] = {}
+        with sqlite3.connect(str(self.project_db_path)) as conn:
+            for err in sigs:
+                err_low = err.lower()
+                cur = conn.execute(
+                    "SELECT trace_id, trigger_key FROM exact_triggers "
+                    "WHERE trigger_type = 'error' AND (? LIKE '%' || trigger_key || '%' OR trigger_key LIKE '%' || ? || '%')",
+                    (err_low, err_low),
+                )
+                for tid, tkey in cur.fetchall():
+                    if len(tkey or "") < 6:
+                        continue
+                    boost = 15.0 if tkey == err_low else 8.0
+                    scores[tid] = scores.get(tid, 0.0) + boost
+
+            if not scores:
+                return []
+
+            file_set = {f.lower() for f in (file_paths or []) if f}
+            results: List[Tuple[EvaluatedPlaybook, float]] = []
+            for tid, sc in scores.items():
+                row = conn.execute(
+                    "SELECT payload_json FROM playbooks WHERE trace_id = ?", (tid,)
+                ).fetchone()
+                if not row:
+                    continue
+                try:
+                    pb = TracePlaybook.from_dict(json.loads(row[0]))
+                except Exception:
+                    continue
+                if pb.status == "invalidated" or not pb.l2_causal_repairs:
+                    continue
+                if file_set and any(f.lower() in file_set for f in pb.touched_files):
+                    sc += 3.0
+                ev = evaluate_guards(pb, self.workspace_root)
+                results.append((ev, sc))
+
+        results.sort(
+            key=lambda item: (round(item[1], 2), 1 if item[0].l0_valid else 0, item[0].playbook.confidence),
+            reverse=True,
+        )
+        return [ev for ev, _ in results[:limit]]
+
+    def run_metabolism_gc(self, prune_stale: bool = False) -> Dict[str, int]:
         """
         Scan project traces against current workspace state:
-        - Marks traces whose L0 guards fail and have no L1/L2 value as 'stale'.
-        - Keeps traces with L1/L2 invariants active (auto-degraded at runtime).
+        - Resets `guard_fail_streak` when L0 guards pass.
+        - Increments `guard_fail_streak` on guard drift, auto-degrading L1/L2 traces or marking stale.
+        - When `prune_stale=True`, removes expired stale traces without L2 invariants.
         """
         self.sync_project_index_if_needed()
-        stats = {"active_l0": 0, "degraded_l1_l2": 0, "stale": 0}
+        stats = {"active_l0": 0, "degraded_l1_l2": 0, "stale": 0, "pruned": 0}
         if not self.project_traces_dir.exists():
             return stats
 
         with sqlite3.connect(str(self.project_db_path)) as conn:
-            for jf in self.project_traces_dir.glob("*.json"):
+            for jf in list(self.project_traces_dir.glob("*.json")):
                 try:
                     pb = TracePlaybook.from_dict(json.loads(jf.read_text(encoding="utf-8")))
                     ev = evaluate_guards(pb, self.workspace_root)
                     from tmem.slicer import assess_playbook_triviality
-                    is_triv, reason = assess_playbook_triviality(pb)
+                    is_triv, _reason = assess_playbook_triviality(pb)
                     pb.is_trivial = is_triv
                     if ev.l0_valid:
                         pb.status = "active"
+                        pb.guard_fail_streak = 0
                         stats["active_l0"] += 1
-                    elif pb.l2_causal_repairs or len(pb.l1_cochange_topology) > 0:
-                        pb.status = "active"
-                        stats["degraded_l1_l2"] += 1
                     else:
-                        pb.status = "stale"
-                        pb.confidence = max(0.1, pb.confidence - 0.3)
-                        stats["stale"] += 1
+                        pb.guard_fail_streak = int(pb.guard_fail_streak) + 1
+                        if (pb.l2_causal_repairs or pb.l1_cochange_topology) and pb.guard_fail_streak < 3:
+                            pb.status = "active"
+                            pb.confidence = max(0.2, round(pb.confidence - 0.05, 3))
+                            stats["degraded_l1_l2"] += 1
+                        else:
+                            pb.status = "stale"
+                            pb.confidence = max(0.05, round(pb.confidence - 0.3, 3))
+                            stats["stale"] += 1
+                            if prune_stale and not pb.l2_causal_repairs and (
+                                pb.guard_fail_streak >= 3 or pb.confidence <= 0.1
+                            ):
+                                jf.unlink(missing_ok=True)
+                                conn.execute("DELETE FROM playbooks WHERE trace_id = ?", (pb.trace_id,))
+                                conn.execute("DELETE FROM exact_triggers WHERE trace_id = ?", (pb.trace_id,))
+                                conn.execute("DELETE FROM playbooks_fts WHERE trace_id = ?", (pb.trace_id,))
+                                conn.execute("DELETE FROM trace_links WHERE trace_id = ?", (pb.trace_id,))
+                                stats["pruned"] += 1
+                                continue
                     jf.write_text(
                         json.dumps(pb.to_dict(), indent=2, ensure_ascii=False),
                         encoding="utf-8",
@@ -402,6 +603,7 @@ class ProjectMemoryStore:
                 items.append(
                     {
                         "trace_id": pb.trace_id,
+                        "source_session_ids": pb.source_session_ids,
                         "scope": "project",
                         "effective_tier": ev.effective_tier,
                         "problem_intent": pb.problem_intent,
@@ -491,6 +693,54 @@ class ProjectMemoryStore:
         """Regenerate MEMORIES.md and maintain MEM.md living index in workspace root."""
         proj_pbs = self.get_all_project_playbooks()
         return sync_memories_file(self.workspace_root, proj_pbs)
+
+    def record_trace_outcome(self, trace_ids: List[str], outcome: str) -> Dict[str, float]:
+        """
+        Update playbook confidence, hit/success/contradict counters, and status
+        based on deterministic runtime outcomes ('success' | 'contradict') without LLM calls.
+        """
+        if not trace_ids or outcome not in ("success", "contradict"):
+            return {}
+        if not self.project_traces_dir.exists():
+            return {}
+
+        self.sync_project_index_if_needed()
+        updated: Dict[str, float] = {}
+        try:
+            with sqlite3.connect(str(self.project_db_path)) as conn:
+                for tid in dict.fromkeys(trace_ids):
+                    jf = self.project_traces_dir / f"{tid}.json"
+                    if not jf.exists():
+                        continue
+                    try:
+                        pb = TracePlaybook.from_dict(
+                            json.loads(jf.read_text(encoding="utf-8"))
+                        )
+                    except Exception:
+                        continue
+
+                    pb.hit_count += 1
+                    if outcome == "success":
+                        pb.success_count += 1
+                        pb.confidence = min(1.0, round(pb.confidence + 0.1, 3))
+                        if pb.status == "stale" and pb.confidence >= 0.4:
+                            pb.status = "active"
+                    else:
+                        pb.contradict_count += 1
+                        pb.confidence = max(0.0, round(pb.confidence - 0.2, 3))
+                        if pb.confidence < 0.3 or pb.contradict_count >= 2:
+                            pb.status = "stale"
+
+                    jf.write_text(
+                        json.dumps(pb.to_dict(), indent=2, ensure_ascii=False),
+                        encoding="utf-8",
+                    )
+                    self._UpsertToDb(conn, pb)
+                    updated[tid] = pb.confidence
+        except Exception as e:
+            logger.debug("Failed to record trace outcome: %s", e)
+
+        return updated
 
 
 COMMON_QUERY_STOPWORDS = {

@@ -23,7 +23,7 @@ from tmem.adapters.base import (
     extract_error_signature,
     is_high_entropy_error_signature,
 )
-from tmem.cli import execute_capture, handle_agy_hook
+from tmem.cli import execute_capture, handle_dsh_hook
 from tmem.models import ActionKind, ActionNode, CausalRepairPair, GuardProbe, TracePlaybook
 from tmem.slicer import (
     BackwardTraceSlicer,
@@ -188,39 +188,35 @@ class TestPragmaticOptimizations(unittest.TestCase):
     def test_milestone_prompt_suppression_on_non_code_files(self) -> None:
         """Verify that editing non-code files (like README.md) does NOT trigger milestone prompts."""
         # Step 1: Tool modifies README.md
-        handle_agy_hook(
+        handle_dsh_hook(
             "post_tool_use",
             {
-                "conversationId": "conv_doc_01",
-                "workspacePaths": [str(self.workspace)],
-                "toolCall": {"name": "edit_file", "args": {"Path": str(self.workspace / "README.md")}},
+                "sessionId": "conv_doc_01",
+                "workspaceRoot": str(self.workspace),
+                "toolCall": {"name": "edit", "args": {"file_path": str(self.workspace / "README.md")}},
             },
         )
         # Step 2: Verification command executes
-        handle_agy_hook(
+        post_res = handle_dsh_hook(
             "post_tool_use",
             {
-                "conversationId": "conv_doc_01",
-                "workspacePaths": [str(self.workspace)],
-                "toolCall": {"name": "run_command", "args": {"CommandLine": "python3 -m unittest"}},
+                "sessionId": "conv_doc_01",
+                "workspaceRoot": str(self.workspace),
+                "toolCall": {"name": "bash", "args": {"command": "python3 -m unittest"}},
+                "resultText": "OK\n[exit code: 0]",
             },
         )
+        self.assertNotIn("<tmem_milestone_reached>", post_res.get("additionalContext", ""))
         # Step 3: Next PreInvocation must NOT nag user with milestone prompt
-        out = handle_agy_hook(
+        out = handle_dsh_hook(
             "pre_invocation",
             {
-                "conversationId": "conv_doc_01",
-                "workspacePaths": [str(self.workspace)],
+                "sessionId": "conv_doc_01",
+                "workspaceRoot": str(self.workspace),
                 "lastUserInput": "Updated documentation, all done.",
             },
         )
-        inject_steps = out.get("injectSteps", [])
-        m_texts = [
-            s.get("systemMessage", {}).get("systemMessage", "")
-            for s in inject_steps
-        ]
-        has_milestone = any("<tmem_milestone_reached>" in t for t in m_texts)
-        self.assertFalse(has_milestone, "Milestone prompt should not trigger for non-code files like README.md")
+        self.assertNotIn("<tmem_milestone_reached>", out.get("injectedContext", ""))
 
     def test_high_entropy_error_signature_quality_gate(self) -> None:
         """Verify that specific exceptions are accepted and generic runner summaries are rejected."""
@@ -446,6 +442,256 @@ class TestPragmaticOptimizations(unittest.TestCase):
         self.assertNotIn("redundant exploratory `grep`/`find` scans", content)
         self.assertNotIn("不要再 grep/find 探索", content)
         self.assertIn("clues", content.lower())
+
+    def test_phase2_non_canonical_diff_cmd_produces_zero_l2_repairs(self) -> None:
+        """Phase 2: Non-canonical shell commands like `diff -u` with stderr/diff-output must NOT become L2 repairs."""
+        actions = [
+            ActionNode(
+                step_idx=1,
+                kind=ActionKind.ENV_EXEC,
+                tool_name="run_command",
+                command="diff -u src/a.py src/b.py",
+                exit_code=1,
+                error_signature="AssertionError: line diff",
+            ),
+            ActionNode(
+                step_idx=2,
+                kind=ActionKind.MUTATE,
+                tool_name="edit_file",
+                target_file="src/a.py",
+                symbols_touched=["compute"],
+            ),
+            ActionNode(
+                step_idx=3,
+                kind=ActionKind.ENV_EXEC,
+                tool_name="run_command",
+                command="pytest tests/test_a.py",
+                exit_code=0,
+            ),
+        ]
+        session = ParsedSession(
+            agent_name="agy",
+            session_id="sess_diff_false_l2",
+            workspace_root=str(self.workspace),
+            user_intents=["Compare and fix src/a.py"],
+            actions=actions,
+        )
+        pb = BackwardTraceSlicer().slice_session(session, use_git_ground_truth=False)
+        self.assertIsNotNone(pb)
+        self.assertEqual(pb.l2_causal_repairs, [])
+
+    def test_phase2_l2_same_origin_command_matching(self) -> None:
+        """Phase 2: `test_a.py` fail -> `test_b.py` pass must be rejected; same/broader runner passes are accepted."""
+        # Case A: Mismatched test file target (test_a.py -> test_b.py)
+        mismatched = ParsedSession(
+            agent_name="agy",
+            session_id="sess_mismatch",
+            workspace_root=str(self.workspace),
+            user_intents=["Fix src/a.py test failure"],
+            actions=[
+                ActionNode(
+                    step_idx=1,
+                    kind=ActionKind.ENV_EXEC,
+                    tool_name="run_command",
+                    command="pytest tests/test_a.py",
+                    exit_code=1,
+                    error_signature="ValueError: bad input",
+                ),
+                ActionNode(
+                    step_idx=2,
+                    kind=ActionKind.MUTATE,
+                    tool_name="edit_file",
+                    target_file="src/a.py",
+                    symbols_touched=["parse"],
+                ),
+                ActionNode(
+                    step_idx=3,
+                    kind=ActionKind.ENV_EXEC,
+                    tool_name="run_command",
+                    command="pytest tests/test_b.py",
+                    exit_code=0,
+                ),
+            ],
+        )
+        pb_mismatch = BackwardTraceSlicer().slice_session(mismatched, use_git_ground_truth=False)
+        self.assertIsNotNone(pb_mismatch)
+        self.assertEqual(pb_mismatch.l2_causal_repairs, [])
+
+        # Case B: Same runner broader suite (pytest tests/test_a.py -> pytest)
+        broader = ParsedSession(
+            agent_name="agy",
+            session_id="sess_broader",
+            workspace_root=str(self.workspace),
+            user_intents=["Fix src/a.py test failure"],
+            actions=[
+                ActionNode(
+                    step_idx=1,
+                    kind=ActionKind.ENV_EXEC,
+                    tool_name="run_command",
+                    command="pytest tests/test_a.py",
+                    exit_code=1,
+                    error_signature="ValueError: bad input",
+                ),
+                ActionNode(
+                    step_idx=2,
+                    kind=ActionKind.MUTATE,
+                    tool_name="edit_file",
+                    target_file="src/a.py",
+                    symbols_touched=["parse"],
+                ),
+                ActionNode(
+                    step_idx=3,
+                    kind=ActionKind.ENV_EXEC,
+                    tool_name="run_command",
+                    command="pytest",
+                    exit_code=0,
+                ),
+            ],
+        )
+        pb_broader = BackwardTraceSlicer().slice_session(broader, use_git_ground_truth=False)
+        self.assertIsNotNone(pb_broader)
+        self.assertEqual(len(pb_broader.l2_causal_repairs), 1)
+        self.assertEqual(pb_broader.l2_causal_repairs[0].verification_cmd, "pytest")
+
+    def test_phase2_ast_diff_line_range_and_guard_priority(self) -> None:
+        """Phase 2: AST+line-range extracts enclosing def even when def line wasn't modified, prioritizing source files."""
+        import subprocess
+
+        subprocess.run(["git", "init"], cwd=self.workspace, check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=self.workspace, check=True)
+        subprocess.run(["git", "config", "user.name", "t"], cwd=self.workspace, check=True)
+
+        src_dir = self.workspace / "src"
+        src_dir.mkdir(exist_ok=True)
+        py_file = src_dir / "engine.py"
+        readme = self.workspace / "README.md"
+        py_file.write_text(
+            "def compute_tax(amount):\n    rate = 0.1\n    return amount * rate\n",
+            encoding="utf-8",
+        )
+        readme.write_text("# Engine\n", encoding="utf-8")
+        subprocess.run(["git", "add", "."], cwd=self.workspace, check=True)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=self.workspace, check=True, capture_output=True)
+
+        # Modify ONLY body line 2 (not `def compute_tax`) and README.md
+        py_file.write_text(
+            "def compute_tax(amount):\n    rate = 0.2\n    return amount * rate\n",
+            encoding="utf-8",
+        )
+        readme.write_text("# Engine v2\n", encoding="utf-8")
+
+        actions = [
+            ActionNode(step_idx=1, kind=ActionKind.MUTATE, tool_name="edit_file", target_file="README.md"),
+            ActionNode(step_idx=2, kind=ActionKind.MUTATE, tool_name="edit_file", target_file="src/engine.py"),
+            ActionNode(step_idx=3, kind=ActionKind.ENV_EXEC, tool_name="run_command", command="pytest", exit_code=0),
+        ]
+        session = ParsedSession(
+            agent_name="agy",
+            session_id="sess_ast_guard",
+            workspace_root=str(self.workspace),
+            user_intents=["Update tax rate in engine"],
+            actions=actions,
+        )
+        pb = BackwardTraceSlicer().slice_session(session, use_git_ground_truth=True)
+        self.assertIsNotNone(pb)
+        self.assertIn("compute_tax", pb.touched_symbols)
+        # First file_exists guard must prioritize source file over README.md
+        file_guards = [g.target for g in pb.guards if g.probe_type == "file_exists"]
+        self.assertEqual(file_guards[0], "src/engine.py")
+        sym_guards = [(g.target, g.expected) for g in pb.guards if g.probe_type == "symbol_present"]
+        self.assertIn(("src/engine.py", "compute_tax"), sym_guards)
+
+    def test_phase2_statistical_cochange_ignores_bulk_and_detects_recurring(self) -> None:
+        """Phase 2: Statistical co-change skips >10-file bulk commits and extracts >=2x recurring pairs."""
+        import subprocess
+        from tmem.cochange import compute_cochange_stats
+
+        subprocess.run(["git", "init"], cwd=self.workspace, check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=self.workspace, check=True)
+        subprocess.run(["git", "config", "user.name", "t"], cwd=self.workspace, check=True)
+
+        # Commit 1: bulk 12-file commit (must be ignored by L1 topology)
+        (self.workspace / "README.md").write_text("v1\n", encoding="utf-8")
+        for idx in range(11):
+            (self.workspace / f"mod_{idx}.py").write_text("x = 1\n", encoding="utf-8")
+        subprocess.run(["git", "add", "."], cwd=self.workspace, check=True)
+        subprocess.run(["git", "commit", "-m", "bulk"], cwd=self.workspace, check=True, capture_output=True)
+
+        # Commit 2 & 3: recurring co-edit between a.py and b.py
+        for rev in ("v2", "v3"):
+            (self.workspace / "mod_0.py").write_text(f"# {rev}\n", encoding="utf-8")
+            (self.workspace / "mod_1.py").write_text(f"# {rev}\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=self.workspace, check=True)
+            subprocess.run(["git", "commit", "-m", f"pair {rev}"], cwd=self.workspace, check=True, capture_output=True)
+
+        pairs = compute_cochange_stats(str(self.workspace))
+        pair_tuples = {(p.file_a, p.file_b) for p in pairs}
+        self.assertIn(("mod_0.py", "mod_1.py"), pair_tuples)
+        for a, b in pair_tuples:
+            self.assertNotIn("README.md", (a, b))
+
+    def test_phase2_default_deny_skips_long_custom_intent_and_saves_env_facts(self) -> None:
+        """Phase 2: Default-deny rejects single-file routine even with long custom_intent, while saving env_facts."""
+        from tmem.cli import execute_capture
+        from tmem.mem_doc import extract_micro_skills
+
+        def _write_dsh_routine(path: Path, prompt: str) -> None:
+            entries = [
+                {"version": 4, "id": path.stem, "createdAt": 1731225600000},
+                {
+                    "type": "user/message",
+                    "seq": 1,
+                    "data": {"role": "user", "content": [{"type": "text", "text": prompt}], "source": {"kind": "user"}},
+                },
+                {
+                    "type": "tool/call",
+                    "seq": 2,
+                    "data": {"callId": "c1", "name": "edit", "arguments": json.dumps({"file_path": "src/helper.py"})},
+                },
+                {
+                    "type": "tool/result",
+                    "seq": 3,
+                    "data": {"message": {"callId": "c1", "content": [{"type": "text", "text": "Edited"}], "isError": False}},
+                },
+                {
+                    "type": "tool/call",
+                    "seq": 4,
+                    "data": {"callId": "c2", "name": "bash", "arguments": json.dumps({"command": "pytest tests/test_helper.py"})},
+                },
+                {
+                    "type": "tool/result",
+                    "seq": 5,
+                    "data": {"message": {"callId": "c2", "content": [{"type": "text", "text": "1 passed\n[exit code: 0]"}], "isError": False}},
+                },
+            ]
+            path.write_text("\n".join(json.dumps(e) for e in entries), encoding="utf-8")
+
+        transcript = self.workspace / "routine.v4.jsonl"
+        _write_dsh_routine(transcript, "Refactor helper docstring")
+
+        res1 = execute_capture(
+            workspace_root=str(self.workspace),
+            agent_name="dsh",
+            transcript_path=str(transcript),
+            custom_intent="Long custom intent exceeding ten chars to verify bypass removal",
+            force=False,
+        )
+        self.assertEqual(res1["status"], "skipped_trivial")
+        self.assertFalse(list((self.workspace / ".tmem" / "traces").glob("*.json")) if (self.workspace / ".tmem" / "traces").exists() else False)
+
+        # Second session with same verified cmd enriches env_facts across >=2 sources
+        transcript2 = self.workspace / "routine2.v4.jsonl"
+        _write_dsh_routine(transcript2, "Second routine helper edit")
+        res2 = execute_capture(
+            workspace_root=str(self.workspace),
+            agent_name="dsh",
+            transcript_path=str(transcript2),
+            force=False,
+        )
+        self.assertEqual(res2["status"], "skipped_trivial")
+
+        skills = extract_micro_skills([], min_traces=2, workspace_root=str(self.workspace))
+        self.assertIn("pytest tests/test_helper.py", skills)
 
 
 if __name__ == "__main__":

@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 from tmem import logger
+
+
+LOOP_STREAK_THRESHOLD = 3
 
 
 def default_runtime_state(conv_id: str = "default") -> Dict[str, Any]:
@@ -15,12 +18,22 @@ def default_runtime_state(conv_id: str = "default") -> Dict[str, Any]:
         "last_turn_idx": -1,
         "last_captured_step_idx": 0,
         "injected_trace_ids": [],
+        "rewarded_trace_ids": [],
+        "penalized_trace_ids": [],
+        "micro_skills_injected": False,
         "session_errors": [],
         "recent_errors": [],
         "recent_files": [],
         "uncommitted_mutations": [],
         "verified_since_mutation": False,
         "milestone_prompted_for_mutations": [],
+        "error_streak": {"signature": "", "count": 0},
+        "edit_fail_streak": {},
+        "loop_intervened_keys": [],
+        "pending_loop_breaker": "",
+        "pending_l2_hints": [],
+        "pending_l1_hints": [],
+        "cochange_warned_pairs": [],
     }
 
 
@@ -52,3 +65,99 @@ def save_runtime_state(workspace_root: str, state: Dict[str, Any]) -> None:
         )
     except OSError as e:
         logger.debug("Failed to write runtime_state.json: %s", e)
+
+
+def record_tool_outcome_for_loop(
+    state: Dict[str, Any],
+    *,
+    has_failure: bool,
+    error_sig: str = "",
+    mutated_files: Optional[List[str]] = None,
+    verify_passed: bool = False,
+) -> Optional[str]:
+    """
+    Deterministic zero-LLM failure-loop detector.
+    Tracks consecutive identical error signatures and edit->fail streaks on the same file.
+    Returns a `<tmem_loop_breaker>` intervention block when threshold is reached, else None.
+    """
+    if verify_passed:
+        state["error_streak"] = {"signature": "", "count": 0}
+        state["edit_fail_streak"] = {}
+        state["pending_loop_breaker"] = ""
+        return None
+
+    if not has_failure:
+        return None
+
+    intervened = list(state.get("loop_intervened_keys", []))
+    reasons: List[str] = []
+    trigger_keys: List[str] = []
+
+    if error_sig:
+        streak = state.get("error_streak") or {"signature": "", "count": 0}
+        if streak.get("signature") == error_sig:
+            streak["count"] = int(streak.get("count", 0)) + 1
+        else:
+            streak = {"signature": error_sig, "count": 1}
+        state["error_streak"] = streak
+        if streak["count"] >= LOOP_STREAK_THRESHOLD:
+            key = f"err:{error_sig}"
+            if key not in intervened:
+                trigger_keys.append(key)
+                reasons.append(
+                    f"Same error signature repeated {streak['count']} times in a row: `{error_sig}`"
+                )
+
+    edit_streak: Dict[str, int] = dict(state.get("edit_fail_streak") or {})
+    target_files = list(mutated_files or [])
+    if not target_files and state.get("uncommitted_mutations"):
+        target_files = [state["uncommitted_mutations"][-1]]
+
+    for fp in target_files:
+        edit_streak[fp] = int(edit_streak.get(fp, 0)) + 1
+        if edit_streak[fp] >= LOOP_STREAK_THRESHOLD:
+            key = f"file:{fp}"
+            if key not in intervened:
+                trigger_keys.append(key)
+                reasons.append(
+                    f"Repeated edit/failure loop ({edit_streak[fp]}x) involving `{fp}`"
+                )
+    state["edit_fail_streak"] = edit_streak
+
+    if not trigger_keys:
+        return None
+
+    intervened.extend(trigger_keys)
+    state["loop_intervened_keys"] = intervened
+    msg = (
+        "<tmem_loop_breaker>\n"
+        "Failure-loop circuit breaker triggered:\n"
+        + "\n".join(f"- {r}" for r in reasons)
+        + "\nAction required: Stop repeating local edits or re-running the same failing command. "
+        "Re-read the surrounding module/imports or switch your debugging hypothesis before editing again.\n"
+        "</tmem_loop_breaker>"
+    )
+    return msg
+
+
+def apply_session_trace_feedback(store: Any, state: Dict[str, Any], outcome: str) -> None:
+    """
+    Apply deterministic outcome feedback ('success' | 'contradict') to traces injected
+    earlier in this conversation, ensuring each trace is rewarded/penalized at most once.
+    """
+    injected = list(state.get("injected_trace_ids") or [])
+    if not injected:
+        return
+
+    if outcome == "success":
+        already = set(state.get("rewarded_trace_ids") or [])
+        targets = [tid for tid in injected if tid not in already]
+        if targets:
+            store.record_trace_outcome(targets, "success")
+            state["rewarded_trace_ids"] = list(already | set(targets))
+    elif outcome == "contradict":
+        already = set(state.get("penalized_trace_ids") or [])
+        targets = [tid for tid in injected if tid not in already]
+        if targets:
+            store.record_trace_outcome(targets, "contradict")
+            state["penalized_trace_ids"] = list(already | set(targets))

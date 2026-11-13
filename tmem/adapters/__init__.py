@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from tmem.adapters.agy import AgyAdapter
 from tmem.adapters.dsh import DshAdapter
 from tmem.adapters.swe_bench import SweBenchAdapter
 from tmem.adapters.base import (
@@ -20,7 +19,7 @@ from tmem.adapters.base import (
     normalize_rel_path,
     scrub_secrets,
 )
-from tmem.models import ActionKind, ActionNode, Requirement
+from tmem.models import ActionKind, ActionNode
 
 
 class GenericJsonlAgentAdapter(AgentAdapter):
@@ -76,10 +75,6 @@ class GenericJsonlAgentAdapter(AgentAdapter):
                         and not is_filler_user_intent(text)
                     ):
                         session.user_intents.append(text[:500])
-                        req_id = f"R{len(session.user_requirements) + 1}"
-                        session.user_requirements.append(
-                            Requirement(req_id=req_id, text=text[:500], source="user")
-                        )
 
                 elif role in ("assistant", "model"):
                     raw_asst = content if isinstance(content, str) else json.dumps(content)
@@ -189,12 +184,11 @@ class GenericJsonlAgentAdapter(AgentAdapter):
         return str(candidates[0])
 
 
-def get_adapter(agent_name: str = "agy") -> AgentAdapter:
-    """Factory returning the adapter for agy, codex, opencode, pi, dsh, or swe_bench/atif."""
+def get_adapter(agent_name: str = "dsh") -> AgentAdapter:
+    """Factory returning the adapter for dsh (primary), codex, opencode, pi, or swe_bench/atif."""
     home = Path.home()
     swe_adapter = SweBenchAdapter()
     adapters: Dict[str, AgentAdapter] = {
-        "agy": AgyAdapter(),
         "codex": GenericJsonlAgentAdapter("codex", [home / ".codex" / "sessions"]),
         "pi": GenericJsonlAgentAdapter("pi", [home / ".pi" / "agent" / "sessions"]),
         "opencode": GenericJsonlAgentAdapter(
@@ -206,4 +200,4 @@ def get_adapter(agent_name: str = "agy") -> AgentAdapter:
         "sweagent": swe_adapter,
         "atif": swe_adapter,
     }
-    return adapters.get(agent_name.lower(), AgyAdapter())
+    return adapters.get(agent_name.lower(), DshAdapter())

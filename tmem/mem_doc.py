@@ -8,13 +8,129 @@ and human visibility into compiled execution playbooks and forensic raw traces.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
+from tmem.cochange import compute_cochange_stats
 from tmem.guards import evaluate_guards
 from tmem.models import CausalRepairPair, TracePlaybook
+
+
+_TRAIL_REDIRECT_RE = re.compile(r"(?:\s*(?:\|\s*(?:head|tail|grep|tee)\b.*|2>&1|>\s*\S+))+\s*$")
+
+
+def normalize_command_template(cmd: str) -> str:
+    """Normalize a verified shell command into a concise 1-line canonical form."""
+    cleaned = re.sub(r"[\r\n\t]+", " ", (cmd or "")).strip()
+    cleaned = _TRAIL_REDIRECT_RE.sub("", cleaned).strip()
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return cleaned
+
+
+def _env_facts_path(workspace_root: str) -> Path:
+    return Path(workspace_root) / ".tmem" / "env_facts.json"
+
+
+def _load_env_facts(workspace_root: str) -> Dict[str, List[str]]:
+    path = _env_facts_path(workspace_root)
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            return {
+                str(k): [str(x) for x in v]
+                for k, v in data.items()
+                if isinstance(v, list)
+            }
+    except (OSError, json.JSONDecodeError):
+        pass
+    return {}
+
+
+def record_verified_env_cmd(
+    workspace_root: str, commands: List[str], source_id: str
+) -> None:
+    """Persist verified commands from skipped/trivial sessions so micro-skills still benefit."""
+    if not workspace_root or not commands:
+        return
+    tmem_dir = Path(workspace_root) / ".tmem"
+    if not tmem_dir.exists():
+        tmem_dir.mkdir(parents=True, exist_ok=True)
+    facts = _load_env_facts(workspace_root)
+    changed = False
+    for cmd in commands:
+        norm = normalize_command_template(cmd)
+        if not norm or len(norm) > 120:
+            continue
+        seen = facts.setdefault(norm, [])
+        if source_id not in seen:
+            seen.append(source_id)
+            facts[norm] = seen[-20:]
+            changed = True
+    if changed:
+        try:
+            _env_facts_path(workspace_root).write_text(
+                json.dumps(facts, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+        except OSError:
+            pass
+
+
+def extract_micro_skills(
+    playbooks: List[TracePlaybook],
+    min_traces: int = 2,
+    max_items: int = 6,
+    workspace_root: Optional[str] = None,
+) -> List[str]:
+    """
+    Zero-LLM extraction of cross-task 1-line operational facts (verified commands
+    and env/toolchain repairs) validated across at least `min_traces` distinct traces/sessions.
+    """
+    cmd_traces: Dict[str, Set[str]] = {}
+    if workspace_root:
+        for cmd, src_ids in _load_env_facts(workspace_root).items():
+            norm = normalize_command_template(cmd)
+            if norm and len(norm) <= 120:
+                cmd_traces.setdefault(norm, set()).update(src_ids)
+
+    for pb in playbooks:
+        if pb.status == "invalidated" or pb.confidence < 0.3:
+            continue
+        for cmd in pb.l1_verification_cmds:
+            norm = normalize_command_template(cmd)
+            if norm and len(norm) <= 120:
+                cmd_traces.setdefault(norm, set()).add(pb.trace_id)
+        for rep in pb.l2_causal_repairs:
+            if rep.is_env_or_toolchain and rep.repair_action:
+                norm = normalize_command_template(rep.repair_action)
+                if norm and len(norm) <= 120:
+                    cmd_traces.setdefault(norm, set()).add(pb.trace_id)
+
+    validated = [
+        (cmd, len(tids))
+        for cmd, tids in cmd_traces.items()
+        if len(tids) >= min_traces
+    ]
+    validated.sort(key=lambda x: (-x[1], len(x[0]), x[0]))
+    return [cmd for cmd, _ in validated[:max_items]]
+
+
+def format_micro_skills_block(skills: List[str]) -> str:
+    """Format validated 1-line operational micro-skills for cold-start injection."""
+    if not skills:
+        return ""
+    lines = [
+        "<tmem_env_facts>",
+        "Cross-task verified repository commands & toolchain facts:",
+    ]
+    for s in skills:
+        lines.append(f"- `{s}`")
+    lines.append("</tmem_env_facts>")
+    return "\n".join(lines)
 
 
 def sanitize_table_cell(
@@ -52,8 +168,8 @@ def render_memories_markdown(
         "# 🧠 Project Execution Memories (`MEMORIES.md`)",
         "",
         "> **Maintained autonomously by [tmem](https://github.com/kentzjh-cmd/tmem)**.",
-        "> This file is a git-versioned living index of verified execution playbooks, co-change topologies, and universal causal repairs.",
-        "> AI agents (Antigravity, DeepSeek Harness, Cursor, Claude Code, Copilot, etc.) and human engineers can navigate this index to follow verified paths and bypass known errors.",
+        "> Zero-token deterministic requirement & behavior summaries compiled from sliced historical DSH sessions (with inline `session_id` lineage), co-change topologies, and causal error repairs.",
+        "> Both DSH and human engineers can navigate this index to inspect verified execution paths without re-reading raw session logs or paying LLM summarization tokens.",
         "",
         "## ⚡ Progressive Memory Disclosure Tiers",
         "- **Tier 0 (Catalog Index)**: This `MEMORIES.md` file provides zero-token exploration and instant navigation.",
@@ -62,11 +178,33 @@ def render_memories_markdown(
         "",
         "---",
         "",
-        "## 1. Active Verified Execution Playbooks (L0/L1)",
-        "",
     ]
 
-    if not playbooks:
+    micro_skills = extract_micro_skills(playbooks, workspace_root=workspace_root)
+    active_playbooks = [
+        pb
+        for pb in playbooks
+        if not getattr(pb, "is_trivial", False) and pb.status != "invalidated"
+    ]
+    if micro_skills:
+        lines.extend(
+            [
+                "## 0. Verified Env & Test Commands (Cross-Task Micro-Skills)",
+                "",
+            ]
+        )
+        for skill in micro_skills:
+            lines.append(f"- `{skill}`")
+        lines.extend(["", "---", ""])
+
+    lines.extend(
+        [
+            "## 1. Active Verified Execution Playbooks (L0/L1)",
+            "",
+        ]
+    )
+
+    if not active_playbooks:
         lines.extend(
             [
                 "_No project execution traces recorded yet. Traces will be automatically compiled on `/tmem`, milestone completions, or `git commit`._",
@@ -83,7 +221,7 @@ def render_memories_markdown(
 
         raw_dir = Path(workspace_root) / ".tmem" / "raw"
 
-        for pb in playbooks:
+        for pb in active_playbooks:
             ev = evaluate_guards(pb, workspace_root)
             tier_badge = "🟢 `L0_FULL`"
             if getattr(pb, "is_trivial", False):
@@ -119,16 +257,22 @@ def render_memories_markdown(
             )
 
             conf_pct = f"{int(pb.confidence * 100)}%"
+            sess_ids = getattr(pb, "source_session_ids", None) or []
+            sess_cell = (
+                "<br><sub>session: " + ", ".join(f"`{s}`" for s in sess_ids[-2:]) + "</sub>"
+                if sess_ids
+                else ""
+            )
 
             lines.append(
-                f"| [`{pb.trace_id}`](.tmem/traces/{pb.trace_id}.json) | {tier_badge} | {intent} | {files_str} | {verify_cmd} | {conf_pct} | {raw_link} |"
+                f"| [`{pb.trace_id}`](.tmem/traces/{pb.trace_id}.json){sess_cell} | {tier_badge} | {intent} | {files_str} | {verify_cmd} | {conf_pct} | {raw_link} |"
             )
         lines.append("")
 
     # Section 2: Universal Causal Repairs (L2)
     all_repairs: List[CausalRepairPair] = []
     seen_repairs = set()
-    for pb in playbooks:
+    for pb in active_playbooks:
         for r in pb.l2_causal_repairs:
             sig_key = f"{r.error_signature}|{r.repair_action}"
             if sig_key not in seen_repairs:
@@ -166,14 +310,16 @@ def render_memories_markdown(
             lines.append(f"| {err} | {failed} | {repair} | {verify} |")
         lines.append("")
 
-    # Section 3: Co-Change Architectural Topologies
-    all_topologies: List[str] = []
-    seen_topos = set()
-    for pb in playbooks:
-        for topo in pb.l1_cochange_topology:
-            if topo not in seen_topos:
-                seen_topos.add(topo)
-                all_topologies.append(topo)
+    # Section 3: Co-Change Architectural Topologies (statistical history first)
+    stat_pairs = compute_cochange_stats(workspace_root, active_playbooks)
+    all_topologies: List[str] = [p.format_label() for p in stat_pairs]
+    if not all_topologies:
+        seen_topos = set()
+        for pb in active_playbooks:
+            for topo in pb.l1_cochange_topology:
+                if topo not in seen_topos:
+                    seen_topos.add(topo)
+                    all_topologies.append(topo)
 
     lines.extend(
         [

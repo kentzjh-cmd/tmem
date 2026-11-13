@@ -108,6 +108,20 @@ def evaluate_guards(playbook: TracePlaybook, workspace_root: str) -> EvaluatedPl
     passed_targets = sorted(checked_files - failed_targets)
 
     if not failed and playbook.guards:
+        if playbook.status in ("stale", "invalidated") or playbook.confidence < 0.3:
+            reason = (
+                f"status:{playbook.status}"
+                if playbook.status in ("stale", "invalidated")
+                else f"low_confidence:{playbook.confidence:.2f}"
+            )
+            tier = "L2_INVARIANT" if playbook.l2_causal_repairs else "L1_TOPOLOGY"
+            return EvaluatedPlaybook(
+                playbook=playbook,
+                l0_valid=False,
+                effective_tier=tier,
+                failed_guards=[reason],
+                passed_files=passed_targets,
+            )
         return EvaluatedPlaybook(
             playbook=playbook,
             l0_valid=True,
@@ -141,8 +155,10 @@ def format_injected_context(evaluated_list: List[EvaluatedPlaybook]) -> str:
 
     for ev in evaluated_list[:3]:
         pb = ev.playbook
+        sess_ids = getattr(pb, "source_session_ids", None) or []
+        sess_tag = f" | Session(s): {', '.join(sess_ids[-3:])}" if sess_ids else ""
         lines.append(
-            f"\n[Trace {pb.trace_id} | Scope: {pb.scope.upper()} | Tier: {ev.effective_tier} | Confidence: {pb.confidence:.2f}]"
+            f"\n[Trace {pb.trace_id}{sess_tag} | Scope: {pb.scope.upper()} | Tier: {ev.effective_tier} | Confidence: {pb.confidence:.2f}]"
         )
         lines.append(f"- Historical Intent: {pb.problem_intent}")
         if pb.semantic_summary:
@@ -192,8 +208,9 @@ def format_injected_context(evaluated_list: List[EvaluatedPlaybook]) -> str:
             )
 
         if pb.raw_trace_path:
+            sess_hint = f" | session(s): {', '.join(sess_ids[-3:])}" if sess_ids else ""
             lines.append(
-                f"- Forensic Audit: Raw trace archived at `{pb.raw_trace_path}` (inspect: `python3 -m tmem.cli inspect {pb.trace_id} --level raw`)"
+                f"- Forensic Audit: Raw trace archived at `{pb.raw_trace_path}`{sess_hint} (inspect: `python3 -m tmem.cli inspect {pb.trace_id} --level raw`)"
             )
 
     lines.append("</tmem_speculative_memory>")

@@ -21,7 +21,8 @@ from typing import Dict, List, Optional, Set, Tuple
 from tmem import logger
 from tmem.adapters.base import (
     ParsedSession,
-    extract_symbols_from_text,
+    extract_python_local_imports,
+    extract_python_symbols_for_line_ranges,
     extract_traceback_files,
     is_code_file,
     is_doc_file,
@@ -33,14 +34,14 @@ from tmem.adapters.base import (
     is_test_file,
     scrub_secrets,
 )
+from tmem.cochange import find_cochange_for_files
+from tmem.guards import _check_symbol_in_python_ast
 from tmem.models import (
     ActionKind,
     ActionNode,
     CausalRepairPair,
     GuardProbe,
-    IntentEdge,
     RawExecutionTrace,
-    Requirement,
     TracePlaybook,
 )
 
@@ -151,7 +152,11 @@ def get_git_ground_truth(
                         if not target_files or p in target_files:
                             modified_files.add(p)
 
-        diff_cmd = ["git", "diff", "HEAD~1", "HEAD"] if not status_res.stdout.strip() else ["git", "diff", "HEAD"]
+        diff_cmd = (
+            ["git", "diff", "-U0", "HEAD~1", "HEAD"]
+            if not status_res.stdout.strip()
+            else ["git", "diff", "-U0", "HEAD"]
+        )
         if target_files:
             diff_cmd.extend(["--"] + sorted(target_files))
         diff_res = subprocess.run(
@@ -161,17 +166,40 @@ def get_git_ground_truth(
             text=True,
             timeout=3,
         )
+        file_ranges: Dict[str, List[Tuple[int, int]]] = {}
         if diff_res.returncode == 0 and diff_res.stdout:
             current_file = None
+            hunk_re = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
             for line in diff_res.stdout.splitlines():
                 if line.startswith("+++ b/"):
                     current_file = line[6:].strip()
-                elif current_file and (line.startswith("+") or line.startswith("@@")):
-                    syms = extract_symbols_from_text(line, current_file)
-                    if syms:
-                        existing = set(file_symbols.get(current_file, []))
-                        existing.update(syms)
-                        file_symbols[current_file] = sorted(existing)
+                elif current_file and line.startswith("@@ "):
+                    m_h = hunk_re.match(line)
+                    if m_h:
+                        start_ln = max(1, int(m_h.group(1)))
+                        count = int(m_h.group(2)) if m_h.group(2) is not None else 1
+                        end_ln = start_ln if count == 0 else start_ln + count - 1
+                        file_ranges.setdefault(current_file, []).append((start_ln, end_ln))
+
+        # Parse full Python AST and intersect with modified diff line ranges
+        for mod_file in modified_files:
+            if not mod_file.lower().endswith(".py"):
+                continue
+            full_path = ws / mod_file
+            if not full_path.is_file():
+                continue
+            try:
+                content = full_path.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            ranges = file_ranges.get(mod_file)
+            if not ranges:
+                # Newly created untracked file: entire file is modified
+                line_cnt = max(1, len(content.splitlines()))
+                ranges = [(1, line_cnt)]
+            syms = extract_python_symbols_for_line_ranges(content, ranges)
+            if syms:
+                file_symbols[mod_file] = syms
     except (subprocess.SubprocessError, OSError, UnicodeDecodeError) as e:
         logger.debug("get_git_ground_truth encountered non-fatal error: %s", e)
 
@@ -244,43 +272,111 @@ def extract_compact_diff_summary(
 
 def assess_playbook_triviality(playbook: TracePlaybook) -> Tuple[bool, str]:
     """
-    Determine whether a compiled playbook is trivial/tautological.
+    Default-deny triviality gate for compiled playbooks.
     Returns (is_trivial, reason).
-    A playbook is considered trivial if it merely records reading, editing, and running a test
-    on a single isolated file without any error repairs, cross-file co-changes, or non-obvious context.
+    A playbook is non-trivial ONLY if it contains:
+    - verified L2 causal error-to-fix repairs, OR
+    - multi-file code modifications (>= 2 code files) backed by verification.
     """
     if playbook.l2_causal_repairs:
         return False, "Contains verified L2 causal error-to-fix repairs"
 
     code_files = [f for f in playbook.touched_files if is_code_file(f)]
-    if len(code_files) > 1:
-        return False, f"Contains multi-file co-change topology ({len(code_files)} code files)"
     if not code_files:
         return True, "Does not touch any source code files (documentation/metadata only)"
 
-    actions = [str(s.get("action")) for s in playbook.l0_critical_path]
-    targets = {
-        str(s.get("target"))
-        for s in playbook.l0_critical_path
-        if s.get("target") and is_code_file(str(s.get("target")))
-    }
-
-    # Single-file edit with only standard READ -> MUTATE -> ENV_EXEC
-    if len(targets) <= 1:
-        core_actions = [a for a in actions if a in ("READ", "MUTATE", "ENV_EXEC")]
-        if core_actions in (
-            ["READ", "MUTATE", "ENV_EXEC"],
-            ["MUTATE", "ENV_EXEC"],
-            ["READ", "MUTATE"],
-            ["MUTATE"],
-        ):
-            target_name = list(targets)[0] if targets else "isolated file"
-            return True, f"Tautological single-file routine on '{target_name}' without error-fix causality or multi-file topology"
-
-    if not playbook.l1_verification_cmds:
+    has_verify = bool(playbook.l1_verification_cmds) or any(
+        s.get("action") == "ENV_EXEC" for s in playbook.l0_critical_path
+    )
+    if not has_verify:
         return True, "Lacks verified test/build execution command"
 
-    return False, "Meets non-trivial complexity thresholds"
+    if len(code_files) <= 1:
+        return (
+            True,
+            f"Tautological single-file routine on '{code_files[0]}' without error-fix causality",
+        )
+
+    return False, f"Verified multi-file change ({len(code_files)} code files)"
+
+
+def _extract_cmd_runner_and_targets(cmd: str) -> Tuple[str, Set[str]]:
+    """Extract canonical runner family and explicit file/dir/module targets from a command."""
+    if not cmd:
+        return "", set()
+    tokens = cmd.strip().split()
+    if not tokens:
+        return "", set()
+
+    # Strip common env var assignments (e.g. PYTHONPATH=. pytest ...)
+    idx = 0
+    while idx < len(tokens) and "=" in tokens[idx] and not tokens[idx].startswith("-"):
+        idx += 1
+    tokens = tokens[idx:]
+    if not tokens:
+        return "", set()
+
+    exe = Path(tokens[0]).name.lower()
+    runner = exe
+    arg_start = 1
+
+    if exe in {"python", "python3", "py"}:
+        if len(tokens) >= 3 and tokens[1] == "-m":
+            mod = tokens[2].lower()
+            runner = "unittest" if mod.startswith("unittest") else mod
+            arg_start = 3
+        else:
+            runner = "python"
+    elif exe in {"uv", "poetry"} and len(tokens) >= 3 and tokens[1] == "run":
+        sub = Path(tokens[2]).name.lower()
+        runner = sub
+        arg_start = 3
+    elif exe in {"npm", "pnpm", "yarn", "cargo", "go", "dotnet"} and len(tokens) >= 2:
+        runner = f"{exe}:{tokens[1].lower()}"
+        arg_start = 2
+
+    targets: Set[str] = set()
+    for tok in tokens[arg_start:]:
+        if tok in {"discover", "-v", "--verbose"} or tok.startswith("-"):
+            continue
+        cleaned = tok.strip("\"'")
+        if "/" in cleaned or cleaned.endswith(
+            (".py", ".js", ".ts", ".tsx", ".go", ".rs", ".java", ".cpp", ".c")
+        ):
+            # Strip pytest nodeid suffix like ::TestCls::test_fn
+            file_part = cleaned.split("::", 1)[0].rstrip("/")
+            if file_part:
+                targets.add(file_part)
+        elif runner == "unittest" and "." in cleaned:
+            targets.add(cleaned.replace(".", "/") + ".py")
+        elif cleaned in {"tests", "test", "src"}:
+            targets.add(cleaned)
+
+    return runner, targets
+
+
+def _commands_are_same_origin(failed_cmd: str, verify_cmd: str) -> bool:
+    """
+    Check whether verify_cmd re-tests the same runner and compatible target scope as failed_cmd.
+    Rejects unrelated passes (e.g. `test_a.py` fails -> `test_b.py` passes, or linter -> test).
+    """
+    r_fail, t_fail = _extract_cmd_runner_and_targets(failed_cmd)
+    r_ver, t_ver = _extract_cmd_runner_and_targets(verify_cmd)
+    if not r_fail or not r_ver or r_fail != r_ver:
+        return False
+    if not t_fail or not t_ver:
+        return True
+    # Direct match or parent-directory containment (e.g. `tests/test_a.py` inside `tests`)
+    for tf in t_fail:
+        for tv in t_ver:
+            if (
+                tf == tv
+                or Path(tf).name == Path(tv).name
+                or tf.startswith(tv + "/")
+                or tv.startswith(tf + "/")
+            ):
+                return True
+    return False
 
 
 class BackwardTraceSlicer:
@@ -359,16 +455,53 @@ class BackwardTraceSlicer:
             touched_symbols.update(sym_list)
 
         # Module stems of modified files to recognize cross-file reads
-        effective_modules = {Path(f).stem for f in effective_files if f}
+        generic_stems = {
+            "__init__", "utils", "util", "helpers", "helper", "common",
+            "config", "constants", "types", "base", "models", "test", "tests",
+        }
+        effective_modules = {
+            Path(f).stem
+            for f in effective_files
+            if f and len(Path(f).stem) >= 4 and Path(f).stem not in generic_stems
+        }
+
+        candidate_read_files: Set[str] = {
+            a.target_file
+            for a in raw_actions
+            if a.kind == ActionKind.READ and a.target_file
+        }
+        ast_imported_files: Set[str] = set()
+        ws_root = Path(session.workspace_root)
+        for mod_file in effective_files:
+            if mod_file.endswith(".py"):
+                full_mod = ws_root / mod_file
+                if full_mod.exists() and full_mod.is_file():
+                    try:
+                        mod_text = full_mod.read_text(encoding="utf-8", errors="ignore")
+                        ast_imported_files.update(
+                            extract_python_local_imports(mod_text, mod_file, candidate_read_files)
+                        )
+                    except OSError:
+                        pass
+
+        per_file_symbols: Dict[str, List[str]] = {
+            f: list(syms) for f, syms in git_symbols.items() if syms
+        }
 
         for action in raw_actions:
             if action.kind == ActionKind.READ and action.target_file:
                 target_stem = Path(action.target_file).stem
                 is_direct = action.target_file in effective_files
-                is_dependency = target_stem in effective_modules or any(
-                    target_stem in sym for sym in touched_symbols
+                is_ast_import = action.target_file in ast_imported_files
+                is_specific_stem = len(target_stem) >= 4 and target_stem not in generic_stems
+                is_dependency = is_specific_stem and (
+                    target_stem in effective_modules
+                    or any(
+                        re.search(rf"\b{re.escape(target_stem)}\b", sym)
+                        for sym in touched_symbols
+                    )
                 )
-                if (is_direct or is_dependency) and action.target_file not in seen_reads:
+                if (is_direct or is_ast_import or is_dependency) and action.target_file not in seen_reads:
                     seen_reads.add(action.target_file)
                     read_step_indices.append(action.step_idx)
                     step_entry: Dict[str, object] = {
@@ -384,6 +517,11 @@ class BackwardTraceSlicer:
                 # Dead Mutation Elimination: drop mutations to files not in effective_files
                 if action.target_file in effective_files:
                     touched_symbols.update(action.symbols_touched)
+                    if action.symbols_touched:
+                        existing_file_syms = per_file_symbols.setdefault(action.target_file, [])
+                        for sym in action.symbols_touched:
+                            if sym not in existing_file_syms:
+                                existing_file_syms.append(sym)
                     mutate_step_indices.append(action.step_idx)
                     if action.target_file not in seen_mutations:
                         seen_mutations.add(action.target_file)
@@ -431,8 +569,12 @@ class BackwardTraceSlicer:
                             step_entry["rationale"] = action.rationale
                         env_steps.append(step_entry)
 
-        # Keep at most the last 2 canonical verification/toolchain commands in L0 critical path
-        sliced_steps: List[Dict[str, object]] = read_steps + mutate_steps + env_steps[-2:]
+        # Keep at most the last 2 canonical verification/toolchain commands in L0 critical path,
+        # sorted chronologically by original step index so failure->fix->verify causality is preserved.
+        sliced_steps: List[Dict[str, object]] = sorted(
+            read_steps + mutate_steps + env_steps[-2:],
+            key=lambda s: int(s.get("step") or 0),
+        )
         sliced_env_indices = env_step_indices[-2:]
 
         collected_indices = (
@@ -447,25 +589,41 @@ class BackwardTraceSlicer:
             return None
 
         # 4. Generate <5ms Pre-flight Speculative Guards
+        sorted_files = sorted(effective_files)
         guards = self._build_guards(
-            session.workspace_root, sorted(effective_files), sorted(touched_symbols)
+            session.workspace_root, sorted_files, per_file_symbols
         )
 
-        # 5. Build L1 Co-change Topology
-        cochange_topology = []
-        sorted_files = sorted(effective_files)
-        if len(sorted_files) > 1:
-            cochange_topology.append(
-                f"Co-change contract: modifying {sorted_files[0]} requires synchronized updates to {', '.join(sorted_files[1:])}"
-            )
-        elif len(sorted_files) == 1:
-            cochange_topology.append(f"Primary target module: {sorted_files[0]}")
+        # 5. Build L1 Co-change Topology (statistical history first; focused session fallback)
+        cochange_topology = find_cochange_for_files(
+            session.workspace_root, set(sorted_files)
+        )
+        if not cochange_topology:
+            focused_files = [
+                f for f in sorted_files if is_source_code_file(f) or is_test_file(f)
+            ]
+            if 2 <= len(focused_files) <= 5:
+                cochange_topology.append(
+                    f"Co-edited in session: {' <-> '.join(focused_files)}"
+                )
+
+        behavior_parts: List[str] = []
+        if read_steps:
+            behavior_parts.append(f"read {len(read_steps)} file(s)")
+        if mutate_steps:
+            behavior_parts.append(f"edited {len(mutate_steps)} file(s)")
+        if causal_repairs:
+            behavior_parts.append(f"repaired {len(causal_repairs)} error(s)")
+        if verification_cmds:
+            behavior_parts.append(f"verified (`{verification_cmds[-1]}`)")
+        behavior_digest = f"Behavior: {' -> '.join(behavior_parts)}" if behavior_parts else ""
 
         problem_intent, semantic_summary = self._synthesize_semantic_topic(
             session=session,
             sorted_files=sorted_files,
             sorted_symbols=sorted(touched_symbols),
             commit_subject=commit_subject,
+            behavior_digest=behavior_digest,
         )
         if problem_intent == "non_task":
             return None
@@ -473,103 +631,6 @@ class BackwardTraceSlicer:
             {r.error_signature for r in causal_repairs if r.error_signature}
             | set(session.active_errors)
         )
-
-        # 6. Build Deterministic Execution-Intent Graph (Phase 1)
-        requirements: List[Requirement] = list(session.user_requirements)
-        if not requirements and problem_intent:
-            requirements.append(Requirement(req_id="R1", text=problem_intent, source="user"))
-
-        intent_edges: List[IntentEdge] = []
-        primary_req_id = requirements[0].req_id if requirements else "R1"
-
-        # 6a. Req -> served_by -> L0 steps
-        for s in sliced_steps:
-            s_num = int(s.get("step") or 0)
-            intent_edges.append(
-                IntentEdge(
-                    src=primary_req_id,
-                    dst=f"s{s_num}",
-                    relation="served_by",
-                    why=str(s.get("rationale") or f"Executed {s.get('action')} on {s.get('target') or s.get('command')}"),
-                    evidence=[s_num] if s_num else [],
-                    provenance="transcript" if s.get("rationale") else "rule",
-                )
-            )
-
-        # 6b. READ -> informs -> MUTATE (for matching target files)
-        read_map = {s.get("target"): s for s in read_steps if s.get("target")}
-        for m in mutate_steps:
-            tgt = m.get("target")
-            if tgt and tgt in read_map:
-                r = read_map[tgt]
-                r_num = int(r.get("step") or 0)
-                m_num = int(m.get("step") or 0)
-                intent_edges.append(
-                    IntentEdge(
-                        src=f"s{r_num}",
-                        dst=f"s{m_num}",
-                        relation="informs",
-                        why=f"Inspected {tgt} prior to mutation",
-                        evidence=[r_num, m_num] if (r_num and m_num) else [],
-                        provenance="rule",
-                    )
-                )
-
-        # 6c. MUTATE -> modifies -> file#symbol
-        for m in mutate_steps:
-            tgt = m.get("target")
-            m_num = int(m.get("step") or 0)
-            syms = m.get("symbols") or []
-            sym_clause = f"#{syms[0]}" if syms else ""
-            intent_edges.append(
-                IntentEdge(
-                    src=f"s{m_num}",
-                    dst=f"file:{tgt}{sym_clause}",
-                    relation="modifies",
-                    why=str(m.get("diff_summary") or m.get("rationale") or f"Mutated {tgt}"),
-                    evidence=[m_num] if m_num else [],
-                    provenance="rule",
-                )
-            )
-
-        # 6d. Error -> fixed_by -> MUTATE / ENV_EXEC (from causal_repairs)
-        for idx, repair in enumerate(causal_repairs, start=1):
-            fix_indices = (
-                self._last_repair_fix_indices[idx - 1]
-                if idx - 1 < len(self._last_repair_fix_indices)
-                else []
-            )
-            if fix_indices:
-                m_num = fix_indices[0]
-                ev_list = list(fix_indices)
-            else:
-                m_target = mutate_steps[0] if mutate_steps else None
-                m_num = int(m_target.get("step") or 0) if m_target else 0
-                ev_list = [m_num] if m_num else []
-            intent_edges.append(
-                IntentEdge(
-                    src=f"E{idx}",
-                    dst=f"s{m_num}" if m_num else "L0_MUTATE",
-                    relation="fixed_by",
-                    why=f"{repair.error_signature} -> {repair.repair_action}",
-                    evidence=ev_list,
-                    provenance="rule",
-                )
-            )
-
-        # 6e. ENV_EXEC -> verifies -> Req
-        for v in env_steps[-2:]:
-            v_num = int(v.get("step") or 0)
-            intent_edges.append(
-                IntentEdge(
-                    src=f"s{v_num}",
-                    dst=primary_req_id,
-                    relation="verifies",
-                    why=f"Passed verification `{v.get('command')}`",
-                    evidence=[v_num] if v_num else [],
-                    provenance="rule",
-                )
-            )
 
         root_cause = (
             f"Error '{causal_repairs[0].error_signature}' resolved by '{causal_repairs[0].repair_action}'"
@@ -587,7 +648,8 @@ class BackwardTraceSlicer:
             scope="project",
             created_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
             git_commit=commit_hash,
-            schema_version=2,
+            schema_version=3,
+            source_session_ids=[session.session_id] if session.session_id else [],
             problem_intent=problem_intent[:300],
             semantic_summary=semantic_summary[:350],
             error_signatures=error_sigs,
@@ -598,8 +660,6 @@ class BackwardTraceSlicer:
             l1_cochange_topology=cochange_topology,
             l1_verification_cmds=verification_cmds[-3:],
             l2_causal_repairs=causal_repairs,
-            requirements=requirements,
-            intent_edges=intent_edges,
             root_cause=root_cause,
             pitfalls=[],
             raw_steps_count=len(raw_actions),
@@ -674,15 +734,9 @@ class BackwardTraceSlicer:
                 continue
 
             failed_canonical = self._extract_canonical_verification_cmd(act.command or "")
-            failed_cmd = failed_canonical or (act.command.strip() if act.command else "")
-            if not failed_cmd and not act.error_signature:
+            if not failed_canonical:
                 continue
-            if (
-                act.command
-                and EXPLORATORY_CLAUSE_RE.match(act.command.strip())
-                and not act.error_signature
-            ):
-                continue
+            failed_cmd = failed_canonical
 
             err_sig = act.error_signature
             if not err_sig or not is_high_entropy_error_signature(err_sig):
@@ -716,9 +770,7 @@ class BackwardTraceSlicer:
                         is_env = True
                     elif nxt.exit_code == 0 and not nxt.error_signature and intervening_fixes:
                         cand_verify = self._extract_canonical_verification_cmd(nxt.command)
-                        if not cand_verify and (act.command and nxt.command.strip() == act.command.strip()):
-                            cand_verify = nxt.command.strip()
-                        if cand_verify:
+                        if cand_verify and _commands_are_same_origin(failed_cmd, cand_verify):
                             verified_cmd = cand_verify
                             verify_idx = nxt.step_idx
                             break
@@ -797,20 +849,34 @@ class BackwardTraceSlicer:
         )
 
     def _build_guards(
-        self, workspace_root: str, files: List[str], symbols: List[str]
+        self,
+        workspace_root: str,
+        files: List[str],
+        per_file_symbols: Dict[str, List[str]],
     ) -> List[GuardProbe]:
         guards: List[GuardProbe] = []
         ws = Path(workspace_root)
-        for f in files[:5]:
+        ordered_files = sorted(
+            files,
+            key=lambda f: (
+                0 if is_source_code_file(f) else 1 if is_test_file(f) else 2,
+                f,
+            ),
+        )[:8]
+        for f in ordered_files:
             guards.append(GuardProbe(probe_type="file_exists", target=f))
-            if not is_code_file(f):
+            if not f.endswith(".py"):
+                continue
+            cand_syms = per_file_symbols.get(f, [])
+            if not cand_syms:
                 continue
             full_path = ws / f
             if full_path.exists() and full_path.is_file():
                 try:
                     text = full_path.read_text(encoding="utf-8", errors="ignore")
-                    for sym in symbols:
-                        if re.search(rf"\b{re.escape(sym)}\b", text):
+                    added_for_file = 0
+                    for sym in cand_syms:
+                        if _check_symbol_in_python_ast(text, sym):
                             guards.append(
                                 GuardProbe(
                                     probe_type="symbol_present",
@@ -818,7 +884,9 @@ class BackwardTraceSlicer:
                                     expected=sym,
                                 )
                             )
-                            break
+                            added_for_file += 1
+                            if added_for_file >= 3:
+                                break
                 except Exception:
                     pass
         return guards
@@ -829,6 +897,7 @@ class BackwardTraceSlicer:
         sorted_files: List[str],
         sorted_symbols: List[str],
         commit_subject: Optional[str],
+        behavior_digest: str = "",
     ) -> Tuple[str, str]:
         """
         Synthesize both:
@@ -881,6 +950,8 @@ class BackwardTraceSlicer:
             summary_parts.append(f"Key symbols: {', '.join(sorted_symbols[:6])}")
         elif sorted_files:
             summary_parts.append(f"Key modules: {', '.join(sorted_files[:4])}")
+        if behavior_digest:
+            summary_parts.append(behavior_digest)
 
         semantic_summary = " | ".join(summary_parts)
         return problem_intent, semantic_summary

@@ -4,19 +4,61 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Dict, List, Optional
+import re
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 from tmem.adapters.base import extract_error_signature, is_code_file, normalize_rel_path
 from tmem.adapters.dsh import DSH_EXIT_CODE_RE, parse_apply_patch_targets
+from tmem.cochange import find_cochange_partners_for_files
 from tmem.guards import format_injected_context
-from tmem.hooks.agy import _parse_inspect_args, parse_slash_tmem_command
-from tmem.hooks.state import load_runtime_state, save_runtime_state
+from tmem.hooks.commands import _parse_inspect_args, parse_slash_tmem_command
+from tmem.hooks.state import (
+    apply_session_trace_feedback,
+    load_runtime_state,
+    record_tool_outcome_for_loop,
+    save_runtime_state,
+)
+from tmem.mem_doc import extract_micro_skills, format_micro_skills_block
 from tmem.raw_storage import (
     format_progressive_view,
     format_raw_trace_diff,
     format_raw_trace_replay,
 )
+from tmem.slicer import _commands_are_same_origin
 from tmem.store import DualTierMemoryStore
+from tmem.telemetry import compute_telemetry_summary, record_telemetry_event
+
+FILE_PATH_MENTION_RE = re.compile(
+    r"(?<![A-Za-z0-9_./-])((?:[\w.-]+/)*[\w.-]+\.(?:py|js|ts|tsx|jsx|go|rs|java|yml|yaml|json|toml|sh))(?![A-Za-z0-9_.-])"
+)
+ERROR_NAME_MENTION_RE = re.compile(r"\b([A-Z][A-Za-z0-9]*(?:Error|Exception|Fault|Panic))\b")
+
+
+def _extract_explicit_anchors_from_text(
+    text: str, workspace_root: str
+) -> Tuple[List[str], List[str]]:
+    """
+    Extract deterministic file-path and error-signature anchors from user input.
+    Avoids loose natural-language BM25 guessing in pre-step recall.
+    """
+    if not text:
+        return [], []
+    ws = Path(workspace_root)
+    files: List[str] = []
+    for raw_fp in FILE_PATH_MENTION_RE.findall(text):
+        rel = normalize_rel_path(raw_fp, workspace_root)
+        if rel and ((ws / rel).exists() or "/" in rel) and rel not in files:
+            files.append(rel)
+
+    errors: List[str] = []
+    sig = extract_error_signature(text)
+    if sig:
+        errors.append(sig)
+    for err_tok in ERROR_NAME_MENTION_RE.findall(text):
+        if err_tok not in errors and len(err_tok) >= 6:
+            errors.append(err_tok)
+    return files, errors
 
 
 def handle_dsh_hook(
@@ -25,11 +67,11 @@ def handle_dsh_hook(
     capture_fn=None,
 ) -> Dict[str, Any]:
     """
-    Execute invisible DeepSeek Harness (`@deepseek-ai/dsh`) lifecycle hook:
-    - `pre_invocation` / `pre_step`: Recall `<tmem_speculative_memory>` (L0/L1/L2) or milestone notice.
-    - `post_tool_use`: Track `read`/`write`/`edit`/`str_replace_editor`/`apply_patch` and `bash`/`pwsh`
-      exit codes; return immediate L2 error repair hints or `<tmem_milestone_reached>` via `additionalContext`.
-    - `command`: Native `/tmem [status|list|gc|...] [intent]` command execution in `dsh-commands`.
+    Execute DeepSeek Harness (`@deepseek-ai/dsh`) lifecycle hook:
+    - `command`: Native `/tmem [status|list|gc|telemetry|inspect|replay|diff|sync|forget|bench]` in `dsh-commands`.
+    - `pre_invocation` / `pre_step`: Session-start env facts, milestone notice, and high-anchor-only recall.
+    - `post_tool_use`: Strong-signal runtime interception (L2 immediate error repair, L1 co-change hint on edit,
+      failure-loop breaker, verification milestone, and deterministic telemetry resolution).
     """
     workspace_root = str(
         payload.get("workspaceRoot")
@@ -53,16 +95,27 @@ def handle_dsh_hook(
                 if store.project_traces_dir.exists()
                 else 0
             )
+            tel = compute_telemetry_summary(workspace_root)
             return {
                 "kind": "success",
                 "text": (
                     f"[tmem status]\n"
-                    f"- Project Tier ({store.project_dir}): {proj_cnt} trace(s)"
+                    f"- Project Tier ({store.project_dir}): {proj_cnt} trace(s)\n"
+                    f"- Telemetry: L2 {tel['l2_injections']} hint(s) (resolved={tel['l2_resolved_green']}/{tel['l2_resolved_green'] + tel['l2_unresolved']}), "
+                    f"L1 {tel['l1_hints']} hint(s) (adopted={tel['l1_adopted']}/{tel['l1_adopted'] + tel['l1_ignored']})"
                 ),
             }
 
+        if action_mode == "telemetry":
+            tel = compute_telemetry_summary(workspace_root)
+            return {
+                "kind": "success",
+                "text": f"[tmem telemetry]\n{json.dumps(tel, indent=2, ensure_ascii=False)}",
+            }
+
         if action_mode == "gc":
-            stats = store.run_metabolism_gc()
+            prune_stale = "--prune" in custom_intent
+            stats = store.run_metabolism_gc(prune_stale=prune_stale)
             return {
                 "kind": "success",
                 "text": f"[tmem gc] Guard metabolism completed: {json.dumps(stats, ensure_ascii=False)}",
@@ -102,7 +155,11 @@ def handle_dsh_hook(
             target_pb = None
             if tid:
                 for pb in store.get_all_project_playbooks():
-                    if pb.trace_id == tid or pb.trace_id.startswith(tid):
+                    if (
+                        pb.trace_id == tid
+                        or pb.trace_id.startswith(tid)
+                        or any(s == tid or s.startswith(tid) for s in pb.source_session_ids)
+                    ):
                         target_pb = pb
                         break
             if not target_pb:
@@ -213,14 +270,32 @@ def handle_dsh_hook(
                 )
             }
 
+        pre_blocks: List[str] = []
+        if is_new_user_turn and not state.get("micro_skills_injected"):
+            skills = extract_micro_skills(
+                store.get_all_project_playbooks(), workspace_root=workspace_root
+            )
+            skills_block = format_micro_skills_block(skills)
+            if skills_block:
+                pre_blocks.append(skills_block)
+            state["micro_skills_injected"] = True
+
         recent_errors = list(state.get("recent_errors", []))
         recent_files = list(state.get("recent_files", []))
 
-        if is_new_user_turn or recent_errors:
+        # Strong-signal policy: only recall in pre-step when explicit file/error anchors exist
+        # or unresolved recent errors are present (never noisy NL BM25 guessing).
+        explicit_files, explicit_errors = _extract_explicit_anchors_from_text(
+            user_message, workspace_root
+        )
+        anchor_files = list(dict.fromkeys(recent_files + explicit_files)) if (is_new_user_turn or recent_errors) else []
+        anchor_errors = list(dict.fromkeys(recent_errors + explicit_errors)) if (is_new_user_turn or recent_errors) else []
+
+        if anchor_errors or explicit_files:
             matched = store.cascading_lookup(
-                query_text=user_message if is_new_user_turn else "",
-                file_paths=recent_files,
-                error_signatures=recent_errors,
+                query_text="",
+                file_paths=anchor_files,
+                error_signatures=anchor_errors,
                 limit=2,
             )
             already_injected = set(state.get("injected_trace_ids", []))
@@ -234,11 +309,13 @@ def handle_dsh_hook(
                     already_injected.add(ev.playbook.trace_id)
                 state["injected_trace_ids"] = list(already_injected)
                 state["recent_errors"] = []
-                save_runtime_state(workspace_root, state)
                 mem_block = format_injected_context(fresh_matches)
-                return {"injectedContext": mem_block}
+                if mem_block:
+                    pre_blocks.append(mem_block)
 
         save_runtime_state(workspace_root, state)
+        if pre_blocks:
+            return {"injectedContext": "\n\n".join(pre_blocks)}
         return {}
 
     elif event in ("post_tool_use", "post_execute"):
@@ -254,7 +331,7 @@ def handle_dsh_hook(
             or payload.get("error")
             or ""
         )
-        is_error = bool(payload.get("error") or result_payload.get("error"))
+        is_error = bool(payload.get("isError") or payload.get("error") or result_payload.get("error"))
         raw_exit = payload.get("exitCode")
 
         effective_exit: Optional[int] = None
@@ -270,32 +347,99 @@ def handle_dsh_hook(
                 effective_exit = 0
 
         additional_blocks: List[str] = []
-
-        # Error tracking + immediate L2_INVARIANT lookup
         has_failure = is_error or (effective_exit is not None and effective_exit != 0)
+        is_shell_tool = t_name in ("bash", "pwsh", "run_command")
+        cmd_line = str(args.get("command") or args.get("CommandLine") or "") if is_shell_tool else ""
+
+        sig = ""
         if has_failure and result_text:
             sig = extract_error_signature(result_text) or result_text.strip().splitlines()[-1][:120]
-            if sig:
-                if sig not in state["recent_errors"]:
-                    state["recent_errors"].append(sig)
-                if sig not in state["session_errors"]:
-                    state["session_errors"].append(sig)
-            matched = store.cascading_lookup(
-                query_text="",
+
+        # 1. Resolve pending L2 telemetry on subsequent same-origin shell execution
+        pending_l2: List[Dict[str, str]] = list(state.get("pending_l2_hints") or [])
+        if is_shell_tool and pending_l2 and cmd_line:
+            remaining_l2: List[Dict[str, str]] = []
+            for hint in pending_l2:
+                h_cmd = hint.get("failed_command", "")
+                h_sig = hint.get("error_signature", "")
+                h_tid = hint.get("trace_id", "")
+                same_origin = (not h_cmd) or _commands_are_same_origin(h_cmd, cmd_line)
+                if not has_failure and same_origin:
+                    record_telemetry_event(
+                        workspace_root,
+                        "l2_outcome",
+                        {
+                            "session_id": session_id,
+                            "trace_id": h_tid,
+                            "error_signature": h_sig,
+                            "resolved": True,
+                            "verify_command": cmd_line,
+                        },
+                    )
+                    if h_tid:
+                        store.record_trace_outcome([h_tid], "success")
+                        rewarded = set(state.get("rewarded_trace_ids") or [])
+                        rewarded.add(h_tid)
+                        state["rewarded_trace_ids"] = list(rewarded)
+                elif has_failure and sig and (sig.lower() in h_sig.lower() or h_sig.lower() in sig.lower()):
+                    record_telemetry_event(
+                        workspace_root,
+                        "l2_outcome",
+                        {
+                            "session_id": session_id,
+                            "trace_id": h_tid,
+                            "error_signature": h_sig,
+                            "resolved": False,
+                            "verify_command": cmd_line,
+                        },
+                    )
+                else:
+                    remaining_l2.append(hint)
+            state["pending_l2_hints"] = remaining_l2
+
+        # 2. Immediate deterministic L2_INVARIANT lookup on failing command
+        if has_failure and sig:
+            if sig not in state["recent_errors"]:
+                state["recent_errors"].append(sig)
+            if sig not in state["session_errors"]:
+                state["session_errors"].append(sig)
+
+            matched = store.lookup_l2_repair(
+                error_signatures=[sig],
                 file_paths=list(state.get("recent_files", [])),
-                error_signatures=list(state.get("recent_errors", [])),
                 limit=1,
             )
             if matched:
                 mem_block = format_injected_context(matched)
                 if mem_block:
                     for ev in matched:
-                        if ev.playbook.trace_id not in state["injected_trace_ids"]:
-                            state["injected_trace_ids"].append(ev.playbook.trace_id)
+                        tid = ev.playbook.trace_id
+                        if tid not in state["injected_trace_ids"]:
+                            state["injected_trace_ids"].append(tid)
+                        if not any(h.get("trace_id") == tid and h.get("error_signature") == sig for h in state["pending_l2_hints"]):
+                            state["pending_l2_hints"].append(
+                                {
+                                    "trace_id": tid,
+                                    "error_signature": sig,
+                                    "failed_command": cmd_line,
+                                }
+                            )
+                            rep_act = ev.playbook.l2_causal_repairs[0].repair_action if ev.playbook.l2_causal_repairs else ""
+                            record_telemetry_event(
+                                workspace_root,
+                                "l2_injected",
+                                {
+                                    "session_id": session_id,
+                                    "trace_id": tid,
+                                    "error_signature": sig,
+                                    "failed_command": cmd_line,
+                                    "repair_action": rep_act,
+                                },
+                            )
                     state["recent_errors"] = []
                     additional_blocks.append(mem_block)
 
-        # Track touched files
+        # 3. Track touched files & resolve/emit L1 co-change hints
         touched_paths: List[str] = []
         if t_name == "apply_patch":
             patch_input = str(args.get("input") or args.get("patch") or "")
@@ -314,6 +458,29 @@ def handle_dsh_hook(
             if rel:
                 touched_paths.append(rel)
 
+        # Resolve pending L1 co-change hints when agent touches any suggested partner file
+        pending_l1: List[Dict[str, Any]] = list(state.get("pending_l1_hints") or [])
+        if touched_paths and pending_l1:
+            touched_set = set(touched_paths)
+            still_pending_l1: List[Dict[str, Any]] = []
+            for hint in pending_l1:
+                sugg = set(hint.get("suggested_files") or [])
+                adopted = sorted(touched_set & sugg)
+                if adopted:
+                    record_telemetry_event(
+                        workspace_root,
+                        "l1_outcome",
+                        {
+                            "session_id": session_id,
+                            "edited_file": hint.get("edited_file", ""),
+                            "adopted_files": adopted,
+                            "adopted": True,
+                        },
+                    )
+                else:
+                    still_pending_l1.append(hint)
+            state["pending_l1_hints"] = still_pending_l1
+
         is_mutate_tool = t_name in (
             "write",
             "edit",
@@ -322,24 +489,71 @@ def handle_dsh_hook(
             "write_file",
             "edit_file",
         )
+        mutated_this_step: List[str] = []
         for rel_path in touched_paths:
             if rel_path.startswith(".tmem/"):
                 continue
             if rel_path not in state["recent_files"]:
                 state["recent_files"] = (state["recent_files"] + [rel_path])[-5:]
             if is_mutate_tool and not has_failure:
+                mutated_this_step.append(rel_path)
                 if rel_path not in state["uncommitted_mutations"]:
                     state["uncommitted_mutations"].append(rel_path)
                     state["verified_since_mutation"] = False
 
-        # Detect verification pass in bash / pwsh / run_command
+        # Emit proactive L1 co-change hint when editing code files with known strong partners
+        if mutated_this_step:
+            code_mutated = [f for f in mutated_this_step if is_code_file(f)]
+            if code_mutated:
+                partners = find_cochange_partners_for_files(
+                    workspace_root,
+                    code_mutated,
+                    playbooks=store.get_all_project_playbooks(),
+                    limit=2,
+                )
+                warned_pairs = set(state.get("cochange_warned_pairs") or [])
+                uncommitted_set = set(state.get("uncommitted_mutations") or [])
+                fresh_hints: List[Tuple[str, str, int, float]] = []
+                for src_f, partner_f, cnt, conf in partners:
+                    pair_key = f"{src_f}->{partner_f}"
+                    if partner_f in uncommitted_set or pair_key in warned_pairs:
+                        continue
+                    warned_pairs.add(pair_key)
+                    fresh_hints.append((src_f, partner_f, cnt, conf))
+                if fresh_hints:
+                    state["cochange_warned_pairs"] = list(warned_pairs)
+                    hint_lines = [
+                        f"- `{src_f}` historically co-changes with `{partner_f}` ({cnt}x, {int(round(conf * 100))}%)"
+                        for src_f, partner_f, cnt, conf in fresh_hints
+                    ]
+                    additional_blocks.append(
+                        "<tmem_cochange_hint>\n"
+                        "Co-change partners detected from repository history/traces (verify if corresponding updates are needed):\n"
+                        + "\n".join(hint_lines)
+                        + "\n</tmem_cochange_hint>"
+                    )
+                    suggested_files = [p for _, p, _, _ in fresh_hints]
+                    state["pending_l1_hints"].append(
+                        {"edited_file": fresh_hints[0][0], "suggested_files": suggested_files}
+                    )
+                    record_telemetry_event(
+                        workspace_root,
+                        "l1_cochange_hinted",
+                        {
+                            "session_id": session_id,
+                            "edited_file": fresh_hints[0][0],
+                            "suggested_files": suggested_files,
+                        },
+                    )
+
+        # 4. Detect verification pass in bash / pwsh / run_command
+        verify_passed = False
         if (
-            t_name in ("bash", "pwsh", "run_command")
+            is_shell_tool
             and effective_exit == 0
             and not is_error
             and state.get("uncommitted_mutations")
         ):
-            cmd_line = str(args.get("command") or args.get("CommandLine") or "")
             if (
                 any(
                     k in cmd_line
@@ -359,19 +573,47 @@ def handle_dsh_hook(
                 and "tmem.cli" not in cmd_line
             ):
                 state["verified_since_mutation"] = True
+                verify_passed = True
+                apply_session_trace_feedback(store, state, "success")
+
+                # Resolve remaining un-adopted L1 hints as ignored upon verification
+                if state.get("pending_l1_hints"):
+                    for hint in state["pending_l1_hints"]:
+                        record_telemetry_event(
+                            workspace_root,
+                            "l1_outcome",
+                            {
+                                "session_id": session_id,
+                                "edited_file": hint.get("edited_file", ""),
+                                "adopted_files": [],
+                                "adopted": False,
+                            },
+                        )
+                    state["pending_l1_hints"] = []
+
                 uncommitted = list(state.get("uncommitted_mutations", []))
                 prompted_set = set(state.get("milestone_prompted_for_mutations", []))
-                session_errors = list(state.get("session_errors", []))
                 has_code_file = any(is_code_file(f) for f in uncommitted)
                 if set(uncommitted) != prompted_set and has_code_file:
                     state["milestone_prompted_for_mutations"] = uncommitted
                     additional_blocks.append(
                         "<tmem_milestone_reached>\n"
-                        f"Milestone detected: {len(uncommitted)} file(s) modified and verification succeeded (`{cmd_line[:60]}`).\n"
+                        f"Milestone detected: {len(uncommitted)} file(s) modified ({', '.join(uncommitted[:4])}) and verification succeeded (`{cmd_line[:60]}`).\n"
                         "When concluding this turn, append a concise one-line prompt asking whether to persist the path to memory:\n"
                         "> 💡 *是否需要将本次有效执行路径沉淀为记忆？（输入 `/tmem` 或 `/remember [备注]` 保存）*\n"
                         "</tmem_milestone_reached>"
                     )
+
+        breaker_msg = record_tool_outcome_for_loop(
+            state,
+            has_failure=has_failure,
+            error_sig=sig,
+            mutated_files=mutated_this_step,
+            verify_passed=verify_passed,
+        )
+        if breaker_msg:
+            additional_blocks.append(breaker_msg)
+            apply_session_trace_feedback(store, state, "contradict")
 
         save_runtime_state(workspace_root, state)
         if additional_blocks:
