@@ -30,7 +30,7 @@ from tmem.raw_storage import (
     format_raw_trace_diff,
     format_raw_trace_replay,
 )
-from tmem.store import DualTierMemoryStore
+from tmem.store import ProjectMemoryStore
 
 
 class TestRawAndMemories(unittest.TestCase):
@@ -253,8 +253,8 @@ class TestRawAndMemories(unittest.TestCase):
             self.assertTrue(mem_alias.is_symlink() or mem_alias.read_text() == memories_content)
 
     def test_dual_tier_store_integration_with_raw_and_memories(self) -> None:
-        """Test DualTierMemoryStore automatic raw trace binding and MEMORIES.md synchronization."""
-        store = DualTierMemoryStore(workspace_root=str(self.workspace))
+        """Test ProjectMemoryStore automatic raw trace binding and MEMORIES.md synchronization."""
+        store = ProjectMemoryStore(workspace_root=str(self.workspace))
 
         # First save raw trace
         raw_store = RawTraceStore(str(self.workspace))
@@ -289,7 +289,7 @@ class TestRawAndMemories(unittest.TestCase):
 
     def test_cli_subcommands(self) -> None:
         """Test CLI subcommands: inspect, replay, diff, sync."""
-        store = DualTierMemoryStore(workspace_root=str(self.workspace))
+        store = ProjectMemoryStore(workspace_root=str(self.workspace))
         raw_store = RawTraceStore(str(self.workspace))
         raw_store.save_raw_trace(self.sample_raw_trace)
         store.save_playbook(self.sample_playbook, target_scope="project")
@@ -355,7 +355,7 @@ class TestRawAndMemories(unittest.TestCase):
         self.assertEqual(m_sync.group(1), "sync")
 
         # Setup workspace for DSH hook
-        store = DualTierMemoryStore(workspace_root=str(self.workspace))
+        store = ProjectMemoryStore(workspace_root=str(self.workspace))
         raw_store = RawTraceStore(str(self.workspace))
         raw_store.save_raw_trace(self.sample_raw_trace)
         store.save_playbook(self.sample_playbook, target_scope="project")

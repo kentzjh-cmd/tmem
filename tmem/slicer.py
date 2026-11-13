@@ -21,8 +21,8 @@ from typing import Dict, List, Optional, Set, Tuple
 from tmem import logger
 from tmem.adapters.base import (
     ParsedSession,
-    extract_python_local_imports,
-    extract_python_symbols_for_line_ranges,
+    extract_local_imports,
+    extract_symbols_for_line_ranges,
     extract_traceback_files,
     is_code_file,
     is_doc_file,
@@ -35,7 +35,7 @@ from tmem.adapters.base import (
     scrub_secrets,
 )
 from tmem.cochange import find_cochange_for_files
-from tmem.guards import _check_symbol_in_python_ast
+from tmem.guards import check_symbol_in_ast
 from tmem.models import (
     ActionKind,
     ActionNode,
@@ -181,9 +181,9 @@ def get_git_ground_truth(
                         end_ln = start_ln if count == 0 else start_ln + count - 1
                         file_ranges.setdefault(current_file, []).append((start_ln, end_ln))
 
-        # Parse full Python AST and intersect with modified diff line ranges
+        # Parse source AST (Python stdlib ast or optional tree-sitter) and intersect with modified diff line ranges
         for mod_file in modified_files:
-            if not mod_file.lower().endswith(".py"):
+            if not is_code_file(mod_file):
                 continue
             full_path = ws / mod_file
             if not full_path.is_file():
@@ -197,7 +197,7 @@ def get_git_ground_truth(
                 # Newly created untracked file: entire file is modified
                 line_cnt = max(1, len(content.splitlines()))
                 ranges = [(1, line_cnt)]
-            syms = extract_python_symbols_for_line_ranges(content, ranges)
+            syms = extract_symbols_for_line_ranges(content, mod_file, ranges)
             if syms:
                 file_symbols[mod_file] = syms
     except (subprocess.SubprocessError, OSError, UnicodeDecodeError) as e:
@@ -473,13 +473,13 @@ class BackwardTraceSlicer:
         ast_imported_files: Set[str] = set()
         ws_root = Path(session.workspace_root)
         for mod_file in effective_files:
-            if mod_file.endswith(".py"):
+            if is_code_file(mod_file):
                 full_mod = ws_root / mod_file
                 if full_mod.exists() and full_mod.is_file():
                     try:
                         mod_text = full_mod.read_text(encoding="utf-8", errors="ignore")
                         ast_imported_files.update(
-                            extract_python_local_imports(mod_text, mod_file, candidate_read_files)
+                            extract_local_imports(mod_text, mod_file, candidate_read_files)
                         )
                     except OSError:
                         pass
@@ -865,7 +865,7 @@ class BackwardTraceSlicer:
         )[:8]
         for f in ordered_files:
             guards.append(GuardProbe(probe_type="file_exists", target=f))
-            if not f.endswith(".py"):
+            if not is_code_file(f):
                 continue
             cand_syms = per_file_symbols.get(f, [])
             if not cand_syms:
@@ -876,7 +876,7 @@ class BackwardTraceSlicer:
                     text = full_path.read_text(encoding="utf-8", errors="ignore")
                     added_for_file = 0
                     for sym in cand_syms:
-                        if _check_symbol_in_python_ast(text, sym):
+                        if check_symbol_in_ast(text, f, sym):
                             guards.append(
                                 GuardProbe(
                                     probe_type="symbol_present",

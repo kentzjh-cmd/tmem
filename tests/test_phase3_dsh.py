@@ -15,7 +15,7 @@ from tmem.mem_doc import render_memories_markdown
 from tmem.models import ActionKind, ActionNode, CausalRepairPair, GuardProbe, RawExecutionTrace, TracePlaybook
 from tmem.raw_storage import format_progressive_view, format_raw_trace_replay
 from tmem.slicer import BackwardTraceSlicer
-from tmem.store import DualTierMemoryStore
+from tmem.store import ProjectMemoryStore
 from tmem.telemetry import compute_telemetry_summary
 
 
@@ -28,7 +28,7 @@ class TestPhase3DshArchitecture(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_prewrite_similarity_merging_avoids_duplicate_playbooks(self) -> None:
-        store = DualTierMemoryStore(str(self.ws))
+        store = ProjectMemoryStore(str(self.ws))
         pb1 = TracePlaybook(
             trace_id="tr_first_001",
             agent_source="dsh",
@@ -101,7 +101,7 @@ class TestPhase3DshArchitecture(unittest.TestCase):
         self.assertEqual(len(store.get_all_project_playbooks()), 2)
 
     def test_guard_drift_streak_and_gc_pruning(self) -> None:
-        store = DualTierMemoryStore(str(self.ws))
+        store = ProjectMemoryStore(str(self.ws))
         pb_no_l2 = TracePlaybook(
             trace_id="tr_drift_prune",
             agent_source="dsh",
@@ -158,7 +158,7 @@ class TestPhase3DshArchitecture(unittest.TestCase):
             subprocess.run(["git", "add", "."], cwd=self.ws, check=True)
             subprocess.run(["git", "commit", "-m", f"pair {rev}"], cwd=self.ws, check=True, capture_output=True)
 
-        store = DualTierMemoryStore(str(self.ws))
+        store = ProjectMemoryStore(str(self.ws))
         pb = TracePlaybook(
             trace_id="tr_l2_tel",
             agent_source="dsh",
@@ -267,7 +267,7 @@ class TestPhase3DshArchitecture(unittest.TestCase):
         self.assertIn("Behavior:", pb1.semantic_summary)
         self.assertIn("edited 2 file(s)", pb1.semantic_summary)
 
-        store = DualTierMemoryStore(str(self.ws))
+        store = ProjectMemoryStore(str(self.ws))
         id1, _ = store.save_playbook(pb1)
 
         # Merge a follow-up session for the same task and verify inline session lineage accumulates
@@ -317,6 +317,105 @@ class TestPhase3DshArchitecture(unittest.TestCase):
         )
         self.assertEqual(insp_by_sess["kind"], "success")
         self.assertIn(merged_pb.trace_id, insp_by_sess["text"])
+
+    def test_phase0_concurrent_session_state_isolation_and_l2_strict_matching(self) -> None:
+        # 1. Interleaved session state isolation: sess_A and sess_B must not overwrite each other
+        (self.ws / "src").mkdir(exist_ok=True)
+        (self.ws / "src" / "a.py").write_text("x = 1\n", encoding="utf-8")
+        (self.ws / "src" / "b.py").write_text("y = 2\n", encoding="utf-8")
+
+        handle_dsh_hook(
+            "post_tool_use",
+            {
+                "workspaceRoot": str(self.ws),
+                "sessionId": "sess_A",
+                "toolCall": {"name": "edit", "args": {"file_path": "src/a.py"}},
+            },
+        )
+        # Concurrent sess_B runs an independent action in the same workspace
+        handle_dsh_hook(
+            "pre_invocation",
+            {
+                "workspaceRoot": str(self.ws),
+                "sessionId": "sess_B",
+                "lastUserInput": "Check status of b.py",
+            },
+        )
+        # sess_A now runs verification: its uncommitted_mutations ("src/a.py") must still be intact!
+        res_a = handle_dsh_hook(
+            "post_tool_use",
+            {
+                "workspaceRoot": str(self.ws),
+                "sessionId": "sess_A",
+                "toolCall": {"name": "bash", "args": {"command": "pytest -q"}},
+                "resultText": "1 passed\n[exit code: 0]",
+            },
+        )
+        self.assertIn("<tmem_milestone_reached>", res_a.get("additionalContext", ""))
+        self.assertIn("src/a.py", res_a.get("additionalContext", ""))
+
+        # 2. Strict L2 lookup: reject different package names or substring collisions
+        store = ProjectMemoryStore(str(self.ws))
+        pb_yaml = TracePlaybook(
+            trace_id="tr_yaml_only",
+            agent_source="dsh",
+            scope="project",
+            problem_intent="Fix missing yaml module",
+            error_signatures=["ModuleNotFoundError: No module named 'yaml'"],
+            touched_files=["src/a.py"],
+            l2_causal_repairs=[
+                CausalRepairPair(
+                    error_signature="ModuleNotFoundError: No module named 'yaml'",
+                    failed_command="pytest -q",
+                    repair_action="pip install pyyaml",
+                    verification_cmd="pytest -q",
+                    is_env_or_toolchain=True,
+                )
+            ],
+            confidence=0.8,
+        )
+        pb_key = TracePlaybook(
+            trace_id="tr_key_id",
+            agent_source="dsh",
+            scope="project",
+            problem_intent="Fix KeyError id",
+            error_signatures=["KeyError: 'id'"],
+            touched_files=["src/a.py"],
+            l2_causal_repairs=[
+                CausalRepairPair(
+                    error_signature="KeyError: 'id'",
+                    failed_command="pytest -q",
+                    repair_action="edit src/a.py (parse_id)",
+                    verification_cmd="pytest -q",
+                    is_env_or_toolchain=False,
+                )
+            ],
+            confidence=0.8,
+        )
+        store.save_playbook(pb_yaml)
+        store.save_playbook(pb_key)
+
+        # Unrelated module 'httpx' must NOT match 'yaml'
+        self.assertEqual(
+            store.lookup_l2_repair(["ModuleNotFoundError: No module named 'httpx'"]),
+            [],
+        )
+        # Substring 'id_token' must NOT match 'id'
+        self.assertEqual(
+            store.lookup_l2_repair(["KeyError: 'id_token'"]),
+            [],
+        )
+        # Wrong exception class must NOT match
+        self.assertEqual(
+            store.lookup_l2_repair(["ValueError: No module named 'yaml'"]),
+            [],
+        )
+        # Genuine match with extra context succeeds
+        matched_yaml = store.lookup_l2_repair(
+            ["ModuleNotFoundError: No module named 'yaml' in src/a.py"]
+        )
+        self.assertEqual(len(matched_yaml), 1)
+        self.assertEqual(matched_yaml[0].playbook.trace_id, "tr_yaml_only")
 
 
 if __name__ == "__main__":

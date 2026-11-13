@@ -5,11 +5,11 @@ description: >-
   Activate when the user types /tmem, /remember, or confirms saving the current session's effective execution path.
 ---
 
-# tmem Execution Trace Memory Skill (dsh & Multi-Agent)
+# tmem Execution Trace Memory Skill (DSH)
 
 ## Commands
 
 1. **Save Memory Trace**:
    `python3 -m tmem.cli capture --agent dsh`
-2. **Check Memory Status**:
+2. **Check Memory & Telemetry Status**:
    `python3 -m tmem.cli status`

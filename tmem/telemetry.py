@@ -66,6 +66,8 @@ def compute_telemetry_summary(workspace_root: str) -> Dict[str, Any]:
     l2_unresolved = 0
     l1_hints = 0
     l1_adopted = 0
+    l1_adopted_edit = 0
+    l1_inspected_only = 0
     l1_ignored = 0
 
     for ev in events:
@@ -82,6 +84,11 @@ def compute_telemetry_summary(workspace_root: str) -> Dict[str, Any]:
         elif etype == "l1_outcome":
             if ev.get("adopted"):
                 l1_adopted += 1
+                res_kind = ev.get("resolution")
+                if res_kind == "inspected":
+                    l1_inspected_only += 1
+                else:
+                    l1_adopted_edit += 1
             else:
                 l1_ignored += 1
 
@@ -97,6 +104,8 @@ def compute_telemetry_summary(workspace_root: str) -> Dict[str, Any]:
         else None,
         "l1_hints": l1_hints,
         "l1_adopted": l1_adopted,
+        "l1_adopted_edit": l1_adopted_edit,
+        "l1_inspected_only": l1_inspected_only,
         "l1_ignored": l1_ignored,
         "l1_adoption_rate": round(l1_adopted / l1_total_outcomes, 3)
         if l1_total_outcomes > 0

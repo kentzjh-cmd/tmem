@@ -24,7 +24,7 @@ from tmem.models import (
     TracePlaybook,
 )
 from tmem.slicer import BackwardTraceSlicer
-from tmem.store import DualTierMemoryStore
+from tmem.store import ProjectMemoryStore
 
 
 def _make_sample_playbook(
@@ -121,7 +121,7 @@ class TestOutcomeDrivenMetabolism(unittest.TestCase):
     def test_record_outcome_updates_confidence_and_degrades_l0(self) -> None:
         with tempfile.TemporaryDirectory() as ws:
             (Path(ws) / "app.py").write_text("def process():\n    return 1\n", encoding="utf-8")
-            store = DualTierMemoryStore(ws)
+            store = ProjectMemoryStore(ws)
             pb = _make_sample_playbook("trace-001", confidence=0.5)
             store.save_playbook(pb)
 
@@ -148,7 +148,7 @@ class TestOutcomeDrivenMetabolism(unittest.TestCase):
     def test_hook_rewards_injected_trace_on_verification_pass(self) -> None:
         with tempfile.TemporaryDirectory() as ws:
             (Path(ws) / "app.py").write_text("def process():\n    return 1\n", encoding="utf-8")
-            store = DualTierMemoryStore(ws)
+            store = ProjectMemoryStore(ws)
             store.save_playbook(_make_sample_playbook("trace-reward", confidence=0.5))
 
             # Pre-invocation recalls trace-reward via explicit file anchor `app.py`

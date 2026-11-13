@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from tmem import logger
-from tmem.store import DualTierMemoryStore
+from tmem.store import ProjectMemoryStore
 
 
 def install_invisible_integration(
@@ -19,7 +19,7 @@ def install_invisible_integration(
     """Set up DSH plugin hooks, `/tmem` skill, AGENTS.md protocol, and Git post-commit hook."""
     ws = Path(workspace_root).resolve()
     target_agents = [a.strip().lower() for a in (agents or ["dsh"]) if a and a.strip()]
-    store = DualTierMemoryStore(str(ws))
+    store = ProjectMemoryStore(str(ws))
     store.ensure_initialized(init_project=True)
 
     installed: Dict[str, Any] = {"workspace": str(ws), "agents": [], "git_hook": False}
@@ -57,7 +57,7 @@ def install_invisible_integration(
         except OSError as e:
             logger.debug("Failed updating cordis.patch.yml: %s", e)
 
-        dsh_skill_dir = ws / ".agents" / "skills" / "tmem"
+        dsh_skill_dir = ws / ".dsh" / "skills" / "tmem"
         dsh_skill_dir.mkdir(parents=True, exist_ok=True)
         dsh_skill_md = (
             "---\n"
@@ -99,7 +99,7 @@ def install_invisible_integration(
             ws_agents_md.write_text(dsh_rules_section, encoding="utf-8")
 
         installed["agents"].append(
-            "dsh (.dsh/plugins/tmem-dsh-plugin.mjs + .dsh/tmem.patch.yml + ~/.dsh/cordis.patch.yml + .agents/skills/tmem + AGENTS.md)"
+            "dsh (.dsh/plugins/tmem-dsh-plugin.mjs + .dsh/tmem.patch.yml + ~/.dsh/cordis.patch.yml + .dsh/skills/tmem + AGENTS.md)"
         )
 
     store.sync_memories_markdown()

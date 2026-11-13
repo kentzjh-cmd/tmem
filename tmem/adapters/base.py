@@ -9,6 +9,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
+from tmem.ast_parser import (
+    extract_ts_local_imports,
+    extract_ts_symbols_for_line_ranges,
+    extract_ts_symbols_from_text,
+)
 from tmem.models import ActionNode
 
 ERROR_PATTERNS = [
@@ -109,7 +114,7 @@ def clean_rationale(text: str, max_chars: int = 160) -> Optional[str]:
 
 @dataclass
 class ParsedSession:
-    """Normalized representation of an agent session across agy, codex, opencode, pi, dsh."""
+    """Normalized representation of an agent session for DSH (and offline SWE-bench / ATIF evaluation)."""
 
     agent_name: str
     session_id: str
@@ -391,7 +396,7 @@ def is_code_file(file_path: Optional[str]) -> bool:
 
 
 def extract_symbols_from_text(text: str, file_path: Optional[str] = None) -> List[str]:
-    """Extract defined/modified function or class names from code snippets via AST (Python) or regex."""
+    """Extract defined/modified function or class names from code snippets via AST (Python / tree-sitter) or regex."""
     if not text or not is_code_file(file_path):
         return []
     symbols = set()
@@ -408,7 +413,11 @@ def extract_symbols_from_text(text: str, file_path: Optional[str] = None) -> Lis
         except Exception:
             pass
 
-    # Regex fallback for non-Python files or partial diff snippets
+    ts_syms = extract_ts_symbols_from_text(text, file_path, stopwords=SYMBOL_STOPWORDS)
+    if ts_syms:
+        return ts_syms
+
+    # Regex fallback for non-Python files without tree-sitter or partial diff snippets
     for m in re.finditer(
         r"(?:^|[\s;{}()])(?:def|class|fn|func|function|interface|struct)\s+([A-Za-z_][A-Za-z0-9_]{2,})\s*(?:[\(<:{]|$)",
         text,
@@ -513,6 +522,34 @@ def extract_python_local_imports(
         ):
             matched.add(cand)
     return matched
+
+
+def extract_symbols_for_line_ranges(
+    content: str, file_path: Optional[str], line_ranges: List[Tuple[int, int]]
+) -> List[str]:
+    """
+    Extract symbol names overlapping `line_ranges` using Python stdlib `ast` for `.py`
+    or `tree-sitter` (when installed) for other supported languages.
+    """
+    if not content or not line_ranges:
+        return []
+    if file_path and file_path.lower().endswith(".py"):
+        return extract_python_symbols_for_line_ranges(content, line_ranges)
+    return extract_ts_symbols_for_line_ranges(content, file_path, line_ranges)
+
+
+def extract_local_imports(
+    content: str, file_path: str, candidate_files: Set[str]
+) -> Set[str]:
+    """
+    Identify which files in `candidate_files` are statically imported by `file_path`,
+    using stdlib `ast` for Python or `tree-sitter` (when installed) for other languages.
+    """
+    if not content or not candidate_files or not file_path:
+        return set()
+    if file_path.lower().endswith(".py"):
+        return extract_python_local_imports(content, file_path, candidate_files)
+    return extract_ts_local_imports(content, file_path, candidate_files) or set()
 
 
 class AgentAdapter:

@@ -3,7 +3,7 @@ End-to-End (E2E) test suite for DeepSeek Harness (`@deepseek-ai/dsh`) integratio
 1. Native `DshAdapter` parsing `session.v4.jsonl` (`user/message`, `tool/call`, `tool/result`,
    `apply_patch` multi-file diffs, `bash` `[exit code: N]` markers, and secret scrubbing).
 2. `tmem init --agents dsh` generating `.dsh/plugins/tmem-dsh-plugin.mjs`, `.dsh/tmem.patch.yml`,
-   `.agents/skills/tmem/SKILL.md`, and `AGENTS.md`.
+   `.dsh/skills/tmem/SKILL.md`, and `AGENTS.md`.
 3. Live `@deepseek-ai/dsh` (`@deepseek-ai/cordis` + `@deepseek-ai/dsh-commands`) runtime execution
    verifying `/tmem` slash commands, `tools/post-execute` milestone & L2 error repair injection,
    `agent/pre-step` speculative memory recall (`L0_FULL` -> `L1_TOPOLOGY` + `L2_INVARIANT`),
@@ -26,7 +26,7 @@ from tmem.adapters.base import extract_symbols_from_text
 from tmem.adapters.dsh import DshAdapter
 from tmem.cli import handle_dsh_hook, install_invisible_integration
 from tmem.slicer import BackwardTraceSlicer
-from tmem.store import DualTierMemoryStore
+from tmem.store import ProjectMemoryStore
 
 
 class TestDshPluginEndToEnd(unittest.TestCase):
@@ -417,7 +417,7 @@ class TestDshPluginEndToEnd(unittest.TestCase):
             info = install_invisible_integration(str(self.workspace), ["dsh"], install_git_hook=True)
             self.assertTrue((self.workspace / ".dsh" / "plugins" / "tmem-dsh-plugin.mjs").exists())
             self.assertTrue((self.workspace / ".dsh" / "tmem.patch.yml").exists())
-            self.assertTrue((self.workspace / ".agents" / "skills" / "tmem" / "SKILL.md").exists())
+            self.assertTrue((self.workspace / ".dsh" / "skills" / "tmem" / "SKILL.md").exists())
             self.assertTrue((self.workspace / "AGENTS.md").exists())
             self.assertTrue(info["git_hook"])
 

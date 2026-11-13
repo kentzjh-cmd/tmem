@@ -26,7 +26,7 @@ if str(WORKSPACE_ROOT) not in sys.path:
 from tmem.hooks.dsh import handle_dsh_hook
 from tmem.installer import install_invisible_integration
 from tmem.models import CausalRepairPair, GuardProbe, TracePlaybook
-from tmem.store import DualTierMemoryStore
+from tmem.store import ProjectMemoryStore
 from tmem.telemetry import compute_telemetry_summary
 
 
@@ -61,7 +61,7 @@ def run_dsh_e2e_benchmark() -> Dict[str, Any]:
             subprocess.run(["git", "add", "."], cwd=ws, check=True)
             subprocess.run(["git", "commit", "-m", f"cochange {rev}"], cwd=ws, check=True, capture_output=True)
 
-        store = DualTierMemoryStore(str(ws))
+        store = ProjectMemoryStore(str(ws))
         pb = TracePlaybook(
             trace_id="tr_bench_l2_billing",
             agent_source="dsh",

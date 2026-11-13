@@ -2,7 +2,7 @@
 Living Memory Index Generator (MEMORIES.md / MEM.md).
 
 Maintains a transparent, Git-versioned Markdown index at the workspace root,
-enabling zero-token agent navigation (Cursor, Claude Code, Antigravity, DeepSeek Harness)
+enabling zero-token agent navigation (DeepSeek Harness)
 and human visibility into compiled execution playbooks and forensic raw traces.
 """
 

@@ -43,7 +43,7 @@ from tmem.raw_storage import (
     format_raw_trace_replay,
 )
 from tmem.slicer import BackwardTraceSlicer, assess_playbook_triviality
-from tmem.store import DualTierMemoryStore
+from tmem.store import ProjectMemoryStore
 from tmem.telemetry import compute_telemetry_summary
 
 
@@ -84,10 +84,19 @@ def execute_capture(
     if not t_path or not Path(t_path).exists():
         return {"status": "skipped", "reason": "no_transcript_found"}
 
-    state = load_runtime_state(workspace_root)
+    eff_session_id = (session_id or "").strip() or "default"
+    state = load_runtime_state(workspace_root, eff_session_id)
     min_step = 0 if full_session else int(state.get("last_captured_step_idx", 0))
 
     session = adapter.parse_transcript(t_path, workspace_root, min_step_idx=min_step)
+    if not session_id and session.session_id and session.session_id != eff_session_id:
+        eff_session_id = session.session_id
+        state = load_runtime_state(workspace_root, eff_session_id)
+        new_min_step = 0 if full_session else int(state.get("last_captured_step_idx", 0))
+        if new_min_step != min_step:
+            min_step = new_min_step
+            session = adapter.parse_transcript(t_path, workspace_root, min_step_idx=min_step)
+
     if not session.actions and min_step > 0:
         session = adapter.parse_transcript(t_path, workspace_root, min_step_idx=0)
 
@@ -133,7 +142,7 @@ def execute_capture(
     raw_store.save_raw_trace(raw_trace)
     pb.raw_trace_path = f"raw/{pb.trace_id}.raw.json"
 
-    store = DualTierMemoryStore(workspace_root)
+    store = ProjectMemoryStore(workspace_root)
     proj_id, _ = store.save_playbook(pb, target_scope="project")
 
     # Advance incremental step cursor and reset pending milestone state
@@ -182,7 +191,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     # 3. capture
     p_cap = sub.add_parser("capture", help="Compile and save current session execution trace to .tmem/")
     p_cap.add_argument("--workspace", default=os.getcwd(), help="Workspace root directory")
-    p_cap.add_argument("--agent", default="dsh", choices=["dsh", "swe_bench", "codex", "opencode", "pi"], help="Agent source (primary: dsh)")
+    p_cap.add_argument("--agent", default="dsh", choices=["dsh", "swe_bench"], help="Agent source (primary: dsh)")
     p_cap.add_argument("--transcript", default=None, help="Explicit path to session transcript")
     p_cap.add_argument("--scope", default="project", choices=["project", "auto"], help="Storage scope")
     p_cap.add_argument("--intent", default=None, help="User intent or problem summary")
@@ -285,7 +294,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 0 if res.get("status") in ("compiled", "skipped_trivial") else 1
 
     if args.subcommand == "lookup":
-        store = DualTierMemoryStore(args.workspace)
+        store = ProjectMemoryStore(args.workspace)
         evaluated = store.cascading_lookup(
             query_text=args.query,
             file_paths=args.file,
@@ -314,13 +323,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 0
 
     if args.subcommand == "gc":
-        store = DualTierMemoryStore(args.workspace)
+        store = ProjectMemoryStore(args.workspace)
         stats = store.run_metabolism_gc(prune_stale=bool(args.prune))
         print(json.dumps(stats, indent=2, ensure_ascii=False))
         return 0
 
     if args.subcommand == "status":
-        store = DualTierMemoryStore(args.workspace)
+        store = ProjectMemoryStore(args.workspace)
         proj_count = len(list(store.project_traces_dir.glob("*.json"))) if store.project_traces_dir.exists() else 0
         telemetry = compute_telemetry_summary(args.workspace)
         print(
@@ -337,13 +346,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 0
 
     if args.subcommand == "list":
-        store = DualTierMemoryStore(args.workspace)
+        store = ProjectMemoryStore(args.workspace)
         items = store.list_playbooks(scope=args.scope)
         print(json.dumps(items, indent=2, ensure_ascii=False))
         return 0
 
     if args.subcommand == "forget":
-        store = DualTierMemoryStore(args.workspace)
+        store = ProjectMemoryStore(args.workspace)
         res = store.delete_playbook(args.trace_id)
         print(json.dumps(res, indent=2, ensure_ascii=False))
         return 0
@@ -362,7 +371,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 0 if summary.all_passed else 1
 
     if args.subcommand == "inspect":
-        store = DualTierMemoryStore(args.workspace)
+        store = ProjectMemoryStore(args.workspace)
         tid = args.trace_id.strip()
         target_pb = None
         if tid:
@@ -389,7 +398,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 0
 
     if args.subcommand == "replay":
-        store = DualTierMemoryStore(args.workspace)
+        store = ProjectMemoryStore(args.workspace)
         raw_tr = store.get_raw_trace(args.trace_id)
         if not raw_tr:
             print(f"Error: Raw execution trace for '{args.trace_id}' not found in .tmem/raw/.", file=sys.stderr)
@@ -398,7 +407,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 0
 
     if args.subcommand == "diff":
-        store = DualTierMemoryStore(args.workspace)
+        store = ProjectMemoryStore(args.workspace)
         raw_tr = store.get_raw_trace(args.trace_id)
         if not raw_tr:
             print(f"Error: Raw execution trace for '{args.trace_id}' not found in .tmem/raw/.", file=sys.stderr)
@@ -407,7 +416,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 0
 
     if args.subcommand == "sync":
-        store = DualTierMemoryStore(args.workspace)
+        store = ProjectMemoryStore(args.workspace)
         store.sync_project_index_if_needed()
         gc_stats = store.run_metabolism_gc()
         doc_path = store.sync_memories_markdown()

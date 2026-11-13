@@ -25,8 +25,28 @@ _No error-to-fix invariant pairs extracted yet._
 
 ## 3. Co-Change Architectural Topologies
 
-- 🔗 tmem/adapters/agy.py <-> tmem/slicer.py (co-changed 2x, 100% conf)
-- 🔗 tmem/adapters/base.py <-> tmem/slicer.py (co-changed 2x, 100% conf)
+- 🔗 tmem/adapters/base.py <-> tmem/slicer.py (co-changed 4x, 100% conf)
+- 🔗 tmem/adapters/base.py <-> tmem/adapters/dsh.py (co-changed 3x, 100% conf)
+- 🔗 tmem/adapters/dsh.py <-> tmem/slicer.py (co-changed 3x, 100% conf)
+- 🔗 tmem/adapters/dsh.py <-> tmem/store.py (co-changed 3x, 100% conf)
+- 🔗 tmem/adapters/base.py <-> tmem/store.py (co-changed 3x, 75% conf)
+- 🔗 tmem/slicer.py <-> tmem/store.py (co-changed 3x, 75% conf)
+- 🔗 tests/test_dsh_e2e.py <-> tmem/cli.py (co-changed 2x, 100% conf)
+- 🔗 tests/test_dsh_e2e.py <-> tmem/dsh_plugin.mjs (co-changed 2x, 100% conf)
+- 🔗 tmem/adapters/base.py <-> tmem/guards.py (co-changed 2x, 100% conf)
+- 🔗 tmem/adapters/base.py <-> tmem/models.py (co-changed 2x, 100% conf)
+- 🔗 tmem/adapters/dsh.py <-> tmem/guards.py (co-changed 2x, 100% conf)
+- 🔗 tmem/adapters/dsh.py <-> tmem/models.py (co-changed 2x, 100% conf)
+- 🔗 tmem/cli.py <-> tmem/dsh_plugin.mjs (co-changed 2x, 100% conf)
+- 🔗 tmem/cli.py <-> tmem/store.py (co-changed 2x, 100% conf)
+- 🔗 tmem/dsh_plugin.mjs <-> tmem/store.py (co-changed 2x, 100% conf)
+- 🔗 tmem/guards.py <-> tmem/models.py (co-changed 2x, 100% conf)
+- 🔗 tmem/guards.py <-> tmem/slicer.py (co-changed 2x, 100% conf)
+- 🔗 tmem/guards.py <-> tmem/store.py (co-changed 2x, 100% conf)
+- 🔗 tmem/mem_doc.py <-> tmem/store.py (co-changed 2x, 100% conf)
+- 🔗 tmem/models.py <-> tmem/slicer.py (co-changed 2x, 100% conf)
+- 🔗 tmem/models.py <-> tmem/store.py (co-changed 2x, 100% conf)
+- 🔗 tests/test_dsh_e2e.py <-> tmem/store.py (co-changed 2x, 67% conf)
 
 ---
 

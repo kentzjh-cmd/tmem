@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "tmem"
 version = "0.2.0"
-description = "Deterministic Execution Trace Memory for Coding Agents (Antigravity & DeepSeek Harness)"
+description = "Deterministic Execution Trace Memory & Zero-Token Session Digest for DeepSeek Harness (@deepseek-ai/dsh)"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
@@ -13,6 +13,12 @@ authors = [
   { name = "kentzjh-cmd" }
 ]
 dependencies = []
+
+[project.optional-dependencies]
+ast = [
+  "tree-sitter>=0.22.0",
+  "tree-sitter-language-pack>=0.1.0",
+]
 
 [project.scripts]
 tmem = "tmem.cli:main"

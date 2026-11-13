@@ -11,7 +11,7 @@ from pathlib import Path
 from tmem.adapters import get_adapter
 from tmem.cli import handle_dsh_hook, install_invisible_integration
 from tmem.slicer import BackwardTraceSlicer
-from tmem.store import DualTierMemoryStore
+from tmem.store import ProjectMemoryStore
 
 
 class TestTmemEndToEnd(unittest.TestCase):
@@ -187,7 +187,7 @@ class TestTmemEndToEnd(unittest.TestCase):
         self.assertTrue(pb.l2_causal_repairs[0].is_env_or_toolchain)
 
         # 3. Save to Project Store
-        store_a = DualTierMemoryStore(str(self.workspace_a))
+        store_a = ProjectMemoryStore(str(self.workspace_a))
         proj_id, _ = store_a.save_playbook(pb)
         self.assertTrue(proj_id.startswith("tr_"))
 

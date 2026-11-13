@@ -26,7 +26,7 @@ from tmem.raw_storage import (
     format_raw_trace_replay,
 )
 from tmem.slicer import _commands_are_same_origin
-from tmem.store import DualTierMemoryStore
+from tmem.store import ProjectMemoryStore
 from tmem.telemetry import compute_telemetry_summary, record_telemetry_event
 
 FILE_PATH_MENTION_RE = re.compile(
@@ -80,7 +80,7 @@ def handle_dsh_hook(
     )
     session_id = str(payload.get("sessionId") or payload.get("conversationId") or "default")
 
-    store = DualTierMemoryStore(workspace_root)
+    store = ProjectMemoryStore(workspace_root)
     state = load_runtime_state(workspace_root, session_id)
 
     if event == "command":
@@ -458,29 +458,6 @@ def handle_dsh_hook(
             if rel:
                 touched_paths.append(rel)
 
-        # Resolve pending L1 co-change hints when agent touches any suggested partner file
-        pending_l1: List[Dict[str, Any]] = list(state.get("pending_l1_hints") or [])
-        if touched_paths and pending_l1:
-            touched_set = set(touched_paths)
-            still_pending_l1: List[Dict[str, Any]] = []
-            for hint in pending_l1:
-                sugg = set(hint.get("suggested_files") or [])
-                adopted = sorted(touched_set & sugg)
-                if adopted:
-                    record_telemetry_event(
-                        workspace_root,
-                        "l1_outcome",
-                        {
-                            "session_id": session_id,
-                            "edited_file": hint.get("edited_file", ""),
-                            "adopted_files": adopted,
-                            "adopted": True,
-                        },
-                    )
-                else:
-                    still_pending_l1.append(hint)
-            state["pending_l1_hints"] = still_pending_l1
-
         is_mutate_tool = t_name in (
             "write",
             "edit",
@@ -489,6 +466,35 @@ def handle_dsh_hook(
             "write_file",
             "edit_file",
         )
+        is_explicit_read_tool = t_name in ("read", "read_file", "view_file")
+
+        # Resolve or update pending L1 co-change hints when agent mutates or explicitly reads partner files
+        pending_l1: List[Dict[str, Any]] = list(state.get("pending_l1_hints") or [])
+        if touched_paths and pending_l1 and not has_failure and (is_mutate_tool or is_explicit_read_tool):
+            touched_set = set(touched_paths)
+            still_pending_l1: List[Dict[str, Any]] = []
+            for hint in pending_l1:
+                sugg = set(hint.get("suggested_files") or [])
+                adopted = sorted(touched_set & sugg)
+                if adopted and is_mutate_tool:
+                    record_telemetry_event(
+                        workspace_root,
+                        "l1_outcome",
+                        {
+                            "session_id": session_id,
+                            "edited_file": hint.get("edited_file", ""),
+                            "adopted_files": adopted,
+                            "adopted": True,
+                            "resolution": "mutated",
+                        },
+                    )
+                elif adopted and is_explicit_read_tool:
+                    prev_inspected = set(hint.get("inspected_files") or [])
+                    hint["inspected_files"] = sorted(prev_inspected | set(adopted))
+                    still_pending_l1.append(hint)
+                else:
+                    still_pending_l1.append(hint)
+            state["pending_l1_hints"] = still_pending_l1
         mutated_this_step: List[str] = []
         for rel_path in touched_paths:
             if rel_path.startswith(".tmem/"):
@@ -576,17 +582,19 @@ def handle_dsh_hook(
                 verify_passed = True
                 apply_session_trace_feedback(store, state, "success")
 
-                # Resolve remaining un-adopted L1 hints as ignored upon verification
+                # Resolve remaining pending L1 hints upon verification (inspected vs ignored)
                 if state.get("pending_l1_hints"):
                     for hint in state["pending_l1_hints"]:
+                        inspected = list(hint.get("inspected_files") or [])
                         record_telemetry_event(
                             workspace_root,
                             "l1_outcome",
                             {
                                 "session_id": session_id,
                                 "edited_file": hint.get("edited_file", ""),
-                                "adopted_files": [],
-                                "adopted": False,
+                                "adopted_files": inspected,
+                                "adopted": bool(inspected),
+                                "resolution": "inspected" if inspected else "ignored",
                             },
                         )
                     state["pending_l1_hints"] = []

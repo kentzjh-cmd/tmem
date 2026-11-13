@@ -89,7 +89,7 @@ def _load_git_transactions(
             h = line.split(":", 1)[1].strip()
             if h:
                 seen_hashes.add(h)
-        elif line and _is_trackable_cochange_file(line):
+        elif line and _is_trackable_cochange_file(line) and (ws / line).exists():
             current_files.append(line)
 
     if 2 <= len(current_files) <= max_files_per_tx:

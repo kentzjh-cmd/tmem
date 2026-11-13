@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from tmem import logger
 
@@ -37,30 +37,77 @@ def default_runtime_state(conv_id: str = "default") -> Dict[str, Any]:
     }
 
 
-def load_runtime_state(workspace_root: str, conv_id: str = "default") -> Dict[str, Any]:
-    state_file = Path(workspace_root) / ".tmem" / "runtime_state.json"
+MAX_TRACKED_SESSIONS = 32
+
+
+def _normalize_session_state(raw_state: Dict[str, Any], conv_id: str) -> Dict[str, Any]:
+    state = dict(raw_state)
+    default_state = default_runtime_state(conv_id)
+    for k, v in default_state.items():
+        state.setdefault(k, v)
+    return state
+
+
+def _read_state_container(state_file: Path) -> Tuple[Dict[str, Dict[str, Any]], str]:
+    """Read multi-session state container from runtime_state.json (migrating legacy flat format)."""
     if not state_file.exists():
-        return default_runtime_state(conv_id)
+        return {}, ""
     try:
         data = json.loads(state_file.read_text(encoding="utf-8"))
-        if data.get("conversation_id") != conv_id and conv_id != "default":
-            return default_runtime_state(conv_id)
-        # Ensure all required keys exist
-        default_state = default_runtime_state(conv_id)
-        for k, v in default_state.items():
-            data.setdefault(k, v)
-        return data
+        if not isinstance(data, dict):
+            return {}, ""
+        if isinstance(data.get("sessions"), dict):
+            sessions = {
+                str(k): dict(v)
+                for k, v in data["sessions"].items()
+                if isinstance(v, dict)
+            }
+            latest = str(data.get("latest_session_id") or "")
+            return sessions, latest
+        # Legacy single-session flat structure migration
+        legacy_id = str(data.get("conversation_id") or "default")
+        return {legacy_id: dict(data)}, legacy_id
     except (json.JSONDecodeError, OSError) as e:
         logger.debug("Failed to read runtime_state.json: %s", e)
-        return default_runtime_state(conv_id)
+        return {}, ""
+
+
+def load_runtime_state(workspace_root: str, conv_id: str = "default") -> Dict[str, Any]:
+    state_file = Path(workspace_root) / ".tmem" / "runtime_state.json"
+    sessions, latest_id = _read_state_container(state_file)
+    target_id = (conv_id or "").strip() or "default"
+
+    if target_id in sessions:
+        return _normalize_session_state(sessions[target_id], target_id)
+
+    # When caller omits session_id ("default"), fall back to latest active session if present
+    if target_id == "default" and latest_id and latest_id in sessions:
+        return _normalize_session_state(sessions[latest_id], latest_id)
+
+    return default_runtime_state(target_id)
 
 
 def save_runtime_state(workspace_root: str, state: Dict[str, Any]) -> None:
     state_file = Path(workspace_root) / ".tmem" / "runtime_state.json"
     state_file.parent.mkdir(parents=True, exist_ok=True)
+    conv_id = str(state.get("conversation_id") or "default")
+    sessions, _ = _read_state_container(state_file)
+
+    if conv_id in sessions:
+        sessions.pop(conv_id, None)
+    sessions[conv_id] = _normalize_session_state(state, conv_id)
+
+    while len(sessions) > MAX_TRACKED_SESSIONS:
+        oldest_key = next(iter(sessions))
+        sessions.pop(oldest_key, None)
+
+    container = {
+        "latest_session_id": conv_id,
+        "sessions": sessions,
+    }
     try:
         state_file.write_text(
-            json.dumps(state, indent=2, ensure_ascii=False),
+            json.dumps(container, indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
     except OSError as e:

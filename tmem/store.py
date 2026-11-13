@@ -19,6 +19,7 @@ import sqlite3
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
+from tmem import logger
 from tmem.guards import EvaluatedPlaybook, evaluate_guards
 from tmem.mem_doc import sync_memories_file
 from tmem.models import CausalRepairPair, RawExecutionTrace, TracePlaybook
@@ -128,7 +129,7 @@ class ProjectMemoryStore:
                         pb = TracePlaybook.from_dict(
                             json.loads(jf.read_text(encoding="utf-8"))
                         )
-                        self._UpsertToDb(conn, pb)
+                        self._upsert_to_db(conn, pb)
                     except Exception:
                         continue
 
@@ -275,7 +276,7 @@ class ProjectMemoryStore:
             encoding="utf-8",
         )
         with sqlite3.connect(str(self.project_db_path)) as conn:
-            self._UpsertToDb(conn, playbook)
+            self._upsert_to_db(conn, playbook)
         proj_id = playbook.trace_id
         try:
             self.sync_memories_markdown()
@@ -284,7 +285,7 @@ class ProjectMemoryStore:
 
         return proj_id, None
 
-    def _UpsertToDb(self, conn: sqlite3.Connection, pb: TracePlaybook) -> None:
+    def _upsert_to_db(self, conn: sqlite3.Connection, pb: TracePlaybook) -> None:
         conn.execute(
             """
             INSERT OR REPLACE INTO playbooks
@@ -308,10 +309,18 @@ class ProjectMemoryStore:
         except Exception:
             pass
 
-        for err in pb.error_signatures:
+        all_err_sigs = {
+            e.strip().lower()
+            for e in (
+                list(pb.error_signatures or [])
+                + [r.error_signature for r in pb.l2_causal_repairs if r.error_signature]
+            )
+            if e and e.strip()
+        }
+        for err_low in sorted(all_err_sigs):
             conn.execute(
                 "INSERT OR IGNORE INTO exact_triggers VALUES (?, 'error', ?)",
-                (pb.trace_id, err.lower()),
+                (pb.trace_id, err_low),
             )
         for f in pb.touched_files:
             conn.execute(
@@ -481,7 +490,7 @@ class ProjectMemoryStore:
     ) -> List[EvaluatedPlaybook]:
         """
         Strict error-signature lookup for DSH post_tool_use interception.
-        Requires deterministic error match (exact_triggers type='error') and non-empty L2 repairs.
+        Requires deterministic error archetype + diagnostic token match and non-empty L2 repairs.
         """
         sigs = [s.strip() for s in (error_signatures or []) if s and len(s.strip()) >= 6]
         if not sigs:
@@ -492,18 +501,15 @@ class ProjectMemoryStore:
 
         scores: Dict[str, float] = {}
         with sqlite3.connect(str(self.project_db_path)) as conn:
+            cur = conn.execute(
+                "SELECT trace_id, trigger_key FROM exact_triggers WHERE trigger_type = 'error'"
+            )
+            trigger_rows = cur.fetchall()
             for err in sigs:
-                err_low = err.lower()
-                cur = conn.execute(
-                    "SELECT trace_id, trigger_key FROM exact_triggers "
-                    "WHERE trigger_type = 'error' AND (? LIKE '%' || trigger_key || '%' OR trigger_key LIKE '%' || ? || '%')",
-                    (err_low, err_low),
-                )
-                for tid, tkey in cur.fetchall():
-                    if len(tkey or "") < 6:
-                        continue
-                    boost = 15.0 if tkey == err_low else 8.0
-                    scores[tid] = scores.get(tid, 0.0) + boost
+                for tid, tkey in trigger_rows:
+                    match_score = _score_l2_error_match(err, tkey or "")
+                    if match_score > 0.0:
+                        scores[tid] = max(scores.get(tid, 0.0), match_score)
 
             if not scores:
                 return []
@@ -522,6 +528,18 @@ class ProjectMemoryStore:
                     continue
                 if pb.status == "invalidated" or not pb.l2_causal_repairs:
                     continue
+                # Verify that at least one L2 repair in the playbook genuinely matches the active error
+                best_rep_score = max(
+                    (
+                        _score_l2_error_match(err, rep.error_signature)
+                        for err in sigs
+                        for rep in pb.l2_causal_repairs
+                    ),
+                    default=0.0,
+                )
+                if best_rep_score <= 0.0:
+                    continue
+                sc = max(sc, best_rep_score)
                 if file_set and any(f.lower() in file_set for f in pb.touched_files):
                     sc += 3.0
                 ev = evaluate_guards(pb, self.workspace_root)
@@ -581,7 +599,7 @@ class ProjectMemoryStore:
                         json.dumps(pb.to_dict(), indent=2, ensure_ascii=False),
                         encoding="utf-8",
                     )
-                    self._UpsertToDb(conn, pb)
+                    self._upsert_to_db(conn, pb)
                 except Exception:
                     continue
         try:
@@ -735,7 +753,7 @@ class ProjectMemoryStore:
                         json.dumps(pb.to_dict(), indent=2, ensure_ascii=False),
                         encoding="utf-8",
                     )
-                    self._UpsertToDb(conn, pb)
+                    self._upsert_to_db(conn, pb)
                     updated[tid] = pb.confidence
         except Exception as e:
             logger.debug("Failed to record trace outcome: %s", e)
@@ -750,4 +768,76 @@ COMMON_QUERY_STOPWORDS = {
     "all", "any", "some", "what", "which", "who", "whom", "how", "there", "their", "then", "into",
 }
 
-DualTierMemoryStore = ProjectMemoryStore  # Backward compatibility alias
+_ERROR_ARCHETYPE_RE = re.compile(
+    r"^(?:[a-z0-9_]+\.)*([a-z0-9_]*(?:error|exception|fault|panic)|error\[e\d+\]|cannot find module)\b",
+    re.IGNORECASE,
+)
+
+GENERIC_ERROR_WORDS = {
+    "error", "exception", "fault", "panic", "invalid", "bad", "missing", "unexpected",
+    "failed", "named", "module", "object", "attribute", "has", "no", "cannot", "can",
+    "only", "literal", "argument", "keyword", "value", "type", "key", "index", "name",
+    "line", "file", "most", "recent", "call", "last",
+}
+
+
+def _extract_error_archetype(sig: str) -> str:
+    m = _ERROR_ARCHETYPE_RE.match((sig or "").strip().lower())
+    return m.group(1).lower() if m else ""
+
+
+def _extract_error_detail_tokens(sig: str, archetype: str = "") -> Set[str]:
+    low = (sig or "").strip().lower()
+    if archetype and low.startswith(archetype):
+        low = low[len(archetype) :].lstrip(": ")
+    tokens = {
+        t
+        for t in re.findall(r"[a-z0-9_]+", low)
+        if len(t) >= 2 and t not in COMMON_QUERY_STOPWORDS and t != archetype
+    }
+    return tokens
+
+
+def _score_l2_error_match(query_sig: str, stored_sig: str) -> float:
+    """
+    Strictly evaluate whether `query_sig` matches `stored_sig` for L2 repair injection:
+    1. Exact normalized match -> 15.0
+    2. Canonical error archetype (e.g. KeyError, ModuleNotFoundError, error[E0432]) MUST match when present.
+    3. Diagnostic detail tokens must share specific identifiers (rejects substring collisions like 'id' vs 'id_token'
+       or generic boilerplate matches like 'No module named yaml' vs 'No module named httpx').
+    """
+    q = (query_sig or "").strip().lower()
+    s = (stored_sig or "").strip().lower()
+    if len(q) < 6 or len(s) < 6:
+        return 0.0
+    if q == s:
+        return 15.0
+
+    arch_q = _extract_error_archetype(q)
+    arch_s = _extract_error_archetype(s)
+    if arch_q and arch_s and arch_q != arch_s:
+        return 0.0
+
+    toks_q = _extract_error_detail_tokens(q, arch_q)
+    toks_s = _extract_error_detail_tokens(s, arch_s)
+    if not toks_q or not toks_s:
+        return 0.0
+
+    shared = toks_q & toks_s
+    if not shared:
+        return 0.0
+
+    union_len = len(toks_q | toks_s)
+    min_len = min(len(toks_q), len(toks_s))
+    jaccard = len(shared) / union_len if union_len else 0.0
+    containment = len(shared) / min_len if min_len else 0.0
+
+    # Reject if shared tokens consist solely of generic error words while specific identifiers differ
+    specific_q = toks_q - GENERIC_ERROR_WORDS
+    specific_s = toks_s - GENERIC_ERROR_WORDS
+    if (specific_q or specific_s) and not (specific_q & specific_s):
+        return 0.0
+
+    if jaccard >= 0.50 or containment >= 0.75:
+        return round(8.0 + 4.0 * jaccard, 2)
+    return 0.0

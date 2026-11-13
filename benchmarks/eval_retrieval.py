@@ -25,7 +25,7 @@ if str(WORKSPACE_ROOT) not in sys.path:
 from tmem.adapters.dsh import DshAdapter
 from tmem.adapters.swe_bench import SweBenchAdapter
 from tmem.slicer import BackwardTraceSlicer
-from tmem.store import DualTierMemoryStore
+from tmem.store import ProjectMemoryStore
 
 
 NEGATIVE_HOLDOUT_QUERIES = [
@@ -44,7 +44,7 @@ def run_retrieval_benchmark(data_dir: Path | None = None) -> Dict[str, Any]:
 
     temp_dir = tempfile.mkdtemp(prefix="tmem_retrieval_eval_")
     try:
-        store = DualTierMemoryStore(workspace_root=temp_dir)
+        store = ProjectMemoryStore(workspace_root=temp_dir)
         adapter = SweBenchAdapter()
         slicer = BackwardTraceSlicer()
 

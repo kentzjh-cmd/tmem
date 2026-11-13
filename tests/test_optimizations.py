@@ -49,7 +49,7 @@ class TestPragmaticOptimizations(unittest.TestCase):
         """Verify that a single-file edit-and-test with no error repair is flagged as trivial."""
         pb = TracePlaybook(
             trace_id="tr_trivial_01",
-            agent_source="agy",
+            agent_source="dsh",
             scope="project",
             created_at="2026-11-12T00:00:00Z",
             touched_files=["lib/calc.py"],
@@ -72,7 +72,7 @@ class TestPragmaticOptimizations(unittest.TestCase):
         # Multi-file
         pb_multi = TracePlaybook(
             trace_id="tr_multi_01",
-            agent_source="agy",
+            agent_source="dsh",
             scope="project",
             created_at="2026-11-12T00:00:00Z",
             touched_files=["lib/a.py", "lib/b.py"],
@@ -88,7 +88,7 @@ class TestPragmaticOptimizations(unittest.TestCase):
         # L2 repair
         pb_repair = TracePlaybook(
             trace_id="tr_repair_01",
-            agent_source="agy",
+            agent_source="dsh",
             scope="project",
             created_at="2026-11-12T00:00:00Z",
             touched_files=["lib/calc.py"],
@@ -166,7 +166,7 @@ class TestPragmaticOptimizations(unittest.TestCase):
 
         session = ParsedSession(
             session_id="sess_boundary_01",
-            agent_name="agy",
+            agent_name="dsh",
             workspace_root=str(self.workspace),
             user_intents=["Update run in target.py"],
             actions=[
@@ -279,7 +279,7 @@ class TestPragmaticOptimizations(unittest.TestCase):
             ),
         ]
         session = ParsedSession(
-            agent_name="agy",
+            agent_name="dsh",
             session_id="test_sess_01",
             workspace_root=str(self.workspace),
             actions=actions,
@@ -361,7 +361,7 @@ class TestPragmaticOptimizations(unittest.TestCase):
             ),
         ]
         session = ParsedSession(
-            agent_name="agy",
+            agent_name="dsh",
             session_id="test_conf_sess",
             workspace_root=str(self.workspace),
             user_intents=["Implement add function in logic.py"],
@@ -391,7 +391,7 @@ class TestPragmaticOptimizations(unittest.TestCase):
             ),
         ]
         session = ParsedSession(
-            agent_name="agy",
+            agent_name="dsh",
             session_id="test_meta_sess",
             workspace_root=str(self.workspace),
             user_intents=["务实的评价下本项目，客观甚至刻薄的给与评分", "根据反馈优化项目"],
@@ -420,7 +420,7 @@ class TestPragmaticOptimizations(unittest.TestCase):
         )
         pb = TracePlaybook(
             trace_id="tr_multi_cmd",
-            agent_source="agy",
+            agent_source="dsh",
             l2_causal_repairs=[repair],
         )
         md = render_memories_markdown([pb], str(self.workspace))
@@ -470,7 +470,7 @@ class TestPragmaticOptimizations(unittest.TestCase):
             ),
         ]
         session = ParsedSession(
-            agent_name="agy",
+            agent_name="dsh",
             session_id="sess_diff_false_l2",
             workspace_root=str(self.workspace),
             user_intents=["Compare and fix src/a.py"],
@@ -484,7 +484,7 @@ class TestPragmaticOptimizations(unittest.TestCase):
         """Phase 2: `test_a.py` fail -> `test_b.py` pass must be rejected; same/broader runner passes are accepted."""
         # Case A: Mismatched test file target (test_a.py -> test_b.py)
         mismatched = ParsedSession(
-            agent_name="agy",
+            agent_name="dsh",
             session_id="sess_mismatch",
             workspace_root=str(self.workspace),
             user_intents=["Fix src/a.py test failure"],
@@ -519,7 +519,7 @@ class TestPragmaticOptimizations(unittest.TestCase):
 
         # Case B: Same runner broader suite (pytest tests/test_a.py -> pytest)
         broader = ParsedSession(
-            agent_name="agy",
+            agent_name="dsh",
             session_id="sess_broader",
             workspace_root=str(self.workspace),
             user_intents=["Fix src/a.py test failure"],
@@ -586,7 +586,7 @@ class TestPragmaticOptimizations(unittest.TestCase):
             ActionNode(step_idx=3, kind=ActionKind.ENV_EXEC, tool_name="run_command", command="pytest", exit_code=0),
         ]
         session = ParsedSession(
-            agent_name="agy",
+            agent_name="dsh",
             session_id="sess_ast_guard",
             workspace_root=str(self.workspace),
             user_intents=["Update tax rate in engine"],

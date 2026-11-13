@@ -27,7 +27,7 @@ from tmem.models import (
     TracePlaybook,
 )
 from tmem.slicer import BackwardTraceSlicer, extract_compact_diff_summary
-from tmem.store import DualTierMemoryStore
+from tmem.store import ProjectMemoryStore
 
 
 class TestIntentGraph(unittest.TestCase):
@@ -188,7 +188,7 @@ class TestIntentGraph(unittest.TestCase):
         """Test that legacy v1/v2 playbook JSONs with removed fields load cleanly."""
         v2_data = {
             "trace_id": "tr_legacy_001",
-            "agent_source": "agy",
+            "agent_source": "dsh",
             "scope": "project",
             "created_at": "2026-11-10T10:00:00Z",
             "schema_version": 2,
@@ -228,7 +228,7 @@ class TestIntentGraph(unittest.TestCase):
 
         playbook = TracePlaybook(
             trace_id="tr_partial_001",
-            agent_source="agy",
+            agent_source="dsh",
             scope="project",
             created_at="2026-11-11T12:00:00Z",
             problem_intent="Fix dual file validation bug",
@@ -262,11 +262,11 @@ class TestIntentGraph(unittest.TestCase):
 
     def test_fts5_indexing_of_graph_semantics_and_trace_links(self) -> None:
         """Test that FTS5 indexes rationale/why/requirements and trace_links enables symbol linking."""
-        store = DualTierMemoryStore(workspace_root=str(self.workspace))
+        store = ProjectMemoryStore(workspace_root=str(self.workspace))
 
         playbook = TracePlaybook(
             trace_id="tr_graph_indexed",
-            agent_source="agy",
+            agent_source="dsh",
             scope="project",
             created_at="2026-11-11T12:00:00Z",
             problem_intent="Fix authentication session refresh token race condition",
@@ -343,7 +343,7 @@ class TestIntentGraph(unittest.TestCase):
         )
 
         session = ParsedSession(
-            agent_name="agy",
+            agent_name="dsh",
             session_id="sess_multi_mut",
             workspace_root=str(self.workspace),
             user_intents=["Fix signature verification in src/auth.py"],
@@ -362,7 +362,7 @@ class TestIntentGraph(unittest.TestCase):
 
     def test_sqlite_orphan_cleanup_and_gc_db_sync(self) -> None:
         """Verify deleted JSON traces are purged from SQLite and GC updates SQLite confidence/status."""
-        store = DualTierMemoryStore(workspace_root=str(self.workspace))
+        store = ProjectMemoryStore(workspace_root=str(self.workspace))
         pb = TracePlaybook(
             trace_id="tr_orphan_check",
             agent_source="dsh",
@@ -426,7 +426,7 @@ class TestIntentGraph(unittest.TestCase):
         # Comment mention must NOT pass AST check
         pb_comment = TracePlaybook(
             trace_id="tr_ast_comment",
-            agent_source="agy",
+            agent_source="dsh",
             scope="project",
             created_at="2026-11-11T12:00:00Z",
             problem_intent="Legacy handler",
@@ -461,7 +461,8 @@ class TestIntentGraph(unittest.TestCase):
         temp_dir = tempfile.mkdtemp(prefix="tmem_init_test_")
         try:
             info = install_invisible_integration(temp_dir, ["dsh"])
-            self.assertFalse((Path(temp_dir) / ".agents" / "plugins" / "tmem").exists())
+            self.assertFalse((Path(temp_dir) / ".agents").exists())
+            self.assertTrue((Path(temp_dir) / ".dsh" / "skills" / "tmem" / "SKILL.md").exists())
 
             dsh_patch = Path(temp_dir) / ".dsh" / "tmem.patch.yml"
             self.assertTrue(dsh_patch.exists())

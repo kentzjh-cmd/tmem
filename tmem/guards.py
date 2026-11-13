@@ -13,8 +13,9 @@ import ast
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Set, Tuple
+from typing import List, Optional, Set, Tuple
 
+from tmem.ast_parser import check_ts_symbol_present
 from tmem.models import GuardProbe, TracePlaybook
 
 
@@ -56,6 +57,20 @@ def _check_symbol_in_python_ast(content: str, expected_symbol: str) -> bool:
     return False
 
 
+def check_symbol_in_ast(content: str, file_path: Optional[str], expected_symbol: str) -> bool:
+    """
+    Verify symbol presence in `content`:
+    - `.py` files use Python stdlib `ast`.
+    - Other languages use `tree-sitter` if installed, else regex word-boundary fallback.
+    """
+    if file_path and file_path.lower().endswith(".py"):
+        return _check_symbol_in_python_ast(content, expected_symbol)
+    ts_res = check_ts_symbol_present(content, file_path, expected_symbol)
+    if ts_res is not None:
+        return ts_res
+    return bool(re.search(rf"\b{re.escape(expected_symbol)}\b", content))
+
+
 @dataclass
 class EvaluatedPlaybook:
     playbook: TracePlaybook
@@ -83,11 +98,7 @@ def evaluate_guards(playbook: TracePlaybook, workspace_root: str) -> EvaluatedPl
             else:
                 try:
                     content = target_path.read_text(encoding="utf-8", errors="ignore")
-                    is_py = target_path.suffix.lower() == ".py"
-                    if is_py:
-                        present = _check_symbol_in_python_ast(content, g.expected)
-                    else:
-                        present = bool(re.search(rf"\b{re.escape(g.expected)}\b", content))
+                    present = check_symbol_in_ast(content, g.target, g.expected)
                     if not present:
                         failed.append(f"missing_symbol:{g.target}#{g.expected}")
                 except Exception:

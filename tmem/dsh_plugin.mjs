@@ -176,8 +176,9 @@ export function apply(ctx, config = {}) {
     "edit_file",
   ]);
   const SHELL_TOOLS = new Set(["bash", "pwsh", "run_command"]);
+  const MAX_COCHANGE_WATCH_STEPS = 3;
   const seenPreStepInputBySession = new Map();
-  const activeCochangeWatch = new Set();
+  const activeCochangeWatch = new Map();
 
   // 1. Register `/tmem` slash command whenever `dsh-commands` service is available
   const registerSlashCommand = (commandService) => {
@@ -333,16 +334,25 @@ export function apply(ctx, config = {}) {
     const toolName = String(exec?.name || "");
 
     // Hot-path optimization: skip Python cold-start on routine read/search calls unless an error
-    // occurred or an L1 co-change watch is active for this session.
-    const shouldInvokePython =
+    // occurred or a bounded L1 co-change watch (TTL <= 3 steps) is active for this session.
+    const watchStepsLeft = activeCochangeWatch.get(sessionId) || 0;
+    const isDirectAction =
       isError ||
       (exitCode !== null && exitCode !== 0) ||
       MUTATE_TOOLS.has(toolName) ||
-      SHELL_TOOLS.has(toolName) ||
-      activeCochangeWatch.has(sessionId);
+      SHELL_TOOLS.has(toolName);
+    const shouldInvokePython = isDirectAction || watchStepsLeft > 0;
 
     if (!shouldInvokePython) {
       return downstream;
+    }
+
+    if (!isDirectAction && watchStepsLeft > 0) {
+      if (watchStepsLeft <= 1) {
+        activeCochangeWatch.delete(sessionId);
+      } else {
+        activeCochangeWatch.set(sessionId, watchStepsLeft - 1);
+      }
     }
 
     const out = await invokeTmemHook(
@@ -363,7 +373,10 @@ export function apply(ctx, config = {}) {
     if (out && typeof out.additionalContext === "string" && out.additionalContext.trim()) {
       const ctxText = out.additionalContext.trim();
       if (ctxText.includes("<tmem_cochange_hint>")) {
-        activeCochangeWatch.add(sessionId);
+        if (activeCochangeWatch.size > 64) {
+          activeCochangeWatch.clear();
+        }
+        activeCochangeWatch.set(sessionId, MAX_COCHANGE_WATCH_STEPS);
       }
       if (ctxText.includes("<tmem_milestone_reached>")) {
         activeCochangeWatch.delete(sessionId);

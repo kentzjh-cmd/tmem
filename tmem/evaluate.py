@@ -25,7 +25,7 @@ from tmem.adapters.base import ParsedSession
 from tmem.models import ActionKind, TracePlaybook
 from tmem.raw_storage import RawTraceStore, format_raw_trace_replay
 from tmem.slicer import BackwardTraceSlicer
-from tmem.store import DualTierMemoryStore
+from tmem.store import ProjectMemoryStore
 
 
 @dataclass
@@ -109,7 +109,7 @@ class BenchmarkEvaluator:
 
         temp_dir = tempfile.mkdtemp(prefix="tmem_bench_")
         try:
-            store = DualTierMemoryStore(workspace_root=temp_dir)
+            store = ProjectMemoryStore(workspace_root=temp_dir)
             results: List[TrajectoryEvaluationResult] = []
             progressive_results: List[ProgressiveDisclosureResult] = []
 
@@ -185,7 +185,7 @@ class BenchmarkEvaluator:
         self,
         file_path: Path,
         temp_workspace: str,
-        store: DualTierMemoryStore,
+        store: ProjectMemoryStore,
     ) -> Tuple[
         TrajectoryEvaluationResult,
         ProgressiveDisclosureResult,
