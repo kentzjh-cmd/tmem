@@ -1,0 +1,2227 @@
+{
+  "total_trajectories": 50,
+  "pairwise_llm_judge": {
+    "B1_tmem_wins": 49,
+    "B0_baseline_wins": 1,
+    "ties": 0,
+    "B1_win_rate_pct": 98.0
+  },
+  "mean_llm_scores": {
+    "B0_baseline": {
+      "completeness": 3.5,
+      "precision_denoising": 3.86,
+      "temporal_causality": 3.36,
+      "overall": 3.2
+    },
+    "B1_tmem": {
+      "completeness": 4.9,
+      "precision_denoising": 4.78,
+      "temporal_causality": 4.92,
+      "overall": 4.8
+    }
+  },
+  "gold_50_slicing_fidelity": {
+    "B0_baseline": {
+      "p": 81.1,
+      "r": 66.5,
+      "f1": 71.4
+    },
+    "B1_tmem": {
+      "p": 93.6,
+      "r": 95.0,
+      "f1": 93.4
+    }
+  },
+  "cases": [
+    {
+      "instance_id": "astropy__astropy-14182",
+      "source_group": "original_25",
+      "raw_steps": 33,
+      "gold_steps": 17,
+      "b0": {
+        "steps": [
+          6,
+          7,
+          8,
+          10,
+          11,
+          12,
+          14,
+          16,
+          18,
+          20,
+          22,
+          23,
+          24,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31
+        ],
+        "p": 84.2,
+        "r": 94.1,
+        "f1": 88.9,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 2,
+          "temporal_causality": 3,
+          "overall": 3
+        }
+      },
+      "b1": {
+        "steps": [
+          5,
+          6,
+          7,
+          8,
+          12,
+          14,
+          16,
+          18,
+          20,
+          22,
+          23,
+          24,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31
+        ],
+        "p": 94.4,
+        "r": 100.0,
+        "f1": 97.1,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 4,
+          "temporal_causality": 5,
+          "overall": 4
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option B preserves the required pre-mutation READ (step 5) and cleanly filters out the failed edit retries (steps 10 and 11), whereas Option A omits step 5 and retains the rejected edits (10, 11). Both include one intermediate scratch run (step 27)."
+    },
+    {
+      "instance_id": "astropy__astropy-14365",
+      "source_group": "original_25",
+      "raw_steps": 10,
+      "gold_steps": 3,
+      "b0": {
+        "steps": [
+          6,
+          7,
+          8
+        ],
+        "p": 66.7,
+        "r": 66.7,
+        "f1": 66.7,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 3,
+          "temporal_causality": 3,
+          "overall": 3
+        }
+      },
+      "b1": {
+        "steps": [
+          5,
+          7,
+          8
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option A matches the exact minimal critical path [5, 7, 8], whereas Option B omits the pre-mutation READ (step 5) and includes the failed edit retry (step 6, exit_code=1)."
+    },
+    {
+      "instance_id": "django__django-10914",
+      "source_group": "original_25",
+      "raw_steps": 8,
+      "gold_steps": 4,
+      "b0": {
+        "steps": [
+          4,
+          7
+        ],
+        "p": 100.0,
+        "r": 50.0,
+        "f1": 66.7,
+        "llm_score": {
+          "completeness": 3,
+          "precision_denoising": 5,
+          "temporal_causality": 3,
+          "overall": 3
+        }
+      },
+      "b1": {
+        "steps": [
+          2,
+          4,
+          6,
+          7
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option A matches the exact critical path [2, 4, 6, 7] including both pre-mutation READs before their respective edits, whereas Option B drops both pre-mutation READs (2, 6)."
+    },
+    {
+      "instance_id": "django__django-10924",
+      "source_group": "original_25",
+      "raw_steps": 22,
+      "gold_steps": 4,
+      "b0": {
+        "steps": [
+          5,
+          6,
+          7,
+          8,
+          9,
+          20
+        ],
+        "p": 50.0,
+        "r": 75.0,
+        "f1": 60.0,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 2,
+          "temporal_causality": 3,
+          "overall": 3
+        }
+      },
+      "b1": {
+        "steps": [
+          2,
+          5,
+          9,
+          20
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option A matches the exact critical path [2, 5, 9, 20], whereas Option B omits the pre-mutation READ (2) and retains three rejected edit retries (6, 7, 8 with exit_code=1)."
+    },
+    {
+      "instance_id": "django__django-11001",
+      "source_group": "original_25",
+      "raw_steps": 16,
+      "gold_steps": 2,
+      "b0": {
+        "steps": [
+          8,
+          14
+        ],
+        "p": 50.0,
+        "r": 50.0,
+        "f1": 50.0,
+        "llm_score": {
+          "completeness": 3,
+          "precision_denoising": 4,
+          "temporal_causality": 3,
+          "overall": 3
+        }
+      },
+      "b1": {
+        "steps": [
+          8,
+          10,
+          14
+        ],
+        "p": 66.7,
+        "r": 100.0,
+        "f1": 80.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 4,
+          "temporal_causality": 5,
+          "overall": 4
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option B preserves the essential pre-mutation READ (10) before the permanent edit (14), while Option A omits step 10. Both unnecessarily include the pre-edit scratch run (8)."
+    },
+    {
+      "instance_id": "django__django-11019",
+      "source_group": "original_25",
+      "raw_steps": 17,
+      "gold_steps": 5,
+      "b0": {
+        "steps": [
+          11,
+          13,
+          14,
+          15
+        ],
+        "p": 100.0,
+        "r": 80.0,
+        "f1": 88.9,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 5,
+          "temporal_causality": 4,
+          "overall": 4
+        }
+      },
+      "b1": {
+        "steps": [
+          8,
+          11,
+          13,
+          14,
+          15
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option B matches the exact critical path [8, 11, 13, 14, 15], whereas Option A omits the pre-mutation READ (step 8)."
+    },
+    {
+      "instance_id": "django__django-11039",
+      "source_group": "original_25",
+      "raw_steps": 31,
+      "gold_steps": 2,
+      "b0": {
+        "steps": [
+          3
+        ],
+        "p": 100.0,
+        "r": 50.0,
+        "f1": 66.7,
+        "llm_score": {
+          "completeness": 3,
+          "precision_denoising": 5,
+          "temporal_causality": 3,
+          "overall": 3
+        }
+      },
+      "b1": {
+        "steps": [
+          2,
+          3
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option B matches the exact critical path [2, 3] including the pre-mutation READ before the permanent edit, whereas Option A omits step 2."
+    },
+    {
+      "instance_id": "matplotlib__matplotlib-23913",
+      "source_group": "original_25",
+      "raw_steps": 30,
+      "gold_steps": 3,
+      "b0": {
+        "steps": [
+          6,
+          15
+        ],
+        "p": 100.0,
+        "r": 66.7,
+        "f1": 80.0,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 5,
+          "temporal_causality": 4,
+          "overall": 4
+        }
+      },
+      "b1": {
+        "steps": [
+          2,
+          6,
+          15
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option A matches the exact critical path [2, 6, 15], whereas Option B omits the pre-mutation READ (step 2)."
+    },
+    {
+      "instance_id": "matplotlib__matplotlib-23964",
+      "source_group": "original_25",
+      "raw_steps": 8,
+      "gold_steps": 3,
+      "b0": {
+        "steps": [
+          5,
+          6
+        ],
+        "p": 100.0,
+        "r": 66.7,
+        "f1": 80.0,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 5,
+          "temporal_causality": 4,
+          "overall": 4
+        }
+      },
+      "b1": {
+        "steps": [
+          4,
+          5,
+          6
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option A matches the exact critical path [4, 5, 6], whereas Option B omits the pre-mutation READ (step 4)."
+    },
+    {
+      "instance_id": "matplotlib__matplotlib-24149",
+      "source_group": "original_25",
+      "raw_steps": 12,
+      "gold_steps": 3,
+      "b0": {
+        "steps": [
+          9,
+          10
+        ],
+        "p": 100.0,
+        "r": 66.7,
+        "f1": 80.0,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 5,
+          "temporal_causality": 4,
+          "overall": 4
+        }
+      },
+      "b1": {
+        "steps": [
+          6,
+          9,
+          10
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option A matches the exact critical path [6, 9, 10], whereas Option B omits the pre-mutation READ (step 6)."
+    },
+    {
+      "instance_id": "psf__requests-2148",
+      "source_group": "original_25",
+      "raw_steps": 13,
+      "gold_steps": 3,
+      "b0": {
+        "steps": [
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12
+        ],
+        "p": 28.6,
+        "r": 66.7,
+        "f1": 40.0,
+        "llm_score": {
+          "completeness": 3,
+          "precision_denoising": 1,
+          "temporal_causality": 3,
+          "overall": 2
+        }
+      },
+      "b1": {
+        "steps": [
+          2,
+          7,
+          12
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option A matches the exact minimal critical path [2, 7, 12], preserving the pre-mutation READ and successful edits while filtering all failed retries. Option B omits the initial READ (step 2) and retains five failed exit_code=1 edit retries (steps 6, 8-11)."
+    },
+    {
+      "instance_id": "psf__requests-2674",
+      "source_group": "original_25",
+      "raw_steps": 33,
+      "gold_steps": 3,
+      "b0": {
+        "steps": [
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32
+        ],
+        "p": 7.7,
+        "r": 33.3,
+        "f1": 12.5,
+        "llm_score": {
+          "completeness": 3,
+          "precision_denoising": 1,
+          "temporal_causality": 3,
+          "overall": 2
+        }
+      },
+      "b1": {
+        "steps": [
+          12,
+          30
+        ],
+        "p": 100.0,
+        "r": 66.7,
+        "f1": 80.0,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option B preserves the target pre-mutation READ (step 12) and the sole successful MUTATE (step 30) with zero noise (only omitting dependency READ 18). Option A omits all READs and retains twelve failed exit_code=1 MUTATE retries (steps 20-29, 31-32)."
+    },
+    {
+      "instance_id": "pydata__xarray-3364",
+      "source_group": "original_25",
+      "raw_steps": 31,
+      "gold_steps": 7,
+      "b0": {
+        "steps": [
+          9,
+          11,
+          12,
+          13,
+          16,
+          21,
+          22,
+          23,
+          25,
+          26,
+          27
+        ],
+        "p": 54.5,
+        "r": 85.7,
+        "f1": 66.7,
+        "llm_score": {
+          "completeness": 3,
+          "precision_denoising": 1,
+          "temporal_causality": 3,
+          "overall": 2
+        }
+      },
+      "b1": {
+        "steps": [
+          5,
+          12,
+          13,
+          16,
+          23,
+          26,
+          27
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option A matches the exact minimal critical path [5, 12, 13, 16, 23, 26, 27]. Option B drops the pre-mutation READ (step 5) and retains five failed exit_code=1 MUTATE retries (steps 9, 11, 21, 22, 25)."
+    },
+    {
+      "instance_id": "pydata__xarray-4094",
+      "source_group": "original_25",
+      "raw_steps": 23,
+      "gold_steps": 5,
+      "b0": {
+        "steps": [
+          10,
+          13,
+          21
+        ],
+        "p": 100.0,
+        "r": 60.0,
+        "f1": 75.0,
+        "llm_score": {
+          "completeness": 3,
+          "precision_denoising": 5,
+          "temporal_causality": 4,
+          "overall": 4
+        }
+      },
+      "b1": {
+        "steps": [
+          5,
+          10,
+          13,
+          21
+        ],
+        "p": 100.0,
+        "r": 80.0,
+        "f1": 88.9,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option A preserves the essential pre-mutation target READ (step 5) alongside all three successful permanent MUTATEs (10, 13, 21) with zero noise, only missing the dependency READ (step 15). Option B omits all READs and starts directly with mutations."
+    },
+    {
+      "instance_id": "pylint-dev__pylint-5859",
+      "source_group": "original_25",
+      "raw_steps": 13,
+      "gold_steps": 3,
+      "b0": {
+        "steps": [
+          10,
+          11
+        ],
+        "p": 100.0,
+        "r": 66.7,
+        "f1": 80.0,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 5,
+          "temporal_causality": 4,
+          "overall": 4
+        }
+      },
+      "b1": {
+        "steps": [
+          7,
+          10,
+          11
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option B captures the complete READ -> MUTATE -> VERIFY critical path [7, 10, 11]. Option A omits the pre-mutation target READ (step 7)."
+    },
+    {
+      "instance_id": "pylint-dev__pylint-7080",
+      "source_group": "original_25",
+      "raw_steps": 10,
+      "gold_steps": 2,
+      "b0": {
+        "steps": [
+          9
+        ],
+        "p": 100.0,
+        "r": 50.0,
+        "f1": 66.7,
+        "llm_score": {
+          "completeness": 3,
+          "precision_denoising": 5,
+          "temporal_causality": 3,
+          "overall": 4
+        }
+      },
+      "b1": {
+        "steps": [
+          8,
+          9
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option B matches the exact critical path [8, 9] preserving the pre-mutation READ and permanent MUTATE. Option A omits the pre-mutation READ (step 8)."
+    },
+    {
+      "instance_id": "pytest-dev__pytest-5221",
+      "source_group": "original_25",
+      "raw_steps": 14,
+      "gold_steps": 3,
+      "b0": {
+        "steps": [
+          8,
+          13
+        ],
+        "p": 50.0,
+        "r": 33.3,
+        "f1": 40.0,
+        "llm_score": {
+          "completeness": 2,
+          "precision_denoising": 2,
+          "temporal_causality": 3,
+          "overall": 2
+        }
+      },
+      "b1": {
+        "steps": [
+          5,
+          8,
+          11
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option A matches the exact critical path [5, 8, 11] with READ, MUTATE, and verification run. Option B drops both the pre-mutation READ (step 5) and verification run (step 11) while retaining an exploratory ls command (step 13)."
+    },
+    {
+      "instance_id": "pytest-dev__pytest-7168",
+      "source_group": "original_25",
+      "raw_steps": 8,
+      "gold_steps": 0,
+      "b0": {
+        "steps": [
+          1,
+          2,
+          5,
+          6
+        ],
+        "p": 0.0,
+        "r": 0.0,
+        "f1": 0.0,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 1,
+          "temporal_causality": 3,
+          "overall": 2
+        }
+      },
+      "b1": {
+        "steps": [],
+        "p": 1.0,
+        "r": 1.0,
+        "f1": 1.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option B ([]) correctly prunes the deleted scratch file test_repr.py (removed at step 7), avoiding storing a spurious non-fix trajectory in memory. Option A ([1, 2, 5, 6]) retains deleted scratch mutations and a scratch-only test run while also omitting the step 4 failure that triggered step 5."
+    },
+    {
+      "instance_id": "scikit-learn__scikit-learn-10508",
+      "source_group": "original_25",
+      "raw_steps": 11,
+      "gold_steps": 3,
+      "b0": {
+        "steps": [
+          8,
+          9
+        ],
+        "p": 100.0,
+        "r": 66.7,
+        "f1": 80.0,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 5,
+          "temporal_causality": 4,
+          "overall": 4
+        }
+      },
+      "b1": {
+        "steps": [
+          5,
+          8,
+          9
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option B matches the exact critical path [5, 8, 9] with pre-mutation READ, MUTATE, and verification run. Option A omits the pre-mutation target READ (step 5)."
+    },
+    {
+      "instance_id": "scikit-learn__scikit-learn-11040",
+      "source_group": "original_25",
+      "raw_steps": 34,
+      "gold_steps": 4,
+      "b0": {
+        "steps": [
+          14,
+          15,
+          16,
+          23
+        ],
+        "p": 50.0,
+        "r": 50.0,
+        "f1": 50.0,
+        "llm_score": {
+          "completeness": 3,
+          "precision_denoising": 2,
+          "temporal_causality": 3,
+          "overall": 2
+        }
+      },
+      "b1": {
+        "steps": [
+          5,
+          13,
+          16,
+          23
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option A matches the exact critical path [5, 13, 16, 23], preserving both pre-mutation target READs and both successful MUTATEs while removing failed retries and post-edit dangling reads. Option B drops both pre-mutation READs (steps 5, 13) and retains two failed exit_code=1 edit retries (steps 14, 15)."
+    },
+    {
+      "instance_id": "sphinx-doc__sphinx-8273",
+      "source_group": "original_25",
+      "raw_steps": 9,
+      "gold_steps": 2,
+      "b0": {
+        "steps": [
+          6,
+          7,
+          8
+        ],
+        "p": 33.3,
+        "r": 50.0,
+        "f1": 40.0,
+        "llm_score": {
+          "completeness": 3,
+          "precision_denoising": 1,
+          "temporal_causality": 3,
+          "overall": 2
+        }
+      },
+      "b1": {
+        "steps": [
+          5,
+          8
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option B exactly matches the minimal critical path [5, 8], preserving the pre-mutation target READ and successful MUTATE while pruning the two rejected exit_code=1 MUTATEs (6, 7) that Option A erroneously retains."
+    },
+    {
+      "instance_id": "sympy__sympy-22005",
+      "source_group": "original_25",
+      "raw_steps": 12,
+      "gold_steps": 3,
+      "b0": {
+        "steps": [
+          6,
+          7
+        ],
+        "p": 100.0,
+        "r": 66.7,
+        "f1": 80.0,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 5,
+          "temporal_causality": 4,
+          "overall": 4
+        }
+      },
+      "b1": {
+        "steps": [
+          5,
+          6,
+          7,
+          9,
+          11
+        ],
+        "p": 60.0,
+        "r": 100.0,
+        "f1": 75.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 3,
+          "temporal_causality": 3,
+          "overall": 3
+        }
+      },
+      "winner": "B0_baseline",
+      "judge_reason": "Although Option A misses pre-mutation READ 5, it is cleanly denoised to the permanent edit and sole verification [6, 7]. Option B retains steps 9 and 11 on test_polysys.py, which is outside perm_target_files and leaves the trace ending on an unverified trailing mutation after step 7."
+    },
+    {
+      "instance_id": "dsh_e2e_session",
+      "source_group": "original_25",
+      "raw_steps": 7,
+      "gold_steps": 5,
+      "b0": {
+        "steps": [
+          4,
+          6,
+          8
+        ],
+        "p": 66.7,
+        "r": 40.0,
+        "f1": 50.0,
+        "llm_score": {
+          "completeness": 2,
+          "precision_denoising": 3,
+          "temporal_causality": 2,
+          "overall": 2
+        }
+      },
+      "b1": {
+        "steps": [
+          4,
+          6,
+          7
+        ],
+        "p": 100.0,
+        "r": 60.0,
+        "f1": 75.0,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 5,
+          "temporal_causality": 4,
+          "overall": 4
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option A preserves both permanent mutations and the final passing unittest verification gate (7) with zero noise, whereas Option B drops the verification gate (7) and keeps exploratory git status (8)."
+    },
+    {
+      "instance_id": "dsh_long_lifecycle_session",
+      "source_group": "original_25",
+      "raw_steps": 21,
+      "gold_steps": 10,
+      "b0": {
+        "steps": [
+          9,
+          10,
+          14,
+          16,
+          21,
+          22,
+          26
+        ],
+        "p": 85.7,
+        "r": 60.0,
+        "f1": 70.6,
+        "llm_score": {
+          "completeness": 2,
+          "precision_denoising": 3,
+          "temporal_causality": 2,
+          "overall": 2
+        }
+      },
+      "b1": {
+        "steps": [
+          5,
+          9,
+          10,
+          14,
+          15,
+          16,
+          17,
+          21,
+          22,
+          23
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option A exactly matches the gold critical path, preserving ENV_INSTALL (5), all permanent mutations, the L2 error->fix->verify sequence (15-17), and final pytest gate (23). Option B omits ENV_INSTALL, all test verifications, and the L2 repair chain while keeping git status (26)."
+    },
+    {
+      "instance_id": "dsh_multiturn_complex_session",
+      "source_group": "original_25",
+      "raw_steps": 14,
+      "gold_steps": 7,
+      "b0": {
+        "steps": [
+          8,
+          10,
+          15,
+          17
+        ],
+        "p": 75.0,
+        "r": 42.9,
+        "f1": 54.5,
+        "llm_score": {
+          "completeness": 2,
+          "precision_denoising": 3,
+          "temporal_causality": 2,
+          "overall": 2
+        }
+      },
+      "b1": {
+        "steps": [
+          8,
+          10,
+          15,
+          16
+        ],
+        "p": 100.0,
+        "r": 57.1,
+        "f1": 72.7,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 5,
+          "temporal_causality": 4,
+          "overall": 4
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option B preserves all permanent mutations and the final passing unittest verification gate (16) with zero noise. Option A drops the final verification gate (16) and retains exploratory git diff --stat (17)."
+    },
+    {
+      "instance_id": "django__django-11848",
+      "source_group": "expanded_25",
+      "raw_steps": 28,
+      "gold_steps": 13,
+      "b0": {
+        "steps": [
+          6,
+          9,
+          10,
+          14,
+          15,
+          19,
+          22,
+          24,
+          26,
+          27
+        ],
+        "p": 100.0,
+        "r": 76.9,
+        "f1": 87.0,
+        "llm_score": {
+          "completeness": 3,
+          "precision_denoising": 5,
+          "temporal_causality": 3,
+          "overall": 3
+        }
+      },
+      "b1": {
+        "steps": [
+          2,
+          6,
+          7,
+          9,
+          10,
+          13,
+          14,
+          15,
+          16,
+          19,
+          22,
+          24,
+          26,
+          27
+        ],
+        "p": 92.9,
+        "r": 100.0,
+        "f1": 96.3,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 4,
+          "temporal_causality": 5,
+          "overall": 4
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option A retains pre-mutation READ 2 and both L2 error signals (13 IndentationError, 16 ValueError) explaining the subsequent multi-step repairs up to passing test 27, with only one extraneous wrong-path edit (7). Option B strips 2, 13, and 16, leaving unmotivated consecutive edits."
+    },
+    {
+      "instance_id": "django__django-12497",
+      "source_group": "expanded_25",
+      "raw_steps": 10,
+      "gold_steps": 3,
+      "b0": {
+        "steps": [
+          2,
+          6,
+          7
+        ],
+        "p": 66.7,
+        "r": 66.7,
+        "f1": 66.7,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 4,
+          "temporal_causality": 4,
+          "overall": 4
+        }
+      },
+      "b1": {
+        "steps": [
+          3,
+          6,
+          7
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option A exactly matches the gold critical path [3, 6, 7] with the direct pre-mutation target READ and both permanent edits, whereas Option B replaces the file READ (3) with an exploratory find|grep command (2)."
+    },
+    {
+      "instance_id": "django__django-12983",
+      "source_group": "expanded_25",
+      "raw_steps": 23,
+      "gold_steps": 9,
+      "b0": {
+        "steps": [
+          5,
+          6,
+          7,
+          9,
+          18,
+          19,
+          21,
+          22
+        ],
+        "p": 100.0,
+        "r": 88.9,
+        "f1": 94.1,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 5,
+          "temporal_causality": 4,
+          "overall": 4
+        }
+      },
+      "b1": {
+        "steps": [
+          2,
+          5,
+          6,
+          7,
+          9,
+          18,
+          19,
+          21,
+          22
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option A exactly matches the gold critical path [2, 5, 6, 7, 9, 18, 19, 21, 22], whereas Option B omits the pre-mutation target READ (2)."
+    },
+    {
+      "instance_id": "django__django-14016",
+      "source_group": "expanded_25",
+      "raw_steps": 22,
+      "gold_steps": 5,
+      "b0": {
+        "steps": [
+          7,
+          8,
+          9,
+          20,
+          21
+        ],
+        "p": 80.0,
+        "r": 80.0,
+        "f1": 80.0,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 3,
+          "temporal_causality": 3,
+          "overall": 3
+        }
+      },
+      "b1": {
+        "steps": [
+          6,
+          8,
+          9,
+          20,
+          21
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option B exactly matches the gold critical path [6, 8, 9, 20, 21], whereas Option A omits the pre-mutation target READ (6) and erroneously retains the failed exit_code=1 MUTATE retry (7)."
+    },
+    {
+      "instance_id": "django__django-15499",
+      "source_group": "expanded_25",
+      "raw_steps": 20,
+      "gold_steps": 6,
+      "b0": {
+        "steps": [
+          9,
+          11,
+          16,
+          18,
+          19
+        ],
+        "p": 100.0,
+        "r": 83.3,
+        "f1": 90.9,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 5,
+          "temporal_causality": 4,
+          "overall": 4
+        }
+      },
+      "b1": {
+        "steps": [
+          5,
+          9,
+          11,
+          16,
+          17,
+          18,
+          19
+        ],
+        "p": 85.7,
+        "r": 100.0,
+        "f1": 92.3,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 4,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option B preserves the crucial pre-mutation target READ (5) along with all permanent mutations and the passing verification gates (17, 18), with only minor redundancy from keeping both 17 and 18. Option A omits pre-mutation READ (5)."
+    },
+    {
+      "instance_id": "matplotlib__matplotlib-24334",
+      "source_group": "expanded_25",
+      "raw_steps": 13,
+      "gold_steps": 4,
+      "b0": {
+        "steps": [
+          5,
+          10,
+          12
+        ],
+        "p": 100.0,
+        "r": 75.0,
+        "f1": 85.7,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 5,
+          "temporal_causality": 4,
+          "overall": 4
+        }
+      },
+      "b1": {
+        "steps": [
+          2,
+          5,
+          10,
+          12
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option B matches the strict minimal critical path [2, 5, 10, 12], preserving the pre-mutation target read before editing, whereas Option A omits step 2."
+    },
+    {
+      "instance_id": "matplotlib__matplotlib-26232",
+      "source_group": "expanded_25",
+      "raw_steps": 12,
+      "gold_steps": 6,
+      "b0": {
+        "steps": [
+          5,
+          7,
+          8,
+          10,
+          11
+        ],
+        "p": 100.0,
+        "r": 83.3,
+        "f1": 90.9,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 5,
+          "temporal_causality": 4,
+          "overall": 4
+        }
+      },
+      "b1": {
+        "steps": [
+          4,
+          5,
+          7,
+          8,
+          10,
+          11
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option B exactly matches the gold critical path [4, 5, 7, 8, 10, 11] with the pre-mutation READ, while Option A omits step 4 and starts directly with a mutation."
+    },
+    {
+      "instance_id": "mwaskom__seaborn-2457",
+      "source_group": "expanded_25",
+      "raw_steps": 31,
+      "gold_steps": 8,
+      "b0": {
+        "steps": [
+          16,
+          17,
+          18,
+          19,
+          25,
+          27,
+          30
+        ],
+        "p": 85.7,
+        "r": 75.0,
+        "f1": 80.0,
+        "llm_score": {
+          "completeness": 3,
+          "precision_denoising": 3,
+          "temporal_causality": 3,
+          "overall": 3
+        }
+      },
+      "b1": {
+        "steps": [
+          8,
+          13,
+          16,
+          17,
+          18,
+          19,
+          25,
+          30
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option B matches the exact gold critical path [8, 13, 16, 17, 18, 19, 25, 30]. Option A omits both pre-mutation READs (8, 13) and retains the rejected exit_code=1 MUTATE at step 27."
+    },
+    {
+      "instance_id": "mwaskom__seaborn-3276",
+      "source_group": "expanded_25",
+      "raw_steps": 12,
+      "gold_steps": 3,
+      "b0": {
+        "steps": [
+          2,
+          11
+        ],
+        "p": 100.0,
+        "r": 66.7,
+        "f1": 80.0,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 5,
+          "temporal_causality": 4,
+          "overall": 4
+        }
+      },
+      "b1": {
+        "steps": [
+          1,
+          2,
+          9,
+          11
+        ],
+        "p": 75.0,
+        "r": 100.0,
+        "f1": 85.7,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 4,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option B preserves full Read->Mutate->Verify causality including the mandatory pre-mutation READ (step 1), with only minor redundancy from keeping both passing test runs (9, 11), whereas Option A omits step 1."
+    },
+    {
+      "instance_id": "pallets__flask-5014",
+      "source_group": "expanded_25",
+      "raw_steps": 12,
+      "gold_steps": 3,
+      "b0": {
+        "steps": [
+          6,
+          7,
+          10
+        ],
+        "p": 66.7,
+        "r": 66.7,
+        "f1": 66.7,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 3,
+          "temporal_causality": 3,
+          "overall": 3
+        }
+      },
+      "b1": {
+        "steps": [
+          3,
+          7,
+          10
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option A exactly matches the gold critical path [3, 7, 10]. Option B omits the pre-mutation READ (3) and retains the rejected exit_code=1 MUTATE (6)."
+    },
+    {
+      "instance_id": "pydata__xarray-3635",
+      "source_group": "expanded_25",
+      "raw_steps": 26,
+      "gold_steps": 5,
+      "b0": {
+        "steps": [
+          18,
+          24,
+          25
+        ],
+        "p": 100.0,
+        "r": 60.0,
+        "f1": 75.0,
+        "llm_score": {
+          "completeness": 3,
+          "precision_denoising": 5,
+          "temporal_causality": 3,
+          "overall": 3
+        }
+      },
+      "b1": {
+        "steps": [
+          15,
+          18,
+          22,
+          24,
+          25
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option B exactly matches the gold critical path [15, 18, 22, 24, 25], preserving pre-mutation READs for both modified files; Option A omits both READs (15, 22)."
+    },
+    {
+      "instance_id": "pydata__xarray-5033",
+      "source_group": "expanded_25",
+      "raw_steps": 21,
+      "gold_steps": 5,
+      "b0": {
+        "steps": [
+          10,
+          13,
+          15,
+          20
+        ],
+        "p": 100.0,
+        "r": 80.0,
+        "f1": 88.9,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 5,
+          "temporal_causality": 4,
+          "overall": 4
+        }
+      },
+      "b1": {
+        "steps": [
+          5,
+          10,
+          13,
+          15,
+          20
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option B matches the exact gold critical path [5, 10, 13, 15, 20], whereas Option A omits the pre-mutation READ (step 5)."
+    },
+    {
+      "instance_id": "pydata__xarray-6882",
+      "source_group": "expanded_25",
+      "raw_steps": 24,
+      "gold_steps": 9,
+      "b0": {
+        "steps": [
+          9,
+          10,
+          11,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23
+        ],
+        "p": 80.0,
+        "r": 88.9,
+        "f1": 84.2,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 3,
+          "temporal_causality": 3,
+          "overall": 3
+        }
+      },
+      "b1": {
+        "steps": [
+          4,
+          9,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option B matches the exact gold critical path [4, 9, 17, 18, 19, 20, 21, 22, 23]. Option A omits the pre-mutation READ (4) and keeps two rejected exit_code=1 edits (10, 11)."
+    },
+    {
+      "instance_id": "pytest-dev__pytest-5809",
+      "source_group": "expanded_25",
+      "raw_steps": 19,
+      "gold_steps": 11,
+      "b0": {
+        "steps": [
+          3,
+          6,
+          7,
+          9,
+          10,
+          13,
+          15,
+          17,
+          18
+        ],
+        "p": 100.0,
+        "r": 81.8,
+        "f1": 90.0,
+        "llm_score": {
+          "completeness": 3,
+          "precision_denoising": 5,
+          "temporal_causality": 3,
+          "overall": 3
+        }
+      },
+      "b1": {
+        "steps": [
+          2,
+          3,
+          5,
+          6,
+          7,
+          9,
+          10,
+          13,
+          15,
+          17,
+          18
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option B matches the exact gold critical path, preserving pre-mutation READs for both modified files (2, 5); Option A omits both READs."
+    },
+    {
+      "instance_id": "pytest-dev__pytest-7535",
+      "source_group": "expanded_25",
+      "raw_steps": 29,
+      "gold_steps": 7,
+      "b0": {
+        "steps": [
+          10,
+          17,
+          18,
+          20,
+          27
+        ],
+        "p": 100.0,
+        "r": 71.4,
+        "f1": 83.3,
+        "llm_score": {
+          "completeness": 3,
+          "precision_denoising": 5,
+          "temporal_causality": 3,
+          "overall": 3
+        }
+      },
+      "b1": {
+        "steps": [
+          2,
+          10,
+          17,
+          18,
+          20,
+          21
+        ],
+        "p": 100.0,
+        "r": 85.7,
+        "f1": 92.3,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 4
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option B captures 6/7 gold steps including the pre-mutation READ (2), all code/test edits (10, 17, 18, 20), and final passing pytest verification (21), missing only the shell-created changelog file (27). Option A captures step 27 but omits both the pre-mutation READ (2) and all test verification (21)."
+    },
+    {
+      "instance_id": "pytest-dev__pytest-8399",
+      "source_group": "expanded_25",
+      "raw_steps": 9,
+      "gold_steps": 3,
+      "b0": {
+        "steps": [
+          6,
+          8
+        ],
+        "p": 100.0,
+        "r": 66.7,
+        "f1": 80.0,
+        "llm_score": {
+          "completeness": 3,
+          "precision_denoising": 5,
+          "temporal_causality": 4,
+          "overall": 3
+        }
+      },
+      "b1": {
+        "steps": [
+          5,
+          6,
+          7,
+          8
+        ],
+        "p": 75.0,
+        "r": 100.0,
+        "f1": 85.7,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 4,
+          "temporal_causality": 5,
+          "overall": 4
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option B preserves the essential pre-mutation READ of src/_pytest/unittest.py (step 5) before the edit (6) and verification (7, 8), whereas Option A drops the pre-mutation READ completely. Option B's only minor redundancy is keeping both consecutive passing pytest runs (7 and 8)."
+    },
+    {
+      "instance_id": "pytest-dev__pytest-8987",
+      "source_group": "expanded_25",
+      "raw_steps": 15,
+      "gold_steps": 4,
+      "b0": {
+        "steps": [
+          12,
+          13,
+          14
+        ],
+        "p": 100.0,
+        "r": 75.0,
+        "f1": 85.7,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 5,
+          "temporal_causality": 4,
+          "overall": 4
+        }
+      },
+      "b1": {
+        "steps": [
+          11,
+          12,
+          13,
+          14
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option A exactly matches the minimal critical path [11, 12, 13, 14], preserving the pre-mutation READ on src/_pytest/mark/expression.py (11) while pruning all exploratory noise. Option B omits step 11, leaving the edits ungrounded by a prior file read."
+    },
+    {
+      "instance_id": "scikit-learn__scikit-learn-13447",
+      "source_group": "expanded_25",
+      "raw_steps": 11,
+      "gold_steps": 4,
+      "b0": {
+        "steps": [
+          8,
+          9,
+          10
+        ],
+        "p": 100.0,
+        "r": 75.0,
+        "f1": 85.7,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 5,
+          "temporal_causality": 4,
+          "overall": 4
+        }
+      },
+      "b1": {
+        "steps": [
+          6,
+          8,
+          9,
+          10
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option A matches the exact minimal critical path [6, 8, 9, 10], keeping the pre-mutation target READ (6) before permanent edits (8, 9) and passing verification (10). Option B drops the pre-mutation READ step 6."
+    },
+    {
+      "instance_id": "scikit-learn__scikit-learn-13472",
+      "source_group": "expanded_25",
+      "raw_steps": 24,
+      "gold_steps": 8,
+      "b0": {
+        "steps": [
+          9,
+          15,
+          16,
+          18,
+          19,
+          21,
+          22
+        ],
+        "p": 100.0,
+        "r": 87.5,
+        "f1": 93.3,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 5,
+          "temporal_causality": 4,
+          "overall": 4
+        }
+      },
+      "b1": {
+        "steps": [
+          5,
+          9,
+          15,
+          16,
+          18,
+          19,
+          21,
+          22
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option A matches the exact minimal critical path [5, 9, 15, 16, 18, 19, 21, 22], preserving the initial pre-mutation READ (5) and pruning the dangling post-edit READ (23) and scratch/exploratory noise. Option B omits the pre-mutation READ (5)."
+    },
+    {
+      "instance_id": "scikit-learn__scikit-learn-14053",
+      "source_group": "expanded_25",
+      "raw_steps": 19,
+      "gold_steps": 9,
+      "b0": {
+        "steps": [
+          6,
+          9,
+          10,
+          11,
+          13,
+          14,
+          17,
+          18
+        ],
+        "p": 100.0,
+        "r": 88.9,
+        "f1": 94.1,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 5,
+          "temporal_causality": 4,
+          "overall": 4
+        }
+      },
+      "b1": {
+        "steps": [
+          4,
+          6,
+          9,
+          10,
+          11,
+          13,
+          14,
+          17,
+          18
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option A captures the exact minimal critical path [4, 6, 9, 10, 11, 13, 14, 17, 18], retaining the pre-mutation READ (4) before edits and final verification. Option B omits step 4, losing the pre-edit read grounding."
+    },
+    {
+      "instance_id": "scikit-learn__scikit-learn-14141",
+      "source_group": "expanded_25",
+      "raw_steps": 11,
+      "gold_steps": 2,
+      "b0": {
+        "steps": [
+          5,
+          7
+        ],
+        "p": 50.0,
+        "r": 50.0,
+        "f1": 50.0,
+        "llm_score": {
+          "completeness": 3,
+          "precision_denoising": 3,
+          "temporal_causality": 2,
+          "overall": 2
+        }
+      },
+      "b1": {
+        "steps": [
+          3,
+          5,
+          8,
+          9,
+          10
+        ],
+        "p": 40.0,
+        "r": 100.0,
+        "f1": 57.1,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 3,
+          "temporal_causality": 5,
+          "overall": 4
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option A preserves the complete causal path [3, 5] on sklearn/utils/_show_versions.py and prunes all exploratory find/grep/goto noise, though it retains off-target ISSUE_TEMPLATE.md actions (8-10). Option B drops the crucial pre-mutation READ (3) and retains a trailing exploratory find|grep command (7) after the edit (5)."
+    },
+    {
+      "instance_id": "sympy__sympy-13761",
+      "source_group": "expanded_25",
+      "raw_steps": 8,
+      "gold_steps": 3,
+      "b0": {
+        "steps": [
+          5,
+          6,
+          7
+        ],
+        "p": 66.7,
+        "r": 66.7,
+        "f1": 66.7,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 3,
+          "temporal_causality": 3,
+          "overall": 3
+        }
+      },
+      "b1": {
+        "steps": [
+          4,
+          6,
+          7
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option A matches the exact minimal critical path [4, 6, 7], keeping the pre-mutation READ (4) and pruning the failed edit retry (5). Option B drops the pre-mutation READ (4) and erroneously retains the rejected exit_code=1 MUTATE (5)."
+    },
+    {
+      "instance_id": "sympy__sympy-16766",
+      "source_group": "expanded_25",
+      "raw_steps": 26,
+      "gold_steps": 7,
+      "b0": {
+        "steps": [
+          11,
+          12,
+          14,
+          21,
+          22,
+          25
+        ],
+        "p": 100.0,
+        "r": 85.7,
+        "f1": 92.3,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 5,
+          "temporal_causality": 4,
+          "overall": 4
+        }
+      },
+      "b1": {
+        "steps": [
+          8,
+          11,
+          12,
+          14,
+          20,
+          21,
+          22,
+          25
+        ],
+        "p": 87.5,
+        "r": 100.0,
+        "f1": 93.3,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 4,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option A preserves the initial pre-mutation READ (8) along with all permanent edits and the final passing test (25), with only a minor redundant mid-edit re-read (20). Option B drops all READ steps (both 8 and 20), leaving the edit sequence ungrounded."
+    },
+    {
+      "instance_id": "sympy__sympy-18810",
+      "source_group": "expanded_25",
+      "raw_steps": 12,
+      "gold_steps": 3,
+      "b0": {
+        "steps": [
+          7,
+          10
+        ],
+        "p": 100.0,
+        "r": 66.7,
+        "f1": 80.0,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 5,
+          "temporal_causality": 4,
+          "overall": 4
+        }
+      },
+      "b1": {
+        "steps": [
+          6,
+          7,
+          10
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option B matches the exact minimal critical path [6, 7, 10], preserving the pre-mutation READ (6), permanent edit (7), and sole verification run (10) while pruning all exploratory and scratch-file noise. Option A omits the pre-mutation READ (6)."
+    },
+    {
+      "instance_id": "sympy__sympy-19346",
+      "source_group": "expanded_25",
+      "raw_steps": 21,
+      "gold_steps": 5,
+      "b0": {
+        "steps": [
+          9,
+          10,
+          11,
+          13,
+          14,
+          19,
+          20
+        ],
+        "p": 57.1,
+        "r": 80.0,
+        "f1": 66.7,
+        "llm_score": {
+          "completeness": 4,
+          "precision_denoising": 2,
+          "temporal_causality": 3,
+          "overall": 2
+        }
+      },
+      "b1": {
+        "steps": [
+          6,
+          13,
+          14,
+          19,
+          20
+        ],
+        "p": 100.0,
+        "r": 100.0,
+        "f1": 100.0,
+        "llm_score": {
+          "completeness": 5,
+          "precision_denoising": 5,
+          "temporal_causality": 5,
+          "overall": 5
+        }
+      },
+      "winner": "B1_tmem",
+      "judge_reason": "Option A matches the exact minimal critical path [6, 13, 14, 19, 20], preserving the pre-mutation READ (6) and cleanly pruning the three rejected edit retries (9-11). Option B misses step 6 and retains all three failed exit_code=1 MUTATEs (9, 10, 11)."
+    }
+  ]
+}

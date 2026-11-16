@@ -166,8 +166,29 @@ class SweBenchAdapter(AgentAdapter):
                 # Determine exit code and error signature
                 exit_code = turn.get("exit_code")
                 if exit_code is None:
-                    # SWE-agent observations usually print exit errors or traceback
-                    if any(err in obs_str for err in ("FAILED (failures=", "ERROR: ", "Traceback (most recent call last):")):
+                    stripped_obs = obs_str.lstrip()
+                    if any(
+                        msg in obs_str
+                        for msg in (
+                            "Your proposed edit has introduced new syntax error(s)",
+                            "Not entering edit mode",
+                            "Edit failed",
+                            "No replacement was performed",
+                        )
+                    ):
+                        exit_code = 1
+                    elif stripped_obs.startswith("[File: "):
+                        # File viewer output after open/goto/successful edit may display source lines
+                        # containing literals like "Error: " or docstrings; it is not a command failure.
+                        exit_code = 0
+                    elif any(
+                        err in obs_str
+                        for err in (
+                            "FAILED (failures=",
+                            "ERROR: ",
+                            "Traceback (most recent call last):",
+                        )
+                    ):
                         exit_code = 1
                     else:
                         exit_code = 0

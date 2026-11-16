@@ -1,0 +1,864 @@
+[
+  {
+    "instance_id": "astropy__astropy-14182",
+    "source_group": "original_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/online_20/astropy__astropy-14182.traj",
+    "perm_target_files": [
+      "astropy/io/ascii/rst.py"
+    ],
+    "gold_step_indices": [
+      5,
+      6,
+      7,
+      8,
+      12,
+      14,
+      16,
+      18,
+      20,
+      22,
+      23,
+      24,
+      26,
+      28,
+      29,
+      30,
+      31
+    ],
+    "gold_rationale": "Pre-mutation READ of astropy/io/ascii/rst.py (5) followed by all successful MUTATE steps on the permanent target file (6-8, 12, 14, 16, 18, 20, 22-24, 26, 28-31). Excludes rejected edit retries (10, 11 with exit_code=1), exploratory find_file (4), exit_cost (33), scratch creation (1, 2), intermediate scratch runs (3, 9, 13, 15, 17, 19, 21, 25, 27), and the final failing verification run (32 with exit_code=1)."
+  },
+  {
+    "instance_id": "astropy__astropy-14365",
+    "source_group": "original_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/online_20/astropy__astropy-14365.traj",
+    "perm_target_files": [
+      "astropy/io/ascii/qdp.py"
+    ],
+    "gold_step_indices": [
+      5,
+      7,
+      8
+    ],
+    "gold_rationale": "Pre-mutation READ of astropy/io/ascii/qdp.py (5), successful MUTATE of the target file (7), and the sole passing post-edit verification run python reproduce_issue.py (8). Excludes pre-edit scratch steps (1-3), exploratory search_dir (4), rejected edit retry (6 with exit_code=1), rm (9), and submit (10)."
+  },
+  {
+    "instance_id": "django__django-10914",
+    "source_group": "original_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/online_20/django__django-10914.traj",
+    "perm_target_files": [
+      "django/conf/global_settings.py",
+      "docs/topics/http/file-uploads.txt"
+    ],
+    "gold_step_indices": [
+      2,
+      4,
+      6,
+      7
+    ],
+    "gold_rationale": "Pre-mutation READ and successful MUTATE for each permanent target file: django/conf/global_settings.py (2, 4) and docs/topics/http/file-uploads.txt (6, 7). Excludes exploratory search_dir/search_file (1, 3, 5) and submit (8)."
+  },
+  {
+    "instance_id": "django__django-10924",
+    "source_group": "original_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/online_20/django__django-10924.traj",
+    "perm_target_files": [
+      "django/db/models/fields/__init__.py"
+    ],
+    "gold_step_indices": [
+      2,
+      5,
+      9,
+      20
+    ],
+    "gold_rationale": "Pre-mutation READ of django/db/models/fields/__init__.py (2), successful MUTATEs on the permanent target file (5, 9), and the sole passing post-edit verification run python test_callable_path.py (20). Excludes exploratory navigation (1, 3, 4), rejected edit retries (6-8 with exit_code=1), scratch file edits and failing runs (10-19), rm (21), and submit (22)."
+  },
+  {
+    "instance_id": "django__django-11001",
+    "source_group": "original_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/online_20/django__django-11001.traj",
+    "perm_target_files": [
+      "django/db/models/sql/compiler.py"
+    ],
+    "gold_step_indices": [
+      10,
+      14
+    ],
+    "gold_rationale": "Pre-mutation READ of django/db/models/sql/compiler.py (10) and successful MUTATE of the target file (14). Excludes pre-edit scratch scripts and runs (1-8), exploratory search/goto/scroll commands (9, 11-13, 15), and submit (16), as no post-edit verification was run."
+  },
+  {
+    "instance_id": "django__django-11019",
+    "source_group": "original_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/online_20/django__django-11019.traj",
+    "perm_target_files": [
+      "django/forms/widgets.py"
+    ],
+    "gold_step_indices": [
+      8,
+      11,
+      13,
+      14,
+      15
+    ],
+    "gold_rationale": "Pre-mutation READ of django/forms/widgets.py (8), successful MUTATEs on the target file (11, 13, 14), and the sole passing post-edit verification run python reproduce_media_order.py (15). Excludes pre-edit scratch setup (1-6), exploratory navigation (7, 9, 10), intermediate failing check (12), rm (16), and submit (17)."
+  },
+  {
+    "instance_id": "django__django-11039",
+    "source_group": "original_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/online_20/django__django-11039.traj",
+    "perm_target_files": [
+      "django/core/management/commands/sqlmigrate.py"
+    ],
+    "gold_step_indices": [
+      2,
+      3
+    ],
+    "gold_rationale": "Pre-mutation READ of django/core/management/commands/sqlmigrate.py (2) and successful MUTATE on the target file (3). Excludes exploratory search_dir/goto (1, 5), the dangling READ on tests/migrations/test_commands.py (4) whose 25 edit attempts (6-30) all failed with exit_code=1, and exit_cost (31)."
+  },
+  {
+    "instance_id": "matplotlib__matplotlib-23913",
+    "source_group": "original_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/online_20/matplotlib__matplotlib-23913.traj",
+    "perm_target_files": [
+      "lib/matplotlib/legend.py"
+    ],
+    "gold_step_indices": [
+      2,
+      6,
+      15
+    ],
+    "gold_rationale": "Pre-mutation READ of lib/matplotlib/legend.py (2) and successful MUTATEs on the permanent target file (6, 15). Excludes exploratory find_file/search_file/goto/scroll (1, 3-5, 10, 12-14, 17-28), redundant target re-read (11), scratch test edits and failing runs (7-9, 16, 29), and exit_cost (30)."
+  },
+  {
+    "instance_id": "matplotlib__matplotlib-23964",
+    "source_group": "original_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/online_20/matplotlib__matplotlib-23964.traj",
+    "perm_target_files": [
+      "lib/matplotlib/backends/backend_ps.py"
+    ],
+    "gold_step_indices": [
+      4,
+      5,
+      6
+    ],
+    "gold_rationale": "Pre-mutation READ of lib/matplotlib/backends/backend_ps.py (4), successful MUTATE on the target file (5), and the sole passing post-edit verification run python reproduce_bug.py (6). Excludes pre-edit scratch steps (1-3), rm (7), and submit (8)."
+  },
+  {
+    "instance_id": "matplotlib__matplotlib-24149",
+    "source_group": "original_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/online_20/matplotlib__matplotlib-24149.traj",
+    "perm_target_files": [
+      "lib/matplotlib/axes/_axes.py"
+    ],
+    "gold_step_indices": [
+      6,
+      9,
+      10
+    ],
+    "gold_rationale": "Pre-mutation READ of lib/matplotlib/axes/_axes.py (6), successful MUTATE on the target file (9), and the sole passing post-edit verification run python reproduce_bug.py (10). Excludes pre-edit scratch steps (1-3), exploratory find_file/search_file/goto (4, 5, 7, 8), rm (11), and submit (12)."
+  },
+  {
+    "instance_id": "psf__requests-2148",
+    "source_group": "original_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/online_20/psf__requests-2148.traj",
+    "perm_target_files": [
+      "requests/packages/urllib3/response.py"
+    ],
+    "gold_step_indices": [
+      2,
+      7,
+      12
+    ],
+    "gold_rationale": "Step 2 is the pre-mutation READ on the permanent target file requests/packages/urllib3/response.py, and steps 7 and 12 are the only successful permanent MUTATEs (exit_code=0). Step 1 (find_file), steps 3-5 (scroll/goto), steps 6 and 8-11 (failed MUTATE retries with exit_code=1), and step 13 (submit) are excluded."
+  },
+  {
+    "instance_id": "psf__requests-2674",
+    "source_group": "original_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/online_20/psf__requests-2674.traj",
+    "perm_target_files": [
+      "requests/adapters.py"
+    ],
+    "gold_step_indices": [
+      12,
+      18,
+      30
+    ],
+    "gold_rationale": "Step 12 is the pre-mutation READ on requests/adapters.py, step 18 is the pre-mutation READ on the dependency file requests/exceptions.py, and step 30 is the sole successful permanent MUTATE on requests/adapters.py (exit_code=0). Scratch repro steps (1-10), search/scroll navigation (11, 13-17), redundant re-read (19), failed MUTATE retries (20-29, 31-32), and exit_cost (33) are excluded."
+  },
+  {
+    "instance_id": "pydata__xarray-3364",
+    "source_group": "original_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/online_20/pydata__xarray-3364.traj",
+    "perm_target_files": [
+      "xarray/core/concat.py"
+    ],
+    "gold_step_indices": [
+      5,
+      12,
+      13,
+      16,
+      23,
+      26,
+      27
+    ],
+    "gold_rationale": "Step 5 is the pre-mutation READ on xarray/core/concat.py; steps 12, 13, 16, 23, and 26 are all successful permanent MUTATEs (exit_code=0); step 27 is the final passing post-edit verification run (sole verification after the last edit at step 26 before rm at step 30). Scratch setup/pre-edit runs (1-3, 14, 17, 24), failed MUTATEs (9, 11, 21, 22, 25), exploratory search/scroll/re-read (4, 6-8, 10, 15, 18-20, 28-29), rm (30), and submit (31) are excluded."
+  },
+  {
+    "instance_id": "pydata__xarray-4094",
+    "source_group": "original_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/online_20/pydata__xarray-4094.traj",
+    "perm_target_files": [
+      "xarray/core/dataarray.py"
+    ],
+    "gold_step_indices": [
+      5,
+      10,
+      13,
+      15,
+      21
+    ],
+    "gold_rationale": "Step 5 is the pre-mutation READ on xarray/core/dataarray.py; steps 10, 13, and 21 are successful permanent MUTATEs on xarray/core/dataarray.py; step 15 is the pre-mutation READ on dependency file xarray/core/merge.py following the MergeError at step 14. Scratch repro steps and failing test runs (1-3, 11, 14, 22), exploratory search/navigation/re-read (4, 6-9, 12, 16-20), and submit (23) are excluded."
+  },
+  {
+    "instance_id": "pylint-dev__pylint-5859",
+    "source_group": "original_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/online_20/pylint-dev__pylint-5859.traj",
+    "perm_target_files": [
+      "pylint/checkers/misc.py"
+    ],
+    "gold_step_indices": [
+      7,
+      10,
+      11
+    ],
+    "gold_rationale": "Step 7 is the pre-mutation READ on pylint/checkers/misc.py, step 10 is the successful permanent MUTATE on pylint/checkers/misc.py, and step 11 is the sole passing post-edit verification command before test.py is removed at step 12. Scratch creation/baseline (1-3), exploratory searches/navigation (4-6, 8-9), rm (12), and submit (13) are excluded."
+  },
+  {
+    "instance_id": "pylint-dev__pylint-7080",
+    "source_group": "original_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/online_20/pylint-dev__pylint-7080.traj",
+    "perm_target_files": [
+      "pylintrc"
+    ],
+    "gold_step_indices": [
+      8,
+      9
+    ],
+    "gold_rationale": "Step 8 is the pre-mutation READ on pylintrc and step 9 is the successful permanent MUTATE on pylintrc. Exploratory find_file/navigation and unrelated examples/pyproject.toml reads (1-7) as well as submit (10) are excluded."
+  },
+  {
+    "instance_id": "pytest-dev__pytest-5221",
+    "source_group": "original_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/online_20/pytest-dev__pytest-5221.traj",
+    "perm_target_files": [
+      "src/_pytest/python.py"
+    ],
+    "gold_step_indices": [
+      5,
+      8,
+      11
+    ],
+    "gold_rationale": "Step 5 is the pre-mutation READ on src/_pytest/python.py, step 8 is the successful permanent MUTATE on src/_pytest/python.py, and step 11 is the sole passing post-edit verification run before test_fixtures_output.py is deleted at step 12. Exploratory searches/wrong-file read/goto (1-4, 6-7), deleted scratch writes (9-10), rm (12), ls (13), and submit (14) are excluded."
+  },
+  {
+    "instance_id": "pytest-dev__pytest-7168",
+    "source_group": "original_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/online_20/pytest-dev__pytest-7168.traj",
+    "perm_target_files": [
+      "test_repr.py"
+    ],
+    "gold_step_indices": [],
+    "gold_rationale": "All mutations (steps 1, 2, 5) target test_repr.py, which is deleted at step 7 (rm test_repr.py) before submit (step 8) with zero permanent repository edits. Under strict scratch pruning, deleted scratch mutations and scratch-only runs (1-6), rm (7), and submit (8) are all excluded, leaving an empty critical path []."
+  },
+  {
+    "instance_id": "scikit-learn__scikit-learn-10508",
+    "source_group": "original_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/online_20/scikit-learn__scikit-learn-10508.traj",
+    "perm_target_files": [
+      "sklearn/preprocessing/label.py"
+    ],
+    "gold_step_indices": [
+      5,
+      8,
+      9
+    ],
+    "gold_rationale": "Step 5 is the pre-mutation READ on sklearn/preprocessing/label.py, step 8 is the successful permanent MUTATE on sklearn/preprocessing/label.py, and step 9 is the sole passing post-edit verification run before reproduce_issue.py is removed at step 10. Scratch creation/pre-edit failure (1-3), exploratory search/goto (4, 6-7), rm (10), and submit (11) are excluded."
+  },
+  {
+    "instance_id": "scikit-learn__scikit-learn-11040",
+    "source_group": "original_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/online_20/scikit-learn__scikit-learn-11040.traj",
+    "perm_target_files": [
+      "sklearn/neighbors/base.py",
+      "sklearn/neighbors/unsupervised.py"
+    ],
+    "gold_step_indices": [
+      5,
+      13,
+      16,
+      23
+    ],
+    "gold_rationale": "Steps 5 and 13 are the pre-mutation READs on permanent target files sklearn/neighbors/base.py and sklearn/neighbors/unsupervised.py, and steps 16 and 23 are the successful permanent MUTATEs (exit_code=0). Scratch repro and failing runs (1-3, 17, 24), failed MUTATE retries (14, 15), exploratory search/navigation/re-read (4, 6-12, 18-22), dangling post-edit reads (25-33), and exit_cost (34) are excluded."
+  },
+  {
+    "instance_id": "sphinx-doc__sphinx-8273",
+    "source_group": "original_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/online_20/sphinx-doc__sphinx-8273.traj",
+    "perm_target_files": [
+      "sphinx/builders/manpage.py"
+    ],
+    "gold_step_indices": [
+      5,
+      8
+    ],
+    "gold_rationale": "Step 5 is the pre-mutation READ on permanent target sphinx/builders/manpage.py and step 8 is the successful MUTATE (exit_code=0). Excluded: exploratory find_file/scroll_down/doc/conf.py (1-4), rejected MUTATE retries with exit_code=1 (6, 7), and submit (9)."
+  },
+  {
+    "instance_id": "sympy__sympy-22005",
+    "source_group": "original_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/online_20/sympy__sympy-22005.traj",
+    "perm_target_files": [
+      "sympy/solvers/polysys.py"
+    ],
+    "gold_step_indices": [
+      5,
+      6,
+      7
+    ],
+    "gold_rationale": "Step 5 reads permanent target sympy/solvers/polysys.py, step 6 mutates it (exit_code=0), and step 7 (python reproduce_bug.py, exit_code=0) is the sole post-edit verification run. Excluded: scratch setup/pre-edit run (1-3), exploratory find_file/scroll_down/submit (4, 8, 10, 12), and unverified steps on test_polysys.py which is outside perm_target_files (9, 11)."
+  },
+  {
+    "instance_id": "dsh_e2e_session",
+    "source_group": "original_25",
+    "agent_format": "dsh",
+    "trajectory_file": "benchmarks/data/dsh_e2e_session.jsonl",
+    "perm_target_files": [
+      "tmem/adapters/dsh.py"
+    ],
+    "gold_step_indices": [
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "gold_rationale": "Step 3 is the pre-mutation READ of tmem/adapters/dsh.py via cat, step 4 mutates it, step 5 captures the AssertionError test failure that drives the fix in step 6, and step 7 is the passing unittest verification gate. Excluded: exploratory find (2) and git status (8)."
+  },
+  {
+    "instance_id": "dsh_long_lifecycle_session",
+    "source_group": "original_25",
+    "agent_format": "dsh",
+    "trajectory_file": "benchmarks/data/dsh_long_lifecycle_session.jsonl",
+    "perm_target_files": [
+      "src/limiter.py",
+      "src/redis_limiter.py",
+      "tests/test_limiter.py",
+      "tests/test_redis_limiter.py"
+    ],
+    "gold_step_indices": [
+      5,
+      9,
+      10,
+      14,
+      15,
+      16,
+      17,
+      21,
+      22,
+      23
+    ],
+    "gold_rationale": "Step 5 is ENV_INSTALL (pip install redis pytest); 9, 10, 14, 16, 21, 22 are permanent MUTATEs across limiter/redis_limiter and their tests; 15->16->17 is the verified L2 AssertionError->fix->verify chain; and 23 is the final passing pytest gate. Excluded: exploratory checks (2-4, 20, 24-26), deleted scratch prototype (6-8), and intermediate pytest (11)."
+  },
+  {
+    "instance_id": "dsh_multiturn_complex_session",
+    "source_group": "original_25",
+    "agent_format": "dsh",
+    "trajectory_file": "benchmarks/data/dsh_multiturn_complex_session.jsonl",
+    "perm_target_files": [
+      "tmem/adapters/base.py",
+      "tests/test_dsh_e2e.py"
+    ],
+    "gold_step_indices": [
+      4,
+      8,
+      9,
+      10,
+      11,
+      15,
+      16
+    ],
+    "gold_rationale": "Step 4 is the pre-mutation READ of tmem/adapters/base.py, 8->9->10->11 is the permanent edit and verified NameError->fix->verify chain, 15 adds the test in tests/test_dsh_e2e.py, and 16 is the final passing unittest gate. Excluded: exploratory git status/find/grep/git diff (2, 3, 14, 17) and deleted scratch_debug.py (5-7)."
+  },
+  {
+    "instance_id": "django__django-11848",
+    "source_group": "expanded_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/expanded_swe/django__django-11848.traj",
+    "perm_target_files": [
+      "django/utils/http.py",
+      "tests/utils_tests/test_http.py"
+    ],
+    "gold_step_indices": [
+      2,
+      6,
+      9,
+      10,
+      13,
+      14,
+      15,
+      16,
+      19,
+      22,
+      24,
+      26,
+      27
+    ],
+    "gold_rationale": "Step 2 reads django/utils/http.py; 6, 9, 10 mutate permanent target and test files; 13->14,15->16 captures the IndentationError->fix->verify chain; 16->19,22,24,26->27 captures the ValueError->fix->verify chain ending at passing runtests.py (27). Excluded: exploratory find/search/goto/ls/submit (1,3-5,8,12,18,21,28), wrong-path file tests/utils/test_http_date.py (7), no-op manage.py (11), post-edit read (17), and redundant intermediate ValueError runs (20,23,25)."
+  },
+  {
+    "instance_id": "django__django-12497",
+    "source_group": "expanded_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/expanded_swe/django__django-12497.traj",
+    "perm_target_files": [
+      "django/db/models/fields/related.py"
+    ],
+    "gold_step_indices": [
+      3,
+      6,
+      7
+    ],
+    "gold_rationale": "Step 3 is the pre-mutation READ of django/db/models/fields/related.py and steps 6 and 7 are the successful permanent MUTATEs. Excluded: exploratory ls/find+grep/search_file/goto (1, 2, 4, 5), dangling post-edit search/goto (8, 9), and submit (10)."
+  },
+  {
+    "instance_id": "django__django-12983",
+    "source_group": "expanded_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/expanded_swe/django__django-12983.traj",
+    "perm_target_files": [
+      "django/utils/text.py"
+    ],
+    "gold_step_indices": [
+      2,
+      5,
+      6,
+      7,
+      9,
+      18,
+      19,
+      21,
+      22
+    ],
+    "gold_rationale": "Step 2 is the pre-mutation READ of django/utils/text.py, steps 5, 6, 7, 9, 18, 19, 21 are successful permanent MUTATEs to text.py, and step 22 (python test_slugify.py, exit_code=0) is the sole passing post-edit verification. Excluded: exploratory find/search/goto/submit (1,3,4,8,10,17,23), scratch test_slugify.py edits and failed runs (11-15,20), and redundant post-edit read (16)."
+  },
+  {
+    "instance_id": "django__django-14016",
+    "source_group": "expanded_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/expanded_swe/django__django-14016.traj",
+    "perm_target_files": [
+      "django/db/models/query_utils.py"
+    ],
+    "gold_step_indices": [
+      6,
+      8,
+      9,
+      20,
+      21
+    ],
+    "gold_rationale": "Step 6 is the pre-mutation READ of django/db/models/query_utils.py, steps 8, 9, 20 are successful permanent MUTATEs (exit_code=0), and step 21 (python reproduce_issue.py, exit_code=0) is the final passing verification. Excluded: rejected MUTATE retry with exit_code=1 (7), scratch setup/edits/intermediate runs (1-3,10,12-18), exploratory find/query.py/ls (4,5,11), redundant re-read (19), and submit (22)."
+  },
+  {
+    "instance_id": "django__django-15499",
+    "source_group": "expanded_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/expanded_swe/django__django-15499.traj",
+    "perm_target_files": [
+      "django/db/migrations/operations/models.py"
+    ],
+    "gold_step_indices": [
+      5,
+      9,
+      11,
+      16,
+      18,
+      19
+    ],
+    "gold_rationale": "Step 5 is the pre-mutation READ of django/db/migrations/operations/models.py, steps 9, 11, 16, 19 are successful permanent MUTATEs, and step 18 (python tests/runtests.py migrations, exit_code=0) is the targeted passing verification gate. Excluded: exploratory find/ls/search/goto/grep/submit (1-4,6-8,10,13,15,20), no-op manage.py test (12), intermediate ImportError/bare runtests (14, 17)."
+  },
+  {
+    "instance_id": "matplotlib__matplotlib-24334",
+    "source_group": "expanded_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/expanded_swe/matplotlib__matplotlib-24334.traj",
+    "perm_target_files": [
+      "lib/matplotlib/axis.py"
+    ],
+    "gold_step_indices": [
+      2,
+      5,
+      10,
+      12
+    ],
+    "gold_rationale": "Includes pre-mutation READ on permanent target lib/matplotlib/axis.py (2), successful permanent MUTATEs (5, 10), and the sole passing verification run python test_set_ticks.py (12). Excludes exploratory find_file/search_file/goto (1, 3, 4), scratch test_set_ticks.py edits (6, 7), failing scratch run (8), redundant re-read (9), scratch read (11), and submit (13)."
+  },
+  {
+    "instance_id": "matplotlib__matplotlib-26232",
+    "source_group": "expanded_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/expanded_swe/matplotlib__matplotlib-26232.traj",
+    "perm_target_files": [
+      "lib/matplotlib/axes/_axes.py"
+    ],
+    "gold_step_indices": [
+      4,
+      5,
+      7,
+      8,
+      10,
+      11
+    ],
+    "gold_rationale": "Includes pre-mutation READ on lib/matplotlib/axes/_axes.py (4), all successful permanent MUTATEs (5, 7, 8, 10), and the final passing verification run python reproduce_bug.py (11). Excludes scratch reproduce_bug.py edits (1, 2), failing scratch runs (3, 6, 9), and submit (12)."
+  },
+  {
+    "instance_id": "mwaskom__seaborn-2457",
+    "source_group": "expanded_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/expanded_swe/mwaskom__seaborn-2457.traj",
+    "perm_target_files": [
+      "seaborn/_core.py",
+      "seaborn/relational.py"
+    ],
+    "gold_step_indices": [
+      8,
+      13,
+      16,
+      17,
+      18,
+      19,
+      25,
+      30
+    ],
+    "gold_rationale": "Includes pre-mutation READs on permanent targets seaborn/_core.py (8) and seaborn/relational.py (13), successful permanent MUTATEs (16, 17, 18, 19, 25), and final passing verification python reproduce.py (30). Excludes scratch scripts (1-6, 20-21, 26, 28-29), exploratory grep/search/goto/find (7, 9-12, 14-15, 23-24), redundant re-read (22), rejected exit_code=1 edit (27), and submit (31)."
+  },
+  {
+    "instance_id": "mwaskom__seaborn-3276",
+    "source_group": "expanded_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/expanded_swe/mwaskom__seaborn-3276.traj",
+    "perm_target_files": [
+      "seaborn/matrix.py"
+    ],
+    "gold_step_indices": [
+      1,
+      2,
+      11
+    ],
+    "gold_rationale": "Includes pre-mutation READ on seaborn/matrix.py (1), successful permanent MUTATE (2), and final targeted passing verification pytest tests/test_matrix.py (11). Excludes deleted scratch test_heatmap.py actions and cleanup (3-7), exploratory Makefile read and find (8, 10), earlier redundant make test (9), and submit (12)."
+  },
+  {
+    "instance_id": "pallets__flask-5014",
+    "source_group": "expanded_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/expanded_swe/pallets__flask-5014.traj",
+    "perm_target_files": [
+      "src/flask/blueprints.py"
+    ],
+    "gold_step_indices": [
+      3,
+      7,
+      10
+    ],
+    "gold_rationale": "Includes pre-mutation READ on src/flask/blueprints.py (3), successful permanent MUTATE (7), and sole passing verification python test_blueprint.py (10). Excludes exploratory find/grep/search/goto (1, 2, 4, 5), rejected exit_code=1 edit (6), deleted scratch test_blueprint.py edits (8, 9), rm (11), and submit (12)."
+  },
+  {
+    "instance_id": "pydata__xarray-3635",
+    "source_group": "expanded_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/expanded_swe/pydata__xarray-3635.traj",
+    "perm_target_files": [
+      "xarray/core/formatting.py",
+      "xarray/core/variable.py"
+    ],
+    "gold_step_indices": [
+      15,
+      18,
+      22,
+      24,
+      25
+    ],
+    "gold_rationale": "Includes pre-mutation READs on permanent targets xarray/core/variable.py (15) and xarray/core/formatting.py (22), their successful MUTATEs (18, 24), and the sole passing verification python test_quantile.py (25). Excludes scratch scripts (1-3, 19-21), exploratory find/grep/search/goto/scroll and non-target reads (4-14, 16-17, 23), and submit (26)."
+  },
+  {
+    "instance_id": "pydata__xarray-5033",
+    "source_group": "expanded_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/expanded_swe/pydata__xarray-5033.traj",
+    "perm_target_files": [
+      "xarray/backends/api.py"
+    ],
+    "gold_step_indices": [
+      5,
+      10,
+      13,
+      15,
+      20
+    ],
+    "gold_rationale": "Includes pre-mutation READ on xarray/backends/api.py (5) and all four successful permanent MUTATEs (10, 13, 15, 20). Excludes exploratory find_file/search_dir/search_file/goto and unedited dataset.py read (1-4, 6-9, 11-12, 14, 16-19), and submit (21)."
+  },
+  {
+    "instance_id": "pydata__xarray-6882",
+    "source_group": "expanded_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/expanded_swe/pydata__xarray-6882.traj",
+    "perm_target_files": [
+      "xarray/coding/times.py"
+    ],
+    "gold_step_indices": [
+      4,
+      9,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23
+    ],
+    "gold_rationale": "Includes pre-mutation READ on xarray/coding/times.py (4), all successful permanent MUTATEs (9, 17-22), and final passing verification python reproduce_issue.py (23). Excludes scratch script edits/intermediate runs (1-3, 12-14), exploratory search/goto (5-8, 16), rejected exit_code=1 edits (10, 11), redundant re-read (15), and submit (24)."
+  },
+  {
+    "instance_id": "pytest-dev__pytest-5809",
+    "source_group": "expanded_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/expanded_swe/pytest-dev__pytest-5809.traj",
+    "perm_target_files": [
+      "src/_pytest/pastebin.py",
+      "testing/test_pastebin.py"
+    ],
+    "gold_step_indices": [
+      2,
+      3,
+      5,
+      6,
+      7,
+      9,
+      10,
+      13,
+      15,
+      17,
+      18
+    ],
+    "gold_rationale": "Includes pre-mutation READs on permanent targets src/_pytest/pastebin.py (2) and testing/test_pastebin.py (5), all successful permanent MUTATEs (3, 6, 7, 9, 10, 13, 15, 17), and final passing verification pytest testing/test_pastebin.py -v (18). Excludes exploratory find_file (1, 4), intermediate pytest runs (8, 11, 14, 16), redundant re-read (12), and submit (19)."
+  },
+  {
+    "instance_id": "pytest-dev__pytest-7535",
+    "source_group": "expanded_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/expanded_swe/pytest-dev__pytest-7535.traj",
+    "perm_target_files": [
+      "changelog/7777.bugfix.rst",
+      "src/_pytest/_code/code.py",
+      "testing/code/test_repr_file_location.py"
+    ],
+    "gold_step_indices": [
+      2,
+      10,
+      17,
+      18,
+      20,
+      21,
+      27
+    ],
+    "gold_rationale": "Includes pre-mutation READ on src/_pytest/_code/code.py (2), successful permanent MUTATEs on code.py (10) and new test file testing/code/test_repr_file_location.py (17, 18, 20), final passing verification pytest testing/code/test_repr_file_location.py -v (21), and shell creation of permanent changelog/7777.bugfix.rst (27). Excludes exploratory find/search/goto/ls and changelog reads (1, 3-9, 12-13, 22-26), failing/intermediate pytest runs (11, 14-16, 19), dangling post-edit read (28), and submit (29)."
+  },
+  {
+    "instance_id": "pytest-dev__pytest-8399",
+    "source_group": "expanded_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/expanded_swe/pytest-dev__pytest-8399.traj",
+    "perm_target_files": [
+      "src/_pytest/unittest.py"
+    ],
+    "gold_step_indices": [
+      5,
+      6,
+      8
+    ],
+    "gold_rationale": "Pre-mutation READ of target file src/_pytest/unittest.py (5), successful permanent MUTATE (6), and final passing verification run (8). Excludes scratch test edits/pre-edit run (1-3), exploratory find_file (4), duplicate earlier verification run (7), and submit (9)."
+  },
+  {
+    "instance_id": "pytest-dev__pytest-8987",
+    "source_group": "expanded_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/expanded_swe/pytest-dev__pytest-8987.traj",
+    "perm_target_files": [
+      "src/_pytest/mark/expression.py"
+    ],
+    "gold_step_indices": [
+      11,
+      12,
+      13,
+      14
+    ],
+    "gold_rationale": "Pre-mutation READ of target file src/_pytest/mark/expression.py (11), permanent MUTATEs (12, 14), and the sole post-edit verification run (13). Excludes scratch edits/failing repro (1-3), exploratory find_file/find/non-target main.py read (4-10), and submit (15)."
+  },
+  {
+    "instance_id": "scikit-learn__scikit-learn-13447",
+    "source_group": "expanded_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/expanded_swe/scikit-learn__scikit-learn-13447.traj",
+    "perm_target_files": [
+      "sklearn/metrics/ranking.py"
+    ],
+    "gold_step_indices": [
+      6,
+      8,
+      9,
+      10
+    ],
+    "gold_rationale": "Pre-mutation READ of target file sklearn/metrics/ranking.py (6), successful permanent MUTATEs (8, 9), and final passing verification run (10). Excludes scratch repro edits/pre-edit run (1-3), exploratory find_file/goto (4, 5, 7), and submit (11)."
+  },
+  {
+    "instance_id": "scikit-learn__scikit-learn-13472",
+    "source_group": "expanded_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/expanded_swe/scikit-learn__scikit-learn-13472.traj",
+    "perm_target_files": [
+      "sklearn/ensemble/gradient_boosting.py"
+    ],
+    "gold_step_indices": [
+      5,
+      9,
+      15,
+      16,
+      18,
+      19,
+      21,
+      22
+    ],
+    "gold_rationale": "Pre-mutation READ of target file sklearn/ensemble/gradient_boosting.py (5), all successful permanent MUTATEs (9, 15, 16, 18, 19, 21), and final passing verification (22). Excludes scratch script edits/failing runs (1-3, 10-13, 17, 20), exploratory finds/context reads/re-reads (4, 6-8, 14), dangling post-edit READ (23), and submit (24)."
+  },
+  {
+    "instance_id": "scikit-learn__scikit-learn-14053",
+    "source_group": "expanded_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/expanded_swe/scikit-learn__scikit-learn-14053.traj",
+    "perm_target_files": [
+      "sklearn/tree/export.py"
+    ],
+    "gold_step_indices": [
+      4,
+      6,
+      9,
+      10,
+      11,
+      13,
+      14,
+      17,
+      18
+    ],
+    "gold_rationale": "Pre-mutation READ of target file sklearn/tree/export.py (4), all successful permanent MUTATEs (6, 9, 10, 11, 13, 14, 17), and final passing verification run (18). Excludes scratch script edits/failing runs (1-3, 7, 12, 15), exploratory gotos (5, 8, 16), and submit (19)."
+  },
+  {
+    "instance_id": "scikit-learn__scikit-learn-14141",
+    "source_group": "expanded_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/expanded_swe/scikit-learn__scikit-learn-14141.traj",
+    "perm_target_files": [
+      "sklearn/utils/_show_versions.py"
+    ],
+    "gold_step_indices": [
+      3,
+      5
+    ],
+    "gold_rationale": "Pre-mutation READ of perm_target_file sklearn/utils/_show_versions.py (3) and permanent MUTATE (5). Excludes exploratory find_file/grep/goto/find commands (1, 2, 4, 6, 7), off-target ISSUE_TEMPLATE.md read/edits not in perm_target_files (8-10), and submit (11)."
+  },
+  {
+    "instance_id": "sympy__sympy-13761",
+    "source_group": "expanded_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/expanded_swe/sympy__sympy-13761.traj",
+    "perm_target_files": [
+      "sympy/simplify/fu.py"
+    ],
+    "gold_step_indices": [
+      4,
+      6,
+      7
+    ],
+    "gold_rationale": "Pre-mutation READ of sympy/simplify/fu.py (4), successful permanent MUTATE (6), and final passing verification run (7). Excludes scratch edits/pre-edit failure (1-3), rejected exit_code=1 MUTATE retry (5), and submit (8)."
+  },
+  {
+    "instance_id": "sympy__sympy-16766",
+    "source_group": "expanded_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/expanded_swe/sympy__sympy-16766.traj",
+    "perm_target_files": [
+      "sympy/printing/pycode.py"
+    ],
+    "gold_step_indices": [
+      8,
+      11,
+      12,
+      14,
+      21,
+      22,
+      25
+    ],
+    "gold_rationale": "Initial pre-mutation READ of sympy/printing/pycode.py (8), successful permanent MUTATEs (11, 12, 14, 21, 22), and final passing verification run (25). Excludes scratch edits/intermediate runs (1-3, 13, 15-19), exploratory finds/searches/gotos (4-7, 9, 10, 23, 24), redundant re-read (20), and submit (26)."
+  },
+  {
+    "instance_id": "sympy__sympy-18810",
+    "source_group": "expanded_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/expanded_swe/sympy__sympy-18810.traj",
+    "perm_target_files": [
+      "sympy/utilities/iterables.py"
+    ],
+    "gold_step_indices": [
+      6,
+      7,
+      10
+    ],
+    "gold_rationale": "Pre-mutation READ of target file sympy/utilities/iterables.py (6), permanent MUTATE (7), and sole post-edit verification run (10) of test_derangements.py before its deletion. Excludes exploratory searches/non-target file read (1-5), deleted scratch file edits (8, 9), rm (11), and submit (12)."
+  },
+  {
+    "instance_id": "sympy__sympy-19346",
+    "source_group": "expanded_25",
+    "agent_format": "swe_bench",
+    "trajectory_file": "benchmarks/data/expanded_swe/sympy__sympy-19346.traj",
+    "perm_target_files": [
+      "sympy/printing/repr.py"
+    ],
+    "gold_step_indices": [
+      6,
+      13,
+      14,
+      19,
+      20
+    ],
+    "gold_rationale": "Pre-mutation READ of sympy/printing/repr.py (6), successful permanent MUTATEs (13, 14, 19), and final passing verification run (20). Excludes scratch edits/intermediate runs (1-3, 15-17), exploratory find_file/grep/gotos (4, 5, 7, 8, 12), rejected exit_code=1 MUTATE retries (9-11), redundant re-read (18), and submit (21)."
+  }
+]

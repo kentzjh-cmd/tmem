@@ -24,7 +24,8 @@ from tmem.models import ActionKind, ActionNode
 
 DSH_EXIT_CODE_RE = re.compile(r"\[exit code:\s*(-?\d+)\]", re.IGNORECASE)
 APPLY_PATCH_FILE_RE = re.compile(
-    r"^\*\*\*\s+(?:(?:Update|Add|Move to)\s+File:\s+)?([^\r\n]+)", re.MULTILINE
+    r"^\*\*\*\s+(?!(?:Begin|End)\s+Patch\b|\d+(?:,\d+)?\s+\*{4}\s*$)(?:(?:Update|Add|Delete|Move to)\s+File:\s+)?([^\r\n]+)",
+    re.MULTILINE,
 )
 
 
@@ -76,11 +77,15 @@ def parse_apply_patch_targets(patch_text: str) -> List[Tuple[str, str]]:
     added_lines: List[str] = []
 
     for raw_line in patch_text.splitlines():
-        m = APPLY_PATCH_FILE_RE.match(raw_line.strip())
+        stripped = raw_line.strip()
+        m = APPLY_PATCH_FILE_RE.match(stripped)
         if m:
+            candidate = m.group(1).split("\t", 1)[0].strip()
+            if not candidate or candidate == "/dev/null" or candidate.endswith("****"):
+                continue
             if current_file:
                 results.append((current_file, "\n".join(added_lines)))
-            current_file = m.group(1).strip()
+            current_file = candidate
             added_lines = []
             continue
         if current_file is not None:

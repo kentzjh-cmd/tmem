@@ -431,15 +431,16 @@ class ProjectMemoryStore:
                 for (tid,) in cur.fetchall():
                     scores[tid] = scores.get(tid, 0.0) + 12.0
 
-            # 3. Direct mention in query_text
+            # 3. Direct mention in query_text (require word/path boundaries & min length 4)
             if query_text:
                 q_low = query_text.lower()
                 cur = conn.execute(
-                    "SELECT DISTINCT trace_id FROM exact_triggers WHERE ? LIKE '%' || trigger_key || '%'",
+                    "SELECT DISTINCT trace_id, trigger_key FROM exact_triggers WHERE LENGTH(trigger_key) >= 4 AND ? LIKE '%' || trigger_key || '%'",
                     (q_low,),
                 )
-                for (tid,) in cur.fetchall():
-                    scores[tid] = scores.get(tid, 0.0) + 6.0
+                for (tid, tkey) in cur.fetchall():
+                    if re.search(rf"(?<![A-Za-z0-9_]){re.escape(tkey)}(?![A-Za-z0-9_])", q_low):
+                        scores[tid] = scores.get(tid, 0.0) + 6.0
 
                 # 4. FTS5 Multi-Token Keyword Match
                 tokens = [
@@ -461,10 +462,10 @@ class ProjectMemoryStore:
                         except sqlite3.OperationalError:
                             pass
 
-                    min_hits = 2 if len(cand_tokens) >= 3 else 1
+                    min_hits = 1 if (len(cand_tokens) == 1 and len(cand_tokens[0]) >= 6) else 2
                     for tid, hits in token_hits.items():
                         coverage = hits / len(cand_tokens)
-                        if hits >= min_hits and coverage >= 0.20:
+                        if hits >= min_hits and coverage >= 0.25:
                             scores[tid] = scores.get(tid, 0.0) + (hits * 2.0)
 
             results: List[Tuple[TracePlaybook, float]] = []

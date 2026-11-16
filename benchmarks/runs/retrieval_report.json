@@ -1,27 +1,27 @@
 {
-  "total_indexed_playbooks": 25,
-  "total_eval_queries": 25,
+  "total_indexed_playbooks": 24,
+  "total_eval_queries": 24,
   "metrics": {
     "recall_at_1": 100.0,
     "recall_at_3": 100.0,
     "mrr": 1.0,
     "negative_holdout_queries": 6,
-    "false_positive_rate": 16.7
+    "false_positive_rate": 0.0
   },
   "queries": [
     {
       "dataset_instance": "astropy__astropy-14182",
-      "target_trace_id": "tr_46b9650da6",
+      "target_trace_id": "tr_9220aa7ac7",
       "query_snippet": "Please support header rows in RestructuredText output\n### Description\r\n\r\nIt woul...",
       "retrieval_rank": 1,
-      "top_retrieved": "tr_46b9650da6"
+      "top_retrieved": "tr_9220aa7ac7"
     },
     {
       "dataset_instance": "astropy__astropy-14365",
-      "target_trace_id": "tr_d18f683d06",
+      "target_trace_id": "tr_49c888032d",
       "query_snippet": "ascii.qdp Table format assumes QDP commands are upper case\n### Description\n\nasci...",
       "retrieval_rank": 1,
-      "top_retrieved": "tr_d18f683d06"
+      "top_retrieved": "tr_49c888032d"
     },
     {
       "dataset_instance": "django__django-10914",
@@ -32,87 +32,87 @@
     },
     {
       "dataset_instance": "django__django-10924",
-      "target_trace_id": "tr_1860a29a79",
+      "target_trace_id": "tr_13fb6d6c0c",
       "query_snippet": "Allow FilePathField path to accept a callable.\nDescription\n\t\nI have a special ca...",
       "retrieval_rank": 1,
-      "top_retrieved": "tr_1860a29a79"
+      "top_retrieved": "tr_13fb6d6c0c"
     },
     {
       "dataset_instance": "django__django-11001",
-      "target_trace_id": "tr_e3bbe020a1",
+      "target_trace_id": "tr_fc08fb8af8",
       "query_snippet": "Incorrect removal of order_by clause created as multiline RawSQL\nDescription\n\t\nH...",
       "retrieval_rank": 1,
-      "top_retrieved": "tr_e3bbe020a1"
+      "top_retrieved": "tr_fc08fb8af8"
     },
     {
       "dataset_instance": "django__django-11019",
-      "target_trace_id": "tr_967658cea1",
+      "target_trace_id": "tr_a9d4374c3a",
       "query_snippet": "Merging 3 or more media objects can throw unnecessary MediaOrderConflictWarnings...",
       "retrieval_rank": 1,
-      "top_retrieved": "tr_967658cea1"
+      "top_retrieved": "tr_a9d4374c3a"
     },
     {
       "dataset_instance": "django__django-11039",
-      "target_trace_id": "tr_c2534642ca",
+      "target_trace_id": "tr_5700241cdf",
       "query_snippet": "sqlmigrate wraps it's outpout in BEGIN/COMMIT even if the database doesn't suppo...",
       "retrieval_rank": 1,
-      "top_retrieved": "tr_c2534642ca"
+      "top_retrieved": "tr_5700241cdf"
     },
     {
       "dataset_instance": "matplotlib__matplotlib-23913",
-      "target_trace_id": "tr_059d4f51f2",
+      "target_trace_id": "tr_3ff9715f96",
       "query_snippet": "legend draggable as keyword\n<!--To help us understand and resolve your issue, pl...",
       "retrieval_rank": 1,
-      "top_retrieved": "tr_059d4f51f2"
+      "top_retrieved": "tr_3ff9715f96"
     },
     {
       "dataset_instance": "matplotlib__matplotlib-23964",
-      "target_trace_id": "tr_82432d5748",
+      "target_trace_id": "tr_4178f97dcc",
       "query_snippet": "[Bug]: Text label with empty line causes a \"TypeError: cannot unpack non-iterabl...",
       "retrieval_rank": 1,
-      "top_retrieved": "tr_82432d5748"
+      "top_retrieved": "tr_4178f97dcc"
     },
     {
       "dataset_instance": "matplotlib__matplotlib-24149",
-      "target_trace_id": "tr_5e53ea996c",
+      "target_trace_id": "tr_d6eb741edf",
       "query_snippet": "[Bug]: ax.bar raises for all-nan data on matplotlib 3.6.1 \n### Bug summary\n\n`ax....",
       "retrieval_rank": 1,
-      "top_retrieved": "tr_5e53ea996c"
+      "top_retrieved": "tr_d6eb741edf"
     },
     {
       "dataset_instance": "psf__requests-2148",
-      "target_trace_id": "tr_17d6e46b4f",
+      "target_trace_id": "tr_dde1fab5d2",
       "query_snippet": "socket.error exception not caught/wrapped in a requests exception (ConnectionErr...",
       "retrieval_rank": 1,
-      "top_retrieved": "tr_17d6e46b4f"
+      "top_retrieved": "tr_dde1fab5d2"
     },
     {
       "dataset_instance": "psf__requests-2674",
-      "target_trace_id": "tr_2d92cbeb70",
+      "target_trace_id": "tr_b1aa8a99df",
       "query_snippet": "urllib3 exceptions passing through requests API\nI don't know if it's a design go...",
       "retrieval_rank": 1,
-      "top_retrieved": "tr_2d92cbeb70"
+      "top_retrieved": "tr_b1aa8a99df"
     },
     {
       "dataset_instance": "pydata__xarray-3364",
-      "target_trace_id": "tr_066a782865",
+      "target_trace_id": "tr_f6bef06d18",
       "query_snippet": "Ignore missing variables when concatenating datasets?\nSeveral users (@raj-kesava...",
       "retrieval_rank": 1,
-      "top_retrieved": "tr_066a782865"
+      "top_retrieved": "tr_f6bef06d18"
     },
     {
       "dataset_instance": "pydata__xarray-4094",
-      "target_trace_id": "tr_a1bd9760ab",
+      "target_trace_id": "tr_e4b0044eb6",
       "query_snippet": "to_unstacked_dataset broken for single-dim variables\n<!-- A short summary of the...",
       "retrieval_rank": 1,
-      "top_retrieved": "tr_a1bd9760ab"
+      "top_retrieved": "tr_e4b0044eb6"
     },
     {
       "dataset_instance": "pylint-dev__pylint-5859",
-      "target_trace_id": "tr_0fa8f4fcd9",
+      "target_trace_id": "tr_d14de0767e",
       "query_snippet": "\"--notes\" option ignores note tags that are entirely punctuation\n### Bug descrip...",
       "retrieval_rank": 1,
-      "top_retrieved": "tr_0fa8f4fcd9"
+      "top_retrieved": "tr_d14de0767e"
     },
     {
       "dataset_instance": "pylint-dev__pylint-7080",
@@ -123,31 +123,24 @@
     },
     {
       "dataset_instance": "pytest-dev__pytest-5221",
-      "target_trace_id": "tr_86a77dd8ea",
+      "target_trace_id": "tr_a40ab6350c",
       "query_snippet": "Display fixture scope with `pytest --fixtures`\nIt would be useful to show fixtur...",
       "retrieval_rank": 1,
-      "top_retrieved": "tr_86a77dd8ea"
-    },
-    {
-      "dataset_instance": "pytest-dev__pytest-7168",
-      "target_trace_id": "tr_255526ba5b",
-      "query_snippet": "INTERNALERROR when exception in __repr__\nMinimal code to reproduce the issue: \r\n...",
-      "retrieval_rank": 1,
-      "top_retrieved": "tr_255526ba5b"
+      "top_retrieved": "tr_a40ab6350c"
     },
     {
       "dataset_instance": "scikit-learn__scikit-learn-10508",
-      "target_trace_id": "tr_a0b2277a82",
+      "target_trace_id": "tr_911646a110",
       "query_snippet": "LabelEncoder transform fails for empty lists (for certain inputs)\nPython 3.6.3, ...",
       "retrieval_rank": 1,
-      "top_retrieved": "tr_a0b2277a82"
+      "top_retrieved": "tr_911646a110"
     },
     {
       "dataset_instance": "scikit-learn__scikit-learn-11040",
-      "target_trace_id": "tr_5a432c3db1",
+      "target_trace_id": "tr_a32cf69126",
       "query_snippet": "Missing parameter validation in Neighbors estimator for float n_neighbors\n```pyt...",
       "retrieval_rank": 1,
-      "top_retrieved": "tr_5a432c3db1"
+      "top_retrieved": "tr_a32cf69126"
     },
     {
       "dataset_instance": "sphinx-doc__sphinx-8273",
@@ -158,31 +151,31 @@
     },
     {
       "dataset_instance": "sympy__sympy-22005",
-      "target_trace_id": "tr_4c50ae83e2",
+      "target_trace_id": "tr_e02c6c38a5",
       "query_snippet": "detection of infinite solution request\n```python\r\n>>> solve_poly_system((x - 1,)...",
       "retrieval_rank": 1,
-      "top_retrieved": "tr_4c50ae83e2"
+      "top_retrieved": "tr_e02c6c38a5"
     },
     {
       "dataset_instance": "dsh_e2e_session",
-      "target_trace_id": "tr_ca7a2b0e83",
+      "target_trace_id": "tr_b86c4dfb2c",
       "query_snippet": "Fix parser regression in tmem/adapters/dsh.py and verify with tests...",
       "retrieval_rank": 1,
-      "top_retrieved": "tr_ca7a2b0e83"
+      "top_retrieved": "tr_b86c4dfb2c"
     },
     {
       "dataset_instance": "dsh_multiturn_complex_session",
-      "target_trace_id": "tr_b7f9ed8807",
+      "target_trace_id": "tr_9e52fedbe2",
       "query_snippet": "Refactor multi-line error signature extraction in tmem/adapters/base.py to captu...",
       "retrieval_rank": 1,
-      "top_retrieved": "tr_b7f9ed8807"
+      "top_retrieved": "tr_9e52fedbe2"
     },
     {
       "dataset_instance": "dsh_long_lifecycle_session",
-      "target_trace_id": "tr_68a25ce7be",
+      "target_trace_id": "tr_fa132e330c",
       "query_snippet": "Implement token bucket rate limiter in src/limiter.py with unit tests in tests/t...",
       "retrieval_rank": 1,
-      "top_retrieved": "tr_68a25ce7be"
+      "top_retrieved": "tr_fa132e330c"
     }
   ],
   "negative_queries": [
@@ -208,12 +201,12 @@
     },
     {
       "query": "Train a transformer language model with deepspeed pipeline parallelism",
-      "retrieved_count": 1,
-      "false_positive": true
+      "retrieved_count": 0,
+      "false_positive": false
     },
     {
       "query": "Docker compose configuration for PostgreSQL read-write replica pool",
-      "retrieved_count": 1,
+      "retrieved_count": 2,
       "false_positive": false
     }
   ]

@@ -76,6 +76,100 @@ EXPLORATORY_CLAUSE_RE = re.compile(
     r"npm\s+view)\b"
 )
 
+ENV_ASSIGN_PREFIX_RE = re.compile(
+    r"^(?:sudo\s+)?(?:env\s+)?(?:[A-Za-z_][A-Za-z0-9_]*=(?:\"[^\"]*\"|'[^']*'|\S+)\s+)+"
+)
+SWALLOW_EXIT_RE = re.compile(r"(?:\|\||;)\s*(?:true|:)\s*$")
+SCRATCH_FILE_RE = re.compile(
+    r"(?:^|/)(?:repro|reproduce|simulate|scratch|debug|tmp|temp)(?:[_-][^/]*)?\.py$|(?:^|/)(?:scratch|tmp)/",
+    re.IGNORECASE,
+)
+ROOT_SCRIPT_DRIVER_RE = re.compile(
+    r"^(?:test(?:[_-].*)?|repro.*|simulate.*|check[_-].*|verify[_-].*)\.py$",
+    re.IGNORECASE,
+)
+
+
+def _normalize_rel_path(path_str: str) -> str:
+    cleaned = path_str.strip().strip("\"'")
+    if cleaned.startswith("./"):
+        cleaned = cleaned[2:]
+    return cleaned.rstrip("/")
+
+
+def _extract_killed_targets_from_command(cmd: str, known_files: Set[str]) -> Set[str]:
+    """Identify file paths destroyed or reverted by rm/unlink/git checkout|restore|reset."""
+    if not cmd:
+        return set()
+    killed: Set[str] = set()
+    norm_known = {_normalize_rel_path(f): f for f in known_files if f}
+
+    for raw_part in re.split(r"&&|\n|;", cmd):
+        part = raw_part.strip()
+        if not part:
+            continue
+        try:
+            tokens = part.split()
+        except Exception:
+            continue
+        if not tokens:
+            continue
+
+        idx = 0
+        if tokens[0] == "sudo":
+            idx += 1
+        while idx < len(tokens) and "=" in tokens[idx] and not tokens[idx].startswith("-"):
+            idx += 1
+        tokens = tokens[idx:]
+        if not tokens:
+            continue
+
+        head = Path(tokens[0]).name
+        candidates: List[str] = []
+
+        if head in {"rm", "unlink"}:
+            after_sep = False
+            for tok in tokens[1:]:
+                if tok == "--":
+                    after_sep = True
+                    continue
+                if not after_sep and tok.startswith("-"):
+                    continue
+                candidates.append(tok)
+        elif head == "git" and len(tokens) >= 2 and tokens[1] in {"checkout", "restore", "reset"}:
+            sub = tokens[1]
+            # Avoid matching `git checkout -b ...` branch creation
+            if sub == "checkout" and any(t in {"-b", "-B", "--orphan"} for t in tokens[2:]):
+                continue
+            after_sep = "--" in tokens[2:]
+            seen_sep = False
+            for tok in tokens[2:]:
+                if tok == "--":
+                    seen_sep = True
+                    continue
+                if after_sep and not seen_sep:
+                    continue
+                if tok.startswith("-"):
+                    continue
+                if sub == "reset" and tok in {"HEAD", "HEAD~1", "ORIG_HEAD"} and not after_sep:
+                    continue
+                candidates.append(tok)
+
+        for cand in candidates:
+            nc = _normalize_rel_path(cand)
+            if not nc:
+                continue
+            if nc == "." and head == "git":
+                killed.update(known_files)
+                continue
+            if nc in norm_known:
+                killed.add(norm_known[nc])
+                continue
+            for nk, orig in norm_known.items():
+                if nk.startswith(nc + "/"):
+                    killed.add(orig)
+    return killed
+
 
 def get_git_ground_truth(
     workspace_root: str,
@@ -387,6 +481,61 @@ class BackwardTraceSlicer:
         self.last_git_diff: Optional[str] = None
         self._last_repair_fix_indices: List[List[int]] = []
 
+    def _identify_scratch_files(
+        self,
+        raw_actions: List[ActionNode],
+        candidate_files: Set[str],
+        importer_map: Dict[str, Set[str]],
+    ) -> Set[str]:
+        """Identify temporary reproduction/scratch scripts created alongside permanent repo files."""
+        if len(candidate_files) <= 1:
+            return set()
+
+        has_permanent_repo_file = any(
+            "/" in f
+            and not SCRATCH_FILE_RE.search(f)
+            and (is_source_code_file(f) or is_test_file(f))
+            for f in candidate_files
+        )
+
+        first_read: Dict[str, int] = {}
+        first_mutate: Dict[str, int] = {}
+        executed_scripts: Set[str] = set()
+
+        for act in raw_actions:
+            if act.kind == ActionKind.READ and act.target_file:
+                first_read.setdefault(act.target_file, act.step_idx)
+            elif (
+                act.kind == ActionKind.MUTATE
+                and act.target_file
+                and act.exit_code in (0, None)
+                and not act.error_signature
+            ):
+                first_mutate.setdefault(act.target_file, act.step_idx)
+            elif act.kind == ActionKind.ENV_EXEC and act.command:
+                _, cmd_targets = _extract_cmd_runner_and_targets(act.command)
+                executed_scripts.update(cmd_targets)
+
+        scratch: Set[str] = set()
+        for f in candidate_files:
+            if importer_map.get(f):
+                continue
+            if SCRATCH_FILE_RE.search(f):
+                scratch.add(f)
+                continue
+            if (
+                has_permanent_repo_file
+                and "/" not in f
+                and (f not in first_read or first_read[f] > first_mutate.get(f, 10**9))
+                and (bool(ROOT_SCRIPT_DRIVER_RE.match(f)) or f in executed_scripts)
+            ):
+                scratch.add(f)
+
+        # Never prune every file if the entire session only touched scratch files
+        if len(scratch) >= len(candidate_files):
+            return set()
+        return scratch
+
     def slice_session(
         self,
         session: ParsedSession,
@@ -398,11 +547,41 @@ class BackwardTraceSlicer:
             self.last_git_diff = None
             return None
 
-        # 1. Determine Ground Truth Mutated Files (Sink)
-        session_mutated_files = {
+        # 0. Pre-scan destroy/revert barriers and valid mutations for Temporal Causality
+        known_files: Set[str] = {
             a.target_file
             for a in raw_actions
-            if a.kind == ActionKind.MUTATE and a.target_file and not a.target_file.startswith(".tmem/")
+            if a.target_file and not a.target_file.startswith(".tmem/")
+        }
+        last_kill_step: Dict[str, int] = {}
+        last_valid_mutate_step: Dict[str, int] = {}
+
+        for act in raw_actions:
+            if (
+                act.kind == ActionKind.MUTATE
+                and act.target_file
+                and not act.target_file.startswith(".tmem/")
+                and act.exit_code in (0, None)
+                and not act.error_signature
+            ):
+                prev_m = last_valid_mutate_step.get(act.target_file, -1)
+                if act.step_idx > prev_m:
+                    last_valid_mutate_step[act.target_file] = act.step_idx
+            elif act.kind == ActionKind.ENV_EXEC and act.command and act.exit_code in (0, None):
+                for kf in _extract_killed_targets_from_command(act.command, known_files):
+                    if act.step_idx > last_kill_step.get(kf, -1):
+                        last_kill_step[kf] = act.step_idx
+
+        # 1. Determine Ground Truth Mutated Files (Surviving Sink)
+        session_mutated_files = {
+            f
+            for f, m_step in last_valid_mutate_step.items()
+            if m_step > last_kill_step.get(f, -1)
+        }
+        killed_files: Set[str] = {
+            f
+            for f, k_step in last_kill_step.items()
+            if k_step >= last_valid_mutate_step.get(f, -1)
         }
 
         # Query git ground truth bounded to session mutated files if available
@@ -424,7 +603,46 @@ class BackwardTraceSlicer:
             if not effective_files:
                 effective_files = set(session_mutated_files)
         else:
-            effective_files = git_files
+            effective_files = set(git_files)
+
+        candidate_read_files: Set[str] = {
+            a.target_file
+            for a in raw_actions
+            if a.kind == ActionKind.READ and a.target_file
+        }
+        known_import_targets = candidate_read_files | effective_files
+        ast_imported_files: Set[str] = set()
+        importer_map: Dict[str, Set[str]] = {}
+        ws_root = Path(session.workspace_root)
+        for mod_file in effective_files:
+            if is_code_file(mod_file):
+                full_mod = ws_root / mod_file
+                if full_mod.exists() and full_mod.is_file():
+                    try:
+                        mod_text = full_mod.read_text(encoding="utf-8", errors="ignore")
+                        imported = extract_local_imports(mod_text, mod_file, known_import_targets)
+                        ast_imported_files.update(imported)
+                        for dep in imported:
+                            importer_map.setdefault(dep, set()).add(mod_file)
+                    except OSError:
+                        pass
+
+        # Prune standalone scratch/reproduction scripts when not tracked by git ground truth
+        scratch_files: Set[str] = set()
+        if not git_files and effective_files:
+            scratch_files = self._identify_scratch_files(
+                raw_actions, effective_files, importer_map
+            )
+            if scratch_files:
+                effective_files = effective_files - scratch_files
+
+        dead_target_files = killed_files | scratch_files
+        effective_last_mutate_step: Dict[str, int] = {
+            f: last_valid_mutate_step[f]
+            for f in effective_files
+            if f in last_valid_mutate_step
+        }
+        max_effective_mutate_step = max(effective_last_mutate_step.values(), default=-1)
 
         git_diff_patch = (
             get_git_diff_patch(session.workspace_root, target_files=effective_files or None)
@@ -435,7 +653,11 @@ class BackwardTraceSlicer:
 
         # 2. Extract Error -> Fix Causal Pairs (L2 Universal Invariants)
         causal_repairs, repair_step_indices = self._extract_causal_repairs_with_indices(
-            raw_actions, effective_files, workspace_root=session.workspace_root
+            raw_actions,
+            effective_files,
+            workspace_root=session.workspace_root,
+            dead_files=dead_target_files,
+            last_kill_step=last_kill_step,
         )
 
         # 3. Backward Slicing: Filter READ, MUTATE, ENV_EXEC into minimal critical path
@@ -443,18 +665,15 @@ class BackwardTraceSlicer:
         read_step_indices: List[int] = []
         mutate_steps: List[Dict[str, object]] = []
         mutate_step_indices: List[int] = []
-        env_steps: List[Dict[str, object]] = []
-        env_step_indices: List[int] = []
         seen_reads: Set[str] = set()
         seen_mutations: Set[str] = set()
         mutate_map: Dict[str, Dict[str, object]] = {}
-        verification_cmds: List[str] = []
         touched_symbols: Set[str] = set()
 
         for sym_list in git_symbols.values():
             touched_symbols.update(sym_list)
 
-        # Module stems of modified files to recognize cross-file reads
+        # Module stems of modified files to recognize cross-file test/impl reads
         generic_stems = {
             "__init__", "utils", "util", "helpers", "helper", "common",
             "config", "constants", "types", "base", "models", "test", "tests",
@@ -465,43 +684,74 @@ class BackwardTraceSlicer:
             if f and len(Path(f).stem) >= 4 and Path(f).stem not in generic_stems
         }
 
-        candidate_read_files: Set[str] = {
-            a.target_file
-            for a in raw_actions
-            if a.kind == ActionKind.READ and a.target_file
+        consumer_last_mutate: Dict[str, int] = {
+            dep: max(
+                (effective_last_mutate_step[c] for c in importers if c in effective_last_mutate_step),
+                default=-1,
+            )
+            for dep, importers in importer_map.items()
         }
-        ast_imported_files: Set[str] = set()
-        ws_root = Path(session.workspace_root)
-        for mod_file in effective_files:
-            if is_code_file(mod_file):
-                full_mod = ws_root / mod_file
-                if full_mod.exists() and full_mod.is_file():
-                    try:
-                        mod_text = full_mod.read_text(encoding="utf-8", errors="ignore")
-                        ast_imported_files.update(
-                            extract_local_imports(mod_text, mod_file, candidate_read_files)
-                        )
-                    except OSError:
-                        pass
+
+        # Traceback dependencies linked to failing runs followed by effective mutations
+        traceback_dep_last_mutate: Dict[str, int] = {}
+        for act in raw_actions:
+            if act.kind == ActionKind.ENV_EXEC and (
+                act.exit_code not in (0, None) or bool(act.error_signature)
+            ):
+                later_mutate = max(
+                    (m for m in effective_last_mutate_step.values() if m > act.step_idx),
+                    default=-1,
+                )
+                if later_mutate >= 0:
+                    for tf in extract_traceback_files(
+                        act.raw_output or act.output_snippet, session.workspace_root
+                    ):
+                        if later_mutate > traceback_dep_last_mutate.get(tf, -1):
+                            traceback_dep_last_mutate[tf] = later_mutate
 
         per_file_symbols: Dict[str, List[str]] = {
             f: list(syms) for f, syms in git_symbols.items() if syms
         }
 
+        env_install_entries: List[Tuple[int, str, Dict[str, object]]] = []
+        install_cmds_seen: Set[str] = set()
+        latest_verify_by_cmd: Dict[str, Tuple[int, Dict[str, object]]] = {}
+        fallback_verify_by_cmd: Dict[str, Tuple[int, Dict[str, object]]] = {}
+
         for action in raw_actions:
             if action.kind == ActionKind.READ and action.target_file:
+                if action.step_idx <= last_kill_step.get(action.target_file, -1):
+                    continue
                 target_stem = Path(action.target_file).stem
-                is_direct = action.target_file in effective_files
-                is_ast_import = action.target_file in ast_imported_files
+                is_direct = (
+                    action.target_file in effective_files
+                    and action.step_idx <= effective_last_mutate_step.get(action.target_file, -1)
+                )
+                is_ast_import = (
+                    action.target_file in ast_imported_files
+                    and action.step_idx <= consumer_last_mutate.get(action.target_file, -1)
+                )
+                is_traceback_dep = (
+                    action.target_file in traceback_dep_last_mutate
+                    and action.step_idx <= traceback_dep_last_mutate[action.target_file]
+                )
                 is_specific_stem = len(target_stem) >= 4 and target_stem not in generic_stems
-                is_dependency = is_specific_stem and (
-                    target_stem in effective_modules
-                    or any(
-                        re.search(rf"\b{re.escape(target_stem)}\b", sym)
-                        for sym in touched_symbols
+                is_module_dep = (
+                    is_specific_stem
+                    and action.target_file not in dead_target_files
+                    and action.step_idx <= max_effective_mutate_step
+                    and (
+                        target_stem in effective_modules
+                        or any(
+                            target_stem == f"test_{m}" or m == f"test_{target_stem}"
+                            for m in effective_modules
+                        )
                     )
                 )
-                if (is_direct or is_ast_import or is_dependency) and action.target_file not in seen_reads:
+                if (
+                    (is_direct or is_ast_import or is_traceback_dep or is_module_dep)
+                    and action.target_file not in seen_reads
+                ):
                     seen_reads.add(action.target_file)
                     read_step_indices.append(action.step_idx)
                     step_entry: Dict[str, object] = {
@@ -514,7 +764,11 @@ class BackwardTraceSlicer:
                     read_steps.append(step_entry)
 
             elif action.kind == ActionKind.MUTATE and action.target_file:
-                # Dead Mutation Elimination: drop mutations to files not in effective_files
+                # Filter failed mutations and pre-kill/dead-file mutations
+                if action.exit_code not in (0, None) or action.error_signature:
+                    continue
+                if action.step_idx <= last_kill_step.get(action.target_file, -1):
+                    continue
                 if action.target_file in effective_files:
                     touched_symbols.update(action.symbols_touched)
                     if action.symbols_touched:
@@ -554,28 +808,89 @@ class BackwardTraceSlicer:
                             existing_entry["rationale"] = action.rationale
 
             elif action.kind == ActionKind.ENV_EXEC and action.command:
-                # Keep only canonical verification or toolchain install commands (deduplicated)
                 if action.exit_code in (0, None) and not action.error_signature:
                     canonical_cmd = self._extract_canonical_verification_cmd(action.command)
-                    if canonical_cmd and canonical_cmd not in verification_cmds:
-                        verification_cmds.append(canonical_cmd)
-                        env_step_indices.append(action.step_idx)
-                        step_entry = {
-                            "step": action.step_idx,
-                            "action": ActionKind.ENV_EXEC.value,
-                            "command": canonical_cmd,
-                        }
-                        if action.rationale:
-                            step_entry["rationale"] = action.rationale
-                        env_steps.append(step_entry)
+                    if not canonical_cmd:
+                        continue
+                    _, cmd_targets = _extract_cmd_runner_and_targets(canonical_cmd)
+                    is_dead_target_cmd = bool(
+                        cmd_targets
+                        and all(
+                            t in dead_target_files or action.step_idx <= last_kill_step.get(t, -1)
+                            for t in cmd_targets
+                        )
+                    )
 
-        # Keep at most the last 2 canonical verification/toolchain commands in L0 critical path,
-        # sorted chronologically by original step index so failure->fix->verify causality is preserved.
+                    # Classify chained clauses: an install-only command (e.g. `pip install redis pytest`)
+                    # must NOT be misclassified as VERIFY_GATE just because a package is named pytest/mypy.
+                    clauses = [
+                        ENV_ASSIGN_PREFIX_RE.sub("", c.strip()).strip()
+                        for c in canonical_cmd.split("&&")
+                        if c.strip()
+                    ]
+                    all_install = bool(clauses) and all(
+                        TOOLCHAIN_INSTALL_RE.match(c) for c in clauses
+                    )
+
+                    step_entry = {
+                        "step": action.step_idx,
+                        "action": ActionKind.ENV_EXEC.value,
+                        "command": canonical_cmd,
+                    }
+                    if action.rationale:
+                        step_entry["rationale"] = action.rationale
+
+                    if all_install:
+                        if canonical_cmd not in install_cmds_seen:
+                            install_cmds_seen.add(canonical_cmd)
+                            env_install_entries.append((action.step_idx, canonical_cmd, step_entry))
+                    elif is_dead_target_cmd:
+                        # Keep post-edit verification on repro/temp scripts ONLY as fallback
+                        # if permanent edits survive and no permanent repo verification gate exists.
+                        earliest_kill = min(
+                            (last_kill_step.get(t, 10**9) for t in cmd_targets),
+                            default=10**9,
+                        )
+                        if effective_files and action.step_idx < earliest_kill:
+                            if canonical_cmd in fallback_verify_by_cmd:
+                                del fallback_verify_by_cmd[canonical_cmd]
+                            fallback_verify_by_cmd[canonical_cmd] = (action.step_idx, step_entry)
+                    else:
+                        # Update latest occurrence so final post-edit verification supersedes stale baseline runs
+                        if canonical_cmd in latest_verify_by_cmd:
+                            del latest_verify_by_cmd[canonical_cmd]
+                        latest_verify_by_cmd[canonical_cmd] = (action.step_idx, step_entry)
+
+        # Select persistent ENV_INSTALL steps (before final active step) and final-epoch VERIFY_GATE steps
+        effective_verify_map = latest_verify_by_cmd or fallback_verify_by_cmd
+        all_verify_items = [
+            (idx, cmd, entry) for cmd, (idx, entry) in effective_verify_map.items()
+        ]
+        post_edit_verify = [
+            item for item in all_verify_items if item[0] >= max_effective_mutate_step
+        ]
+        chosen_verify_items = (post_edit_verify if post_edit_verify else all_verify_items)[-2:]
+
+        last_active_step = max(
+            [max_effective_mutate_step] + [item[0] for item in chosen_verify_items],
+            default=-1,
+        )
+        chosen_install_items = [
+            item for item in env_install_entries if last_active_step < 0 or item[0] <= last_active_step
+        ][:3]
+
+        chosen_env_items = chosen_install_items + chosen_verify_items
+        env_steps = [item[2] for item in chosen_env_items]
+        sliced_env_indices = [item[0] for item in chosen_env_items]
+        verification_cmds: List[str] = [item[1] for item in env_install_entries] + [
+            item[1] for item in all_verify_items
+        ]
+
+        # Sort chronologically by original step index so install -> read -> mutate -> verify causality holds
         sliced_steps: List[Dict[str, object]] = sorted(
-            read_steps + mutate_steps + env_steps[-2:],
+            read_steps + mutate_steps + env_steps,
             key=lambda s: int(s.get("step") or 0),
         )
-        sliced_env_indices = env_step_indices[-2:]
 
         collected_indices = (
             read_step_indices
@@ -711,6 +1026,8 @@ class BackwardTraceSlicer:
         actions: List[ActionNode],
         effective_files: Set[str],
         workspace_root: str = "",
+        dead_files: Optional[Set[str]] = None,
+        last_kill_step: Optional[Dict[str, int]] = None,
     ) -> Tuple[List[CausalRepairPair], List[int]]:
         """
         Scan action trajectory within a bounded causal window for pattern:
@@ -721,6 +1038,8 @@ class BackwardTraceSlicer:
         step_indices: List[int] = []
         self._last_repair_fix_indices = []
         seen_sigs: Set[str] = set()
+        dead_set = dead_files or set()
+        kill_map = last_kill_step or {}
 
         for i, act in enumerate(actions):
             is_failure = act.kind == ActionKind.ENV_EXEC and (
@@ -735,6 +1054,11 @@ class BackwardTraceSlicer:
 
             failed_canonical = self._extract_canonical_verification_cmd(act.command or "")
             if not failed_canonical:
+                continue
+            _, fail_targets = _extract_cmd_runner_and_targets(failed_canonical)
+            if fail_targets and all(
+                t in dead_set or act.step_idx <= kill_map.get(t, -1) for t in fail_targets
+            ):
                 continue
             failed_cmd = failed_canonical
 
@@ -753,7 +1077,13 @@ class BackwardTraceSlicer:
 
             for j in range(i + 1, min(len(actions), i + 36)):
                 nxt = actions[j]
-                if nxt.kind == ActionKind.MUTATE and nxt.target_file in effective_files:
+                if (
+                    nxt.kind == ActionKind.MUTATE
+                    and nxt.target_file in effective_files
+                    and nxt.exit_code in (0, None)
+                    and not nxt.error_signature
+                    and nxt.step_idx > kill_map.get(nxt.target_file, -1)
+                ):
                     intervening_mutated_files.add(nxt.target_file)
                     sym_note = f" ({', '.join(nxt.symbols_touched[:3])})" if nxt.symbols_touched else ""
                     fix_desc = f"edit {nxt.target_file}{sym_note}"
@@ -988,6 +1318,9 @@ class BackwardTraceSlicer:
             part = raw_part.strip()
             if not part:
                 continue
+            # Reject non-gating commands that explicitly swallow failures (e.g. `cmd || true`)
+            if SWALLOW_EXIT_RE.search(part):
+                continue
             # Strip trailing pipe to grep/head/tail for config dumps
             base_part = re.split(r"\|\s*(?:grep|head|tail|cat)\b", part)[0].strip()
             if not base_part:
@@ -998,15 +1331,19 @@ class BackwardTraceSlicer:
                 continue
             if re.match(r"^(?:python\d*(?:\.\d+)?\s+-c\b|node\s+-e\b)", base_part):
                 continue
+            # Strip leading POSIX env-var prefixes (e.g. `PYTHONPATH=. python3 ...`) before syntax checks
+            cmd_for_syntax = ENV_ASSIGN_PREFIX_RE.sub("", base_part).strip()
+            if not cmd_for_syntax:
+                continue
             # Reject lines with code assignment syntax or python/js statement keywords
-            if re.search(r"\s+=\s+", base_part) or re.match(
+            if re.search(r"\s+=\s+", cmd_for_syntax) or re.match(
                 r"^(?:[A-Za-z_]\w*\s*=\s*|print\(|def\s+|class\s+|import\s+|from\s+)",
-                base_part,
+                cmd_for_syntax,
             ):
                 continue
             if (
-                VERIFY_WHITELIST_RE.search(base_part)
-                or TOOLCHAIN_INSTALL_RE.search(base_part)
+                VERIFY_WHITELIST_RE.search(cmd_for_syntax)
+                or TOOLCHAIN_INSTALL_RE.search(cmd_for_syntax)
                 or RE_TEST_SCRIPT_CMD.match(base_part)
             ):
                 if base_part not in kept_clauses:
