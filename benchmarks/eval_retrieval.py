@@ -69,9 +69,9 @@ def run_retrieval_benchmark(data_dir: Path | None = None) -> Dict[str, Any]:
                 "target_files": list(pb.touched_files),
             })
 
-        # Also add DSH sessions if present
+        # Also add DSH sessions if present (sorted for deterministic cross-filesystem ordering)
         dsh_adapter = DshAdapter()
-        for dsh_f in (WORKSPACE_ROOT / "benchmarks" / "data").glob("dsh_*.jsonl"):
+        for dsh_f in sorted((WORKSPACE_ROOT / "benchmarks" / "data").glob("dsh_*.jsonl")):
             session = dsh_adapter.parse_transcript(str(dsh_f), temp_dir)
             pb = slicer.slice_session(session, use_git_ground_truth=False)
             if pb:

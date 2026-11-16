@@ -164,18 +164,18 @@
       "top_retrieved": "tr_b86c4dfb2c"
     },
     {
-      "dataset_instance": "dsh_multiturn_complex_session",
-      "target_trace_id": "tr_9e52fedbe2",
-      "query_snippet": "Refactor multi-line error signature extraction in tmem/adapters/base.py to captu...",
-      "retrieval_rank": 1,
-      "top_retrieved": "tr_9e52fedbe2"
-    },
-    {
       "dataset_instance": "dsh_long_lifecycle_session",
       "target_trace_id": "tr_fa132e330c",
       "query_snippet": "Implement token bucket rate limiter in src/limiter.py with unit tests in tests/t...",
       "retrieval_rank": 1,
       "top_retrieved": "tr_fa132e330c"
+    },
+    {
+      "dataset_instance": "dsh_multiturn_complex_session",
+      "target_trace_id": "tr_9e52fedbe2",
+      "query_snippet": "Refactor multi-line error signature extraction in tmem/adapters/base.py to captu...",
+      "retrieval_rank": 1,
+      "top_retrieved": "tr_9e52fedbe2"
     }
   ],
   "negative_queries": [
