@@ -28,6 +28,7 @@ if str(WORKSPACE_ROOT) not in sys.path:
     sys.path.insert(0, str(WORKSPACE_ROOT))
 
 from benchmarks.eval_dsh_e2e import run_dsh_e2e_benchmark
+from benchmarks.eval_llm_judge import verify_llm_judge_report
 from benchmarks.eval_plugin_scale import run_plugin_scale_validation
 from benchmarks.eval_retrieval import run_retrieval_benchmark
 from benchmarks.eval_slicing_fidelity import evaluate_baselines
@@ -208,6 +209,7 @@ def _check_readme_sync(
     plugin_scale: Dict[str, Any],
     retrieval: Dict[str, Any],
     cross_eval: Dict[str, Any],
+    llm_judge: Optional[Dict[str, Any]] = None,
 ) -> List[str]:
     """Verify deterministic metrics and slicing table in README.md or README_EN.md match live outputs."""
     errors: List[str] = []
@@ -241,6 +243,22 @@ def _check_readme_sync(
             errors.append(
                 f"[{doc_name}] Gold-50 table row {row_key} mismatch: doc={actual_cells} != live={expected_cells}"
             )
+        if llm_judge and len(cells) >= 6:
+            judge_cell = cells[5].replace("**", "").strip()
+            if row_key == "B0":
+                exp_b0_score = f"{llm_judge['mean_llm_scores']['B0_baseline']['overall']:.2f}"
+                if judge_cell != exp_b0_score:
+                    errors.append(
+                        f"[{doc_name}] Gold-50 LLM judge B0 mismatch: doc={judge_cell} != report={exp_b0_score}"
+                    )
+            elif row_key == "B1":
+                exp_b1_score = f"{llm_judge['mean_llm_scores']['B1_tmem']['overall']:.2f}"
+                pj = llm_judge["pairwise_llm_judge"]
+                exp_win = f"{pj['B1_tmem_wins']}:{pj['B0_baseline_wins']} / {pj['B1_win_rate_pct']}%"
+                if exp_b1_score not in judge_cell or exp_win not in judge_cell:
+                    errors.append(
+                        f"[{doc_name}] Gold-50 LLM judge B1 mismatch: doc={judge_cell} != expected ({exp_b1_score}, {exp_win})"
+                    )
 
     # 2. Gold-25 note
     b0_25 = slicing_25["summary"]["B0_trivial_git_diff"]
@@ -487,6 +505,7 @@ def run_verification(update_reports: bool = False, verbose: bool = False) -> int
     plugin_scale = run_plugin_scale_validation()
     retrieval = run_retrieval_benchmark()
     cross_eval = asdict(BenchmarkEvaluator().run_evaluation())
+    llm_judge = verify_llm_judge_report()
 
     runs_dir = WORKSPACE_ROOT / "benchmarks" / "runs"
     if update_reports:
@@ -527,6 +546,7 @@ def run_verification(update_reports: bool = False, verbose: bool = False) -> int
                 plugin_scale,
                 retrieval,
                 cross_eval,
+                llm_judge=llm_judge,
             )
         )
 

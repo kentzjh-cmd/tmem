@@ -190,7 +190,7 @@ export function apply(ctx, config = {}) {
         description:
           "Capture, slice, list, inspect, replay, or manage project execution trace memory (.tmem/)",
         input: {
-          hint: "[status|list|forget|gc|bench|evaluate|inspect|replay|diff|sync] [<intent|trace_id>]",
+          hint: "[status|list|forget|gc|telemetry|bench|evaluate|inspect|replay|diff|sync] [<intent|trace_id>]",
         },
         handler: async (invocation) => {
           const workspaceRoot = resolveSessionWorkspace(

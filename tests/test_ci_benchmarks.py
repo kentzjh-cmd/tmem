@@ -7,12 +7,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from benchmarks.eval_llm_judge import build_blinded_judge_packets, verify_llm_judge_report
 from scripts.verify_benchmarks import (
     _check_readme_sync,
     _check_regression_gates,
     _check_saved_reports,
     _strip_timing_fields,
 )
+from tmem.cli import main as cli_main
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -158,6 +160,22 @@ class TestCiAndBenchmarkSync(unittest.TestCase):
             rep_errs = _check_saved_reports(runs_dir, slicing_50, plugin_scale, retrieval)
             self.assertEqual(len(rep_errs), 1)
             self.assertIn("slicing_fidelity_report.json", rep_errs[0])
+
+    def test_llm_judge_verification_and_packet_generation(self) -> None:
+        summary = verify_llm_judge_report()
+        self.assertEqual(summary["total_trajectories"], 50)
+        self.assertEqual(summary["pairwise_llm_judge"]["B1_tmem_wins"], 49)
+        self.assertEqual(summary["mean_llm_scores"]["B1_tmem"]["overall"], 4.8)
+
+        packets = build_blinded_judge_packets(seed=42)
+        self.assertEqual(len(packets), 50)
+        self.assertIn("option_a", packets[0])
+        self.assertIn("option_b", packets[0])
+
+    def test_cli_lookup_accepts_positional_and_flag_queries(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(cli_main(["lookup", "TypeError", "--file", "src/validator.py", "--workspace", tmp]), 0)
+            self.assertEqual(cli_main(["lookup", "--query", "TypeError", "--file", "src/validator.py", "--workspace", tmp]), 0)
 
 
 if __name__ == "__main__":

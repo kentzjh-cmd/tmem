@@ -20,7 +20,7 @@
 - **Cordis 插件热路径耗时**：21 次高频事件（6 轮 `agent/pre-step` + 15 次只读 `tools/post-execute`）总耗时 **116.66 ms**（免除重复 `python3` 冷启动）
 
 ### 2. 时间因果切片与 50 轨迹 LLM 盲测评审
-复现命令：`python3 benchmarks/eval_slicing_fidelity.py --gold-path benchmarks/gold/gold_annotations_50.json`（[50 轨迹盲测报告](./benchmarks/runs/llm_judge_50_report.json) / [Gold-50 标注集](./benchmarks/gold/gold_annotations_50.json)）：
+复现命令：`python3 benchmarks/eval_slicing_fidelity.py --gold-path benchmarks/gold/gold_annotations_50.json` 与 `python3 benchmarks/eval_llm_judge.py`（[50 轨迹盲测报告](./benchmarks/runs/llm_judge_50_report.json) / [Gold-50 标注集](./benchmarks/gold/gold_annotations_50.json)）：
 
 在扩展至 **50 条高质量真实轨迹**（原有 25 条 SWE-bench/DSH + 从 `sailplane/swe-agent-trajs` 筛选的 25 条 `resolved=True` 多仓库修复轨迹）上，由 5 组独立 LLM 盲测评审对随机打乱的 A/B 切片结果打分：
 
@@ -30,7 +30,7 @@
 | **B1 `tmem` Phase 1 时间因果切片** | **93.8%** | **95.0%** | **93.6%** | 5.1 步 | **4.80**（成对胜率 **49:1 / 98.0%**） |
 | **B2 Oracle 上限（LLM Gold-50 标注）** | 98.0% | 98.0% | 98.0% | 5.0 步 | — |
 
-> **诚实局限**：在极少数样本（如 `sympy__sympy-22005`）中，若 Agent 在最后一次通过测试之后又编辑了测试文件却未再运行验证，`tmem` 在离线无 Git 状态下仍会保留该末尾未验证修改；在原始 25 标注集（`benchmarks/gold/gold_annotations.json`）基准评测中，B1 Precision 亦已从 63.2% 提升至 92.3%（F1 81.8% > B0 81.0%）。
+> **诚实局限**：在极少数样本（如 `sympy__sympy-22005`）中，若 Agent 在最后一次通过测试之后又编辑了测试文件却未再运行验证，`tmem` 在离线无 Git 状态下仍会保留该末尾未验证修改；在原始 25 标注集（`benchmarks/gold/gold_annotations.json`，复现命令：`python3 benchmarks/eval_slicing_fidelity.py --gold-path benchmarks/gold/gold_annotations.json`）基准评测中，B1 Precision 亦已从 63.2% 提升至 92.3%（F1 81.8% > B0 81.0%）。
 
 ### 3. 50 轨迹规模压力测试与独立检索评测
 复现命令：`python3 benchmarks/eval_plugin_scale.py`（[规模报告](./benchmarks/runs/plugin_scale_50_report.json)）与 `python3 benchmarks/eval_retrieval.py`（[检索日志](./benchmarks/runs/retrieval_report.json)）：

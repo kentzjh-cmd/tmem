@@ -162,8 +162,8 @@ def main(argv: List[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Evaluate slicing fidelity on gold annotations")
     parser.add_argument(
         "--gold-path",
-        default=str(WORKSPACE_ROOT / "benchmarks" / "gold" / "gold_annotations.json"),
-        help="Path to gold annotations JSON",
+        default=str(WORKSPACE_ROOT / "benchmarks" / "gold" / "gold_annotations_50.json"),
+        help="Path to gold annotations JSON (default: gold_annotations_50.json)",
     )
     parser.add_argument("--json", action="store_true", help="Output raw JSON")
     parser.add_argument("--output", default=None, help="Save report to file")
@@ -176,12 +176,13 @@ def main(argv: List[str] | None = None) -> int:
 
     data = evaluate_baselines(gold_path)
 
-    # Save to benchmarks/runs/
-    runs_dir = WORKSPACE_ROOT / "benchmarks" / "runs"
-    runs_dir.mkdir(parents=True, exist_ok=True)
-    report_file = runs_dir / "slicing_fidelity_report.json"
-    with report_file.open("w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    # Only update canonical 50-trace report when evaluating gold_annotations_50.json
+    if gold_path.name == "gold_annotations_50.json":
+        runs_dir = WORKSPACE_ROOT / "benchmarks" / "runs"
+        runs_dir.mkdir(parents=True, exist_ok=True)
+        report_file = runs_dir / "slicing_fidelity_report.json"
+        with report_file.open("w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
 
     if args.json:
         print(json.dumps(data, indent=2, ensure_ascii=False))

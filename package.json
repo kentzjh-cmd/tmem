@@ -1,6 +1,6 @@
 {
   "name": "dsh-tmem",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Deterministic Execution Trace Memory plugin for DeepSeek Harness (dsh): records verified execution paths against git ground truth into guarded L0/L1/L2 playbooks (.tmem/)",
   "type": "module",
   "main": "./tmem/dsh_plugin.mjs",

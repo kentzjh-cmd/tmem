@@ -20,7 +20,8 @@
       "overall": 4.8
     }
   },
-  "gold_50_slicing_fidelity": {
+  "note": "Blinded 5-shard LLM judge evaluated on the Phase 1 50-trace snapshot (49/50 slices identical to current slicing_fidelity_report.json; sympy__sympy-16766 later improved from 8 steps / 93.3% F1 to 7 steps / 100.0% F1 in commit 28e099a). Current deterministic slicing fidelity metrics live in slicing_fidelity_report.json.",
+  "judge_snapshot_slicing_fidelity": {
     "B0_baseline": {
       "p": 81.1,
       "r": 66.5,

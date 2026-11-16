@@ -22,7 +22,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from tmem import logger
+from tmem import __version__, logger
 from tmem.adapters import get_adapter
 from tmem.adapters.dsh import DshAdapter
 from tmem.guards import format_injected_context
@@ -184,7 +184,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         prog="tmem",
         description="Deterministic Backward-Slicing Execution Trace Memory Compiler (.tmem/)",
     )
-    parser.add_argument("--version", action="version", version="tmem 0.2.0")
+    parser.add_argument("--version", action="version", version=f"tmem {__version__}")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose debug logging")
     sub = parser.add_subparsers(dest="subcommand", help="Subcommand to execute")
 
@@ -211,6 +211,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     # 4. lookup
     p_look = sub.add_parser("lookup", help="Query execution memory with zero-token pre-flight guards")
+    p_look.add_argument("query_pos", nargs="?", default="", help="Optional positional intent or keyword query")
     p_look.add_argument("--workspace", default=os.getcwd(), help="Workspace root directory")
     p_look.add_argument("--query", "-q", default="", help="Intent or problem keyword search text")
     p_look.add_argument("--file", "-f", action="append", default=[], help="File path anchor")
@@ -305,8 +306,9 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if args.subcommand == "lookup":
         store = ProjectMemoryStore(args.workspace)
+        effective_query = (args.query or args.query_pos or "").strip()
         evaluated = store.cascading_lookup(
-            query_text=args.query,
+            query_text=effective_query,
             file_paths=args.file,
             error_signatures=args.error,
         )

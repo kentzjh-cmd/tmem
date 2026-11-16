@@ -159,7 +159,7 @@ def run_plugin_scale_validation(
             )
             hook_latencies_ms.append((time.perf_counter() - t0) * 1000.0)
             ctx = out.get("injectedContext") or ""
-            if "<tmem_memory" in ctx or "<tmem_causal_repair" in ctx:
+            if "<tmem_speculative_memory>" in ctx:
                 pre_step_neg_injected += 1
 
         # 3b. Pre-step Explicit Anchor Recall across compiled playbooks (first 20 with clear file targets)
