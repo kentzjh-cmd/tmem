@@ -13,33 +13,36 @@ By deterministically slicing and indexing past DSH trajectories without spending
 All scripts and datasets are reproducible under `benchmarks/`:
 
 ### 1.1 DSH End-to-End Strong-Signal Replay & Telemetry
-Reproduction command: `python3 benchmarks/eval_dsh_e2e.py` ([Script](file:///home/ubuntu/proj/benchmarks/eval_dsh_e2e.py)):
+Reproduction command: `python3 benchmarks/eval_dsh_e2e.py` ([Script](./benchmarks/eval_dsh_e2e.py)):
 - **End-to-End Interaction Step Reduction**: **37.5%** (8 trial-and-error baseline steps → 5 steps with `tmem`)
 - **Runtime Telemetry Resolution**: L2 green error resolution **100%** (`1/1`), L1 co-change partner adoption **100%** (`1/1`)
 - **Natural-Language Holdout False Positive Injection Rate**: **0.0%** (10 vague prompts without file/error anchors stayed silent)
-- **Live Cordis Hot-Path Latency**: **111.98 ms** total across 21 events (6 `agent/pre-step` + 15 routine `read` `tools/post-execute` calls, skipping redundant `python3` spawns)
+- **Live Cordis Hot-Path Latency**: **116.66 ms** total across 21 events (6 `agent/pre-step` + 15 routine `read` `tools/post-execute` calls, skipping redundant `python3` spawns)
 
-### 1.2 Slicing Fidelity (25 SWE-bench / DSH trajectories vs. Human Gold Annotations)
-Reproduction command: `python3 benchmarks/eval_slicing_fidelity.py` ([Run Log](file:///home/ubuntu/proj/benchmarks/runs/slicing_fidelity_report.json)):
+### 1.2 Temporal Causal Slicing & 50-Trajectory Blinded LLM Judge
+Reproduction command: `python3 benchmarks/eval_slicing_fidelity.py --gold-path benchmarks/gold/gold_annotations_50.json` ([50-Trace LLM Judge Report](./benchmarks/runs/llm_judge_50_report.json) / [Gold-50 Annotations](./benchmarks/gold/gold_annotations_50.json)):
 
-| Slicing Strategy | Precision | Recall | F1-Score | Mean Retained Steps |
-|---|:---:|:---:|:---:|:---:|
-| **B0 Trivial Baseline (Landed files + Final test)** | **97.1%** | 70.8% | **81.0%** | 4.4 steps |
-| **B1 `tmem` Heuristic Backward Slicing** | 63.2% | **88.7%** | 70.8% | 8.8 steps |
-| **B2 Oracle Upper Bound (Human Gold)** | 100.0% | 100.0% | 100.0% | 5.6 steps |
+Across **50 high-quality real trajectories** (25 original SWE-bench/DSH + 25 `resolved=True` multi-repo fixes from `sailplane/swe-agent-trajs`), 5 independent blinded LLM judge shards evaluated shuffled Option A/B slices:
 
-> **Honest Limitation**: `tmem` backward tracing retains pre-edit read context well (88.7% Recall vs. B0's 70.8%), but heuristic rules still leave some exploratory reads unpruned (63.2% Precision, trailing B0 in F1).
+| Slicing Strategy | Precision | Recall | F1-Score | Mean Retained Steps | Mean LLM Score (1–5) |
+|---|:---:|:---:|:---:|:---:|:---:|
+| **B0 Trivial Baseline (Landed files + Final test)** | 81.1% | 66.5% | 71.4% | 4.7 steps | 3.20 |
+| **B1 `tmem` Phase 1 Temporal Causal Slicer** | **93.5%** | **95.0%** | **93.4%** | 5.1 steps | **4.80** (**49:1 / 98.0% win rate**) |
+| **B2 Oracle Upper Bound (LLM Gold-50)** | 98.0% | 98.0% | 98.0% | 5.0 steps | — |
 
-### 1.3 Independent Raw Issue Retrieval (25 raw issue queries + 6 negative holdout queries)
-Reproduction command: `python3 benchmarks/eval_retrieval.py` ([Run Log](file:///home/ubuntu/proj/benchmarks/runs/retrieval_report.json)):
-- **Recall@1**: **100.0%** / **Recall@3**: **100.0%** / **MRR**: **1.0**
-- **Negative Holdout False Positive Rate**: 16.7% (raw SQLite FTS5 BM25 lexical lookup can occasionally surface cross-domain queries sharing generic tokens; accordingly, DSH `pre-step` recall now requires explicit file-path or error-signature anchors)
+> **Honest Limitation**: On rare edge cases such as `sympy__sympy-22005`, when an agent modifies a test file *after* its final passing reproduction command and submits without re-running tests, offline `tmem` (`use_git_ground_truth=False`) retains that trailing unverified edit. On the original 25-trace benchmark (`benchmarks/gold/gold_annotations.json`), B1 Precision likewise improved from 63.2% to 92.3% (F1 81.8% vs. B0's 81.0%).
 
-### 1.4 Trajectory Compression & Runtime Footprint (9 real trajectories)
+### 1.3 50-Trajectory Plugin Scale Stress Test & Retrieval
+Reproduction commands: `python3 benchmarks/eval_plugin_scale.py` ([Scale Report](./benchmarks/runs/plugin_scale_50_report.json)) and `python3 benchmarks/eval_retrieval.py` ([Retrieval Log](./benchmarks/runs/retrieval_report.json)):
+- **50-Trace Corpus Compilation & Compression**: 49/50 compiled playbooks (`pytest-dev__pytest-7168` pruned as empty deleted-scratch session), reducing **898 → 158 L0 steps** (**82.4%** step reduction, **94.6%** RawTrace-to-L0 char compression), **0.72 ms** avg slice time, **5.99 ms** `MEMORIES.md` sync.
+- **`handle_dsh_hook` Runtime Validation (49-Playbook DB)**: **6.97 ms** avg hook latency; **0.0%** `pre_step` negative FP (`0/10`); **100.0%** explicit anchor recall (`48/48`); **100.0%** `post_tool_use` L2 interception & green resolution (`3/3`, `l2_resolution_rate = 1.0`).
+- **Independent Raw Issue Retrieval**: Across 24 issue-query traces in `eval_retrieval.py`, **Recall@1 = 100.0% / Recall@3 = 100.0% / MRR = 1.0**, and negative holdout FP dropped to **0.0%** after word-boundary and token-coverage fixes in `tmem/store.py` (under the 49-playbook scale DB, lexical FTS5 negative FP is **10.0%** while `pre_step` remains **0.0%**).
+
+### 1.4 Cross-Format Trajectory Compression & Runtime Footprint (9 real trajectories)
 Reproduction command: `python3 -m tmem.evaluate`:
-- **Mean Step Compression**: **56.97%** (117 -> 47 steps; ~1,423 -> ~349 est. tokens)
+- **Mean Step Compression**: **56.5%** (106 → 43 steps; 5,406 → 1,480 chars; ~1,348 → ~367 est. tokens)
 - **High-Entropy L2 Causal Pairs Extracted**: **7 pairs** (verified via traceback file intersection + same-origin command verification)
-- **Mean Deterministic Slicing Latency**: **0.65 ms** (zero external dependencies, zero LLM calls)
+- **Mean Deterministic Slicing Latency**: **0.88 ms** (zero external dependencies, zero LLM calls)
 
 ---
 
@@ -62,10 +65,10 @@ flowchart LR
    - **Cold-Start Pruning**: `agent/pre-step` skips spawning Python when user input hasn't changed across loop steps; `tools/post-execute` skips routine `read`/`grep`/`glob` calls unless an error occurred or an L1 co-change watch is active.
    - **Zero-Noise Pre-Step**: Downgrades fuzzy natural-language BM25 prompt guessing; only injects `env_facts` once per session or recalls when explicit workspace paths or error signatures are mentioned.
    - **Runtime Interception**: Injects verified L2 fixes immediately via `lookup_l2_repair` on command failure, and emits `<tmem_cochange_hint>` after editing code files with strong Git/trace co-change partners.
-2. **Precision-First Slicing, Pre-Write Merging & Drift GC** ([`tmem/slicer.py`](./tmem/slicer.py), [`tmem/store.py`](./tmem/store.py)):
-   - Uses `git diff -U0` + full-file Python ASTs for symbol attribution, enforces a default-deny gate on routine edits while saving passing test commands to `.tmem/env_facts.json`.
-   - **Pre-Write Similarity Merging**: Merges new playbooks sharing the same L2 causal repair or high file-set + intent overlap in place instead of creating duplicate JSON files.
-   - **Guard-Drift Metabolism**: Tracks `guard_fail_streak` on drifted paths; `tmem gc --prune` retires expired stale entries lacking L2 invariants.
+2. **Temporal Causal Slicing, Pre-Write Merging & Drift GC** ([`tmem/slicer.py`](./tmem/slicer.py), [`tmem/store.py`](./tmem/store.py)):
+   - **Temporal Causal Graph**: Prunes syntax-rejected edit retries, pre-barrier states wiped by `rm`/`git checkout|restore|reset`, standalone scratch reproduction scripts, and dangling post-mutation reads; separates persistent `ENV_INSTALL` from latest-epoch `VERIFY_GATE` (rejecting non-gating `|| true` commands while preserving POSIX env prefixes like `PYTHONPATH=.`).
+   - **Symbol Attribution & Boundary-Safe Retrieval**: Uses `git diff -U0` + Python ASTs with a default-deny gate, and enforces `len >= 4` word-boundary trigger matching in SQLite lookup.
+   - **Pre-Write Merging & Guard-Drift Metabolism**: Merges playbooks sharing L2 repairs or high file/intent overlap in place, and retires expired no-L2 entries via `tmem gc --prune`.
 3. **Runtime Benefit Telemetry** ([`tmem/telemetry.py`](./tmem/telemetry.py)):
    - Appends structured events to `.tmem/telemetry.jsonl` (gitignored) tracking L2 same-origin green resolution rate and L1 partner-file adoption rate (`tmem telemetry` / `tmem status`).
 

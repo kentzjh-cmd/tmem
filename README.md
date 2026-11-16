@@ -13,33 +13,36 @@
 所有脚本与数据均可在 `benchmarks/` 下复现：
 
 ### 1. DSH 端到端强信号回放与遥测评测
-复现命令：`python3 benchmarks/eval_dsh_e2e.py`（[评测脚本](file:///home/ubuntu/proj/benchmarks/eval_dsh_e2e.py)）：
+复现命令：`python3 benchmarks/eval_dsh_e2e.py`（[评测脚本](./benchmarks/eval_dsh_e2e.py)）：
 - **端到端交互步数精简**：**37.5%**（8 步试错基线 → 5 步完成）
 - **运行时遥测命中收益**：L2 报错修复转绿率 **100%**（`1/1`），L1 共变提醒采纳率 **100%**（`1/1`）
 - **泛自然语言负例误注入率**：**0.0%**（10 条无代码/报错锚点的日常对话均保持静默）
-- **Cordis 插件热路径耗时**：21 次高频事件（6 轮 `agent/pre-step` + 15 次只读 `tools/post-execute`）总耗时 **111.98 ms**（免除重复 `python3` 冷启动）
+- **Cordis 插件热路径耗时**：21 次高频事件（6 轮 `agent/pre-step` + 15 次只读 `tools/post-execute`）总耗时 **116.66 ms**（免除重复 `python3` 冷启动）
 
-### 2. 切片保真度评测（25 条真实轨迹对比人工 Gold 标注）
-复现命令：`python3 benchmarks/eval_slicing_fidelity.py`（[评测日志](file:///home/ubuntu/proj/benchmarks/runs/slicing_fidelity_report.json)）：
+### 2. 时间因果切片与 50 轨迹 LLM 盲测评审
+复现命令：`python3 benchmarks/eval_slicing_fidelity.py --gold-path benchmarks/gold/gold_annotations_50.json`（[50 轨迹盲测报告](./benchmarks/runs/llm_judge_50_report.json) / [Gold-50 标注集](./benchmarks/gold/gold_annotations_50.json)）：
 
-| 切片策略 | Precision (精确率) | Recall (召回率) | F1-Score | 平均保留步数 |
-|---|:---:|:---:|:---:|:---:|
-| **B0 简单基线（修改文件 + 终测）** | **97.1%** | 70.8% | **81.0%** | 4.4 步 |
-| **B1 `tmem` 启发式后向切片** | 63.2% | **88.7%** | 70.8% | 8.8 步 |
-| **B2 Oracle 上限（人工 Gold 标注）** | 100.0% | 100.0% | 100.0% | 5.6 步 |
+在扩展至 **50 条高质量真实轨迹**（原有 25 条 SWE-bench/DSH + 从 `sailplane/swe-agent-trajs` 筛选的 25 条 `resolved=True` 多仓库修复轨迹）上，由 5 组独立 LLM 盲测评审对随机打乱的 A/B 切片结果打分：
 
-> **诚实局限**：`tmem` 后向反推有效保留了定位所需的前置读上下文（Recall 88.7% > B0 的 70.8%），但部分试探性读取未被完全剪枝，Precision（63.2%）与 F1 仍低于强精确率 B0 基线。
+| 切片策略 | Precision (精确率) | Recall (召回率) | F1-Score | 平均保留步数 | LLM 盲测综合分 (1–5) |
+|---|:---:|:---:|:---:|:---:|:---:|
+| **B0 简单基线（修改文件 + 终测）** | 81.1% | 66.5% | 71.4% | 4.7 步 | 3.20 |
+| **B1 `tmem` Phase 1 时间因果切片** | **93.5%** | **95.0%** | **93.4%** | 5.1 步 | **4.80**（成对胜率 **49:1 / 98.0%**） |
+| **B2 Oracle 上限（LLM Gold-50 标注）** | 98.0% | 98.0% | 98.0% | 5.0 步 | — |
 
-### 3. 原始 Issue 检索评测（25 个真实原始 Issue 查询 + 6 个负例查询）
-复现命令：`python3 benchmarks/eval_retrieval.py`（[评测日志](file:///home/ubuntu/proj/benchmarks/runs/retrieval_report.json)）：
-- **Recall@1**: **100.0%** / **Recall@3**: **100.0%** / **MRR**: **1.0**
-- **负例误召回率**: 16.7%（纯本地 SQLite FTS5 BM25 词法检索在直接查 Issue 时偶有常见词匹配；因此 DSH `pre-step` 已改为仅允许显式文件路径或报错签名触发）
+> **诚实局限**：在极少数样本（如 `sympy__sympy-22005`）中，若 Agent 在最后一次通过测试之后又编辑了测试文件却未再运行验证，`tmem` 在离线无 Git 状态下仍会保留该末尾未验证修改；在原始 25 标注集（`benchmarks/gold/gold_annotations.json`）基准评测中，B1 Precision 亦已从 63.2% 提升至 92.3%（F1 81.8% > B0 81.0%）。
 
-### 4. 轨迹压缩与运行时开销评测（9 条真实轨迹）
+### 3. 50 轨迹规模压力测试与独立检索评测
+复现命令：`python3 benchmarks/eval_plugin_scale.py`（[规模报告](./benchmarks/runs/plugin_scale_50_report.json)）与 `python3 benchmarks/eval_retrieval.py`（[检索日志](./benchmarks/runs/retrieval_report.json)）：
+- **50 轨迹全量压缩入库**：50 条编译为 **49** 条 Playbook（自动过滤空变更 `pytest-dev__pytest-7168`），原始 **898 步 → L0 158 步**（步数精简 **82.4%**，字符体积压缩 **94.6%**），平均单条切片 **0.72 ms**，`MEMORIES.md` 全量原子同步 **5.99 ms**。
+- **`handle_dsh_hook` 规模运行验证**：49 条库规模下平均 Hook 延迟 **6.97 ms**；`pre_step` 负例误注入 **0.0%**（`0/10`）、显式锚点召回 **100.0%**（`48/48`）；`post_tool_use` L2 同源报错拦截与验证转绿率 **100.0%**（`3/3`）。
+- **独立原始 Issue 检索**：24 条含原始需求文本的样本在 `eval_retrieval.py` 取得 **Recall@1 = 100.0% / Recall@3 = 100.0% / MRR = 1.0**，词边界与词元覆盖率门控生效后 **负例误召回率降至 0.0%**（49 条全库压力下 FTS5 负例误召回 **10.0%**，且已被 `pre_step` 显式锚点策略兜底为 **0.0%**）。
+
+### 4. 跨格式轨迹压缩与运行时开销评测（9 条真实轨迹）
 复现命令：`python3 -m tmem.evaluate`：
-- **L0 步骤精简率**: **56.97%**（117 步 -> 47 步，~1423 tok -> ~349 tok）
-- **高熵 L2 因果修复对**: **7 组**（经同源验证命令与堆栈交集双重校验）
-- **平均确定性切片耗时**: **0.65 ms**（零外部依赖与零 LLM Token 耗时）
+- **L0 步骤精简率**：**56.5%**（106 步 → 43 步，5,406 → 1,480 字符，~1,348 tok → ~367 tok）
+- **高熵 L2 因果修复对**：**7 组**（经同源验证命令与堆栈交集双重校验）
+- **平均确定性切片耗时**：**0.88 ms**（零外部依赖与零 LLM Token 耗时）
 
 ---
 
@@ -62,10 +65,10 @@ flowchart LR
    - **冷启动削减**：`agent/pre-step` 对同输入后续推理步直接放行；`tools/post-execute` 跳过常规 `read`/`grep`/`glob`，仅在报错、代码修改、Shell 验证或处于共变观察期时唤醒 Python 内核；
    - **降级泛猜测**：`pre_invocation` 不再拿自然语言做模糊 BM25 猜测，仅在首轮注入 `env_facts` 或命中显式文件路径/报错名时召回；
    - **实时拦截**：报错时通过 `lookup_l2_repair` 即时注入经过同源验证的 L2 修复动作；修改源码文件后基于 Git/Trace 统计共变即时注入 `<tmem_cochange_hint>`。
-2. **Precision-First 切片、写前合并与漂移淘汰**（[`tmem/slicer.py`](./tmem/slicer.py)、[`tmem/store.py`](./tmem/store.py)）：
-   - 基于 `git diff -U0` + Python AST 精准归因修改符号，默认拒绝单文件无修复的常规修改（`default-deny`），仅将其中的通过命令写入 `.tmem/env_facts.json`；
-   - **写前合并**：入库前检测同 L2 报错修复或高文件重合度 + 同意图 Playbook 并就地合并（累计 `merge_count` 与置信度），防止 `.tmem/traces/` 膨胀；
-   - **Guard 漂移自动淘汰**：持续追踪 `guard_fail_streak`，`tmem gc --prune` 自动清理长期失效且无 L2 价值的过期条目。
+2. **时间因果切片、写前合并与漂移淘汰**（[`tmem/slicer.py`](./tmem/slicer.py)、[`tmem/store.py`](./tmem/store.py)）：
+   - **时间因果图裁剪**：识别并剔除语法拒改重试、`rm`/`git checkout|restore|reset` 销毁回滚屏障前失效操作、独立临时复现脚本及写后悬空读；拆分持续有效的 `ENV_INSTALL` 与最新 epoch `VERIFY_GATE`（过滤 `|| true` 伪通过命令并支持 `PYTHONPATH=.` 等环境前缀）；
+   - **符号归因与词边界检索**：基于 `git diff -U0` + Python AST 精准归因修改符号，默认拒绝单文件无修复常规修改，并将触发器检索收紧为 `len >= 4` 词边界匹配；
+   - **写前合并与 Guard 漂移淘汰**：同 L2/高重合度自动就地合并防止 `.tmem/traces/` 膨胀，`tmem gc --prune` 清理长期漂移且无 L2 价值的过期条目。
 3. **真实收益遥测闭环**（[`tmem/telemetry.py`](./tmem/telemetry.py)）：
    - 记录每次 L2 注入后下轮同源命令是否转绿、以及 L1 共变提示后是否读/改了目标搭档文件，通过 `tmem telemetry` 或 `tmem status` 量化真实采纳率。
 
