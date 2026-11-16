@@ -1,23 +1,35 @@
 {
   "name": "dsh-tmem",
   "version": "0.3.0",
-  "description": "Deterministic Execution Trace Memory plugin for DeepSeek Harness (dsh): records verified execution paths against git ground truth into guarded L0/L1/L2 playbooks (.tmem/)",
+  "description": "Deterministic Execution Trace Memory & Zero-Token Session Digest engine for DeepSeek Harness (@deepseek-ai/dsh) — pure Node.js ESM runtime",
   "type": "module",
   "main": "./tmem/dsh_plugin.mjs",
+  "bin": {
+    "tmem": "./tmem/cli.mjs"
+  },
   "exports": {
     ".": "./tmem/dsh_plugin.mjs",
+    "./cli": "./tmem/cli.mjs",
+    "./hooks": "./tmem/hooks/index.mjs",
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
   "files": [
     "cordis.patch.yml",
-    "tmem/**/*.py",
-    "tmem/dsh_plugin.mjs",
+    "tmem/**/*.mjs",
     "AGENTS.md",
     "README.md",
     "README_EN.md",
     "LICENSE"
   ],
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "evaluate": "node tmem/cli.mjs evaluate",
+    "check": "node --check tmem/cli.mjs && node --check tmem/dsh_plugin.mjs"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/kentzjh-cmd/tmem.git"

@@ -65,26 +65,29 @@ flowchart LR
     Gate -->|"高价值且新主题"| Traces[".tmem/traces/*.json + MEMORIES.md"]
 ```
 
-1. **DSH 热路径瘦身与强信号即时拦截**（[`tmem/dsh_plugin.mjs`](./tmem/dsh_plugin.mjs)、[`tmem/hooks/dsh.py`](./tmem/hooks/dsh.py)）：
-   - **冷启动削减**：`agent/pre-step` 对同输入后续推理步直接放行；`tools/post-execute` 跳过常规 `read`/`grep`/`glob`，仅在报错、代码修改、Shell 验证或处于共变观察期时唤醒 Python 内核；
+1. **DSH 热路径瘦身与强信号即时拦截**（[`tmem/dsh_plugin.mjs`](./tmem/dsh_plugin.mjs)、[`tmem/hooks/dsh.mjs`](./tmem/hooks/dsh.mjs)）：
+   - **进程内零冷启动**：基于纯 Node.js ESM 实现，DSH Cordis 插件进程内直调钩子逻辑，彻底免除子进程冷启动开销；`agent/pre-step` 对同输入后续推理步直接放行，`tools/post-execute` 跳过常规 `read`/`grep`/`glob`；
    - **降级泛猜测**：`pre_invocation` 不再拿自然语言做模糊 BM25 猜测，仅在首轮注入 `env_facts` 或命中显式文件路径/报错名时召回；
-   - **实时拦截**：报错时通过 `lookup_l2_repair` 即时注入经过同源验证的 L2 修复动作；修改源码文件后基于 Git/Trace 统计共变即时注入 `<tmem_cochange_hint>`。
-2. **时间因果切片、写前合并与漂移淘汰**（[`tmem/slicer.py`](./tmem/slicer.py)、[`tmem/store.py`](./tmem/store.py)）：
+   - **实时拦截**：报错时通过 `lookupL2Repair` 即时注入经过同源验证的 L2 修复动作；修改源码文件后基于 Git/Trace 统计共变即时注入 `<tmem_cochange_hint>`。
+2. **时间因果切片、写前合并与漂移淘汰**（[`tmem/slicer.mjs`](./tmem/slicer.mjs)、[`tmem/store.mjs`](./tmem/store.mjs)）：
    - **时间因果图裁剪**：识别并剔除语法拒改重试、`rm`/`git checkout|restore|reset` 销毁回滚屏障前失效操作、独立临时复现脚本及写后悬空读；拆分持续有效的 `ENV_INSTALL` 与最新 epoch `VERIFY_GATE`（过滤 `|| true` 伪通过命令并支持 `PYTHONPATH=.` 等环境前缀）；
-   - **符号归因与词边界检索**：基于 `git diff -U0` + Python AST 精准归因修改符号，默认拒绝单文件无修复常规修改，并将触发器检索收紧为 `len >= 4` 词边界匹配；
+   - **符号归因与词边界检索**：基于 `git diff -U0` + 纯 Node 多语言结构化解析（[`tmem/ast_parser.mjs`](./tmem/ast_parser.mjs)）精准归因修改符号，默认拒绝单文件无修复常规修改，并将触发器检索收紧为 `len >= 4` 词边界匹配；
    - **写前合并与 Guard 漂移淘汰**：同 L2/高重合度自动就地合并防止 `.tmem/traces/` 膨胀，`tmem gc --prune` 清理长期漂移且无 L2 价值的过期条目。
-3. **真实收益遥测闭环**（[`tmem/telemetry.py`](./tmem/telemetry.py)）：
+3. **真实收益遥测闭环**（[`tmem/telemetry.mjs`](./tmem/telemetry.mjs)）：
    - 记录每次 L2 注入后下轮同源命令是否转绿、以及 L1 共变提示后是否读/改了目标搭档文件，通过 `tmem telemetry` 或 `tmem status` 量化真实采纳率。
 
 ---
 
-## 三、快速开始
+## 三、快速开始（Node.js 分支版本）
+
+> 运行环境要求：**Node.js >= 22.5.0**（使用内置 `node:sqlite` FTS5，零外部 npm 依赖，无需 Python）。
 
 ### 安装与初始化
 ```bash
-pip install -e .            # 安装 CLI 工具（零外部依赖，仅需标准库）
-tmem init                   # 初始化 .tmem/、安装 DSH Cordis 插件与 git post-commit hook
-dsh plugin add github:kentzjh-cmd/tmem   # 或直接通过 dsh 安装插件
+npm link                                      # 链接全局 `tmem` CLI（零外部依赖，免构建直接运行）
+tmem init                                     # 初始化 .tmem/、安装 DSH Cordis 插件与 git post-commit hook
+dsh plugin add github:kentzjh-cmd/tmem#node   # 或直接通过 dsh 安装 node 分支插件
+npm test                                      # 运行 node --test 完整测试套件
 ```
 
 ### 常用命令

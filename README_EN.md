@@ -65,26 +65,29 @@ flowchart LR
     Gate -->|"High-value novel"| Traces[".tmem/traces/*.json + MEMORIES.md"]
 ```
 
-1. **DSH Hot-Path Optimization & Strong-Signal Interception** ([`tmem/dsh_plugin.mjs`](./tmem/dsh_plugin.mjs), [`tmem/hooks/dsh.py`](./tmem/hooks/dsh.py)):
-   - **Cold-Start Pruning**: `agent/pre-step` skips spawning Python when user input hasn't changed across loop steps; `tools/post-execute` skips routine `read`/`grep`/`glob` calls unless an error occurred or an L1 co-change watch is active.
+1. **DSH Hot-Path Optimization & Strong-Signal Interception** ([`tmem/dsh_plugin.mjs`](./tmem/dsh_plugin.mjs), [`tmem/hooks/dsh.mjs`](./tmem/hooks/dsh.mjs)):
+   - **Zero Cold-Start In-Process Runtime**: Pure Node.js ESM execution inside the DSH Cordis plugin with zero child-process spawning on hot paths; `agent/pre-step` skips unchanged steps and `tools/post-execute` skips routine `read`/`grep`/`glob` calls.
    - **Zero-Noise Pre-Step**: Downgrades fuzzy natural-language BM25 prompt guessing; only injects `env_facts` once per session or recalls when explicit workspace paths or error signatures are mentioned.
-   - **Runtime Interception**: Injects verified L2 fixes immediately via `lookup_l2_repair` on command failure, and emits `<tmem_cochange_hint>` after editing code files with strong Git/trace co-change partners.
-2. **Temporal Causal Slicing, Pre-Write Merging & Drift GC** ([`tmem/slicer.py`](./tmem/slicer.py), [`tmem/store.py`](./tmem/store.py)):
+   - **Runtime Interception**: Injects verified L2 fixes immediately via `lookupL2Repair` on command failure, and emits `<tmem_cochange_hint>` after editing code files with strong Git/trace co-change partners.
+2. **Temporal Causal Slicing, Pre-Write Merging & Drift GC** ([`tmem/slicer.mjs`](./tmem/slicer.mjs), [`tmem/store.mjs`](./tmem/store.mjs)):
    - **Temporal Causal Graph**: Prunes syntax-rejected edit retries, pre-barrier states wiped by `rm`/`git checkout|restore|reset`, standalone scratch reproduction scripts, and dangling post-mutation reads; separates persistent `ENV_INSTALL` from latest-epoch `VERIFY_GATE` (rejecting non-gating `|| true` commands while preserving POSIX env prefixes like `PYTHONPATH=.`).
-   - **Symbol Attribution & Boundary-Safe Retrieval**: Uses `git diff -U0` + Python ASTs with a default-deny gate, and enforces `len >= 4` word-boundary trigger matching in SQLite lookup.
+   - **Symbol Attribution & Boundary-Safe Retrieval**: Uses `git diff -U0` + pure-Node multi-language structural parsing ([`tmem/ast_parser.mjs`](./tmem/ast_parser.mjs)) with a default-deny gate, and enforces `len >= 4` word-boundary trigger matching in SQLite lookup.
    - **Pre-Write Merging & Guard-Drift Metabolism**: Merges playbooks sharing L2 repairs or high file/intent overlap in place, and retires expired no-L2 entries via `tmem gc --prune`.
-3. **Runtime Benefit Telemetry** ([`tmem/telemetry.py`](./tmem/telemetry.py)):
+3. **Runtime Benefit Telemetry** ([`tmem/telemetry.mjs`](./tmem/telemetry.mjs)):
    - Appends structured events to `.tmem/telemetry.jsonl` (gitignored) tracking L2 same-origin green resolution rate and L1 partner-file adoption rate (`tmem telemetry` / `tmem status`).
 
 ---
 
-## 3. Quick Start
+## 3. Quick Start (Node.js Branch)
+
+> Requirement: **Node.js >= 22.5.0** (uses built-in `node:sqlite` FTS5, zero external npm dependencies, no Python required).
 
 ### Installation & Initialization
 ```bash
-pip install -e .            # Install CLI (zero external dependencies, standard library only)
-tmem init                   # Initialize .tmem/, install DSH Cordis plugin, and set git post-commit hook
-dsh plugin add github:kentzjh-cmd/tmem   # Or install directly via dsh
+npm link                                      # Link global `tmem` CLI (zero npm dependencies, no build step)
+tmem init                                     # Initialize .tmem/, install DSH Cordis plugin, and set git post-commit hook
+dsh plugin add github:kentzjh-cmd/tmem#node   # Or install directly via dsh from the node branch
+npm test                                      # Run full node --test suite
 ```
 
 ### Common Commands

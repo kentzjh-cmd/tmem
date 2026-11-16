@@ -1,39 +1,32 @@
 /**
  * @tmem/dsh-plugin — Zero-Token Historical Session Digest & Runtime Memory Plugin for DeepSeek Harness (@deepseek-ai/dsh)
  *
- * Core Definition:
- * Compiles historical DSH trajectories into zero-LLM-token requirement-and-behavior summaries
- * with inline `session_id` lineage (`.tmem/traces/`, `MEMORIES.md`, `.tmem/raw/`), eliminating
- * token overhead for session recap & forensic replay while guarding live execution:
- *
- * 1. Explicit-Anchor Pre-Step & Env Facts (`agent/pre-step`):
- *    Skips unchanged repeated steps cleanly; injects cross-task verified commands once per session
- *    and recalls matching traces only on explicit file-path or error-signature anchors.
- * 2. Strong-Signal Post-Execute Interception (`tools/post-execute`):
- *    Skips routine reads when idle; intercepts command errors with same-origin L2 fixes, surfaces
- *    statistical L1 co-change partner hints on code edits, emits `<tmem_milestone_reached>` on
- *    `MUTATE -> VERIFY(0)`, and records deterministic resolution telemetry.
- * 3. Native `/tmem` Slash Command (`commands.register`):
- *    Registers `/tmem [status|list|forget|gc|telemetry|inspect|replay|diff|sync]` in `dsh-commands`.
+ * Pure Node.js ESM runtime (zero Python dependency):
+ * Resolves `handleDshHook` and `executeCapture` in-process when loaded alongside the `dsh-tmem`
+ * package (or via `config.tmemRoot` / `TMEM_ROOT`), with non-blocking async CLI fallback (`tmem hook dsh`)
+ * when deployed as a standalone copied plugin file.
  */
 
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { delimiter, dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import path, { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 export const name = "tmem";
 
 const SELF_DIR = dirname(fileURLToPath(import.meta.url));
 
 function resolveDefaultTmemRoot(fallbackDir) {
+  if (existsSync(join(SELF_DIR, "hooks", "dsh.mjs"))) {
+    return resolve(SELF_DIR, "..");
+  }
   const oneUp = resolve(SELF_DIR, "..");
-  if (existsSync(join(oneUp, "tmem", "cli.py"))) {
+  if (existsSync(join(oneUp, "tmem", "cli.mjs"))) {
     return oneUp;
   }
   const twoUp = resolve(SELF_DIR, "../..");
-  if (existsSync(join(twoUp, "tmem", "cli.py"))) {
+  if (existsSync(join(twoUp, "tmem", "cli.mjs"))) {
     return twoUp;
   }
   return resolve(fallbackDir || process.cwd());
@@ -67,7 +60,12 @@ function extractTextFromContent(content) {
     return content
       .map((part) => {
         if (typeof part === "string") return part;
-        if (part && typeof part === "object" && part.type === "text" && typeof part.text === "string") {
+        if (
+          part &&
+          typeof part === "object" &&
+          part.type === "text" &&
+          typeof part.text === "string"
+        ) {
           return part.text;
         }
         return "";
@@ -78,21 +76,86 @@ function extractTextFromContent(content) {
   return "";
 }
 
-function invokeTmemHook(event, payload, options = {}) {
+const _runtimeCache = new Map();
+
+async function loadInProcessRuntime(tmemRoot) {
+  const key = tmemRoot || "";
+  if (_runtimeCache.has(key)) {
+    return _runtimeCache.get(key);
+  }
+
+  const candidatePairs = [];
+  // 1. Sibling modules when loaded directly from tmem/dsh_plugin.mjs
+  candidatePairs.push([
+    join(SELF_DIR, "hooks", "dsh.mjs"),
+    join(SELF_DIR, "cli.mjs"),
+  ]);
+  // 2. Explicit tmemRoot or TMEM_ROOT env
+  for (const root of [tmemRoot, process.env.TMEM_ROOT].filter(Boolean)) {
+    candidatePairs.push([
+      join(resolve(root), "tmem", "hooks", "dsh.mjs"),
+      join(resolve(root), "tmem", "cli.mjs"),
+    ]);
+  }
+
+  for (const [dshModPath, cliModPath] of candidatePairs) {
+    if (existsSync(dshModPath) && existsSync(cliModPath)) {
+      try {
+        const [dshMod, cliMod] = await Promise.all([
+          import(pathToFileURL(dshModPath).href),
+          import(pathToFileURL(cliModPath).href),
+        ]);
+        if (typeof dshMod.handleDshHook === "function") {
+          const rt = {
+            handleDshHook: dshMod.handleDshHook,
+            executeCapture: cliMod.executeCapture || null,
+          };
+          _runtimeCache.set(key, rt);
+          return rt;
+        }
+      } catch (_err) {
+        // Fall through to package/CLI resolution
+      }
+    }
+  }
+
+  // 3. Installed npm package resolution (`dsh-tmem`)
+  try {
+    const [dshMod, cliMod] = await Promise.all([
+      import("dsh-tmem/hooks"),
+      import("dsh-tmem/cli"),
+    ]);
+    if (typeof dshMod.handleDshHook === "function") {
+      const rt = {
+        handleDshHook: dshMod.handleDshHook,
+        executeCapture: cliMod.executeCapture || null,
+      };
+      _runtimeCache.set(key, rt);
+      return rt;
+    }
+  } catch (_err) {
+    // Fall through to async CLI spawn fallback
+  }
+
+  _runtimeCache.set(key, null);
+  return null;
+}
+
+function invokeTmemHookCliFallback(event, payload, options = {}) {
   return new Promise((promiseResolve) => {
     const workspaceRoot = resolve(options.workspaceRoot || process.cwd());
-    const pythonBin = options.pythonBin || process.env.TMEM_PYTHON || "python3";
-    const pythonPathRoot = resolve(options.tmemRoot || resolveDefaultTmemRoot(workspaceRoot));
-    const env = {
-      ...process.env,
-      PYTHONPATH: process.env.PYTHONPATH
-        ? `${pythonPathRoot}${delimiter}${process.env.PYTHONPATH}`
-        : pythonPathRoot,
-    };
+    const tmemRoot = resolve(options.tmemRoot || resolveDefaultTmemRoot(workspaceRoot));
+    const cliScript = join(tmemRoot, "tmem", "cli.mjs");
+    const useDirectScript = existsSync(cliScript);
+    const bin = useDirectScript
+      ? options.nodeBin || process.env.TMEM_NODE || process.execPath
+      : options.tmemBin || process.env.TMEM_BIN || "tmem";
+    const args = useDirectScript
+      ? [cliScript, "hook", "dsh", event]
+      : ["hook", "dsh", event];
 
     let timer = null;
     let finished = false;
-
     const safeResolve = (val) => {
       if (finished) return;
       finished = true;
@@ -104,9 +167,9 @@ function invokeTmemHook(event, payload, options = {}) {
     };
 
     try {
-      const child = spawn(pythonBin, ["-m", "tmem.cli", "hook", "dsh", event], {
+      const child = spawn(bin, args, {
         cwd: workspaceRoot,
-        env,
+        env: process.env,
         stdio: ["pipe", "pipe", "pipe"],
       });
 
@@ -123,7 +186,7 @@ function invokeTmemHook(event, payload, options = {}) {
         stdout += chunk;
       });
 
-      child.on("error", (_err) => {
+      child.on("error", () => {
         safeResolve({});
       });
 
@@ -141,12 +204,29 @@ function invokeTmemHook(event, payload, options = {}) {
         safeResolve({});
       });
 
-      const inputPayload = JSON.stringify({ workspaceRoot, ...payload });
-      child.stdin.end(inputPayload, "utf-8");
+      child.stdin.end(JSON.stringify({ workspaceRoot, ...payload }), "utf-8");
     } catch (_err) {
       safeResolve({});
     }
   });
+}
+
+async function invokeTmemHook(event, payload, options = {}) {
+  const workspaceRoot = resolve(options.workspaceRoot || process.cwd());
+  const tmemRoot = resolve(options.tmemRoot || resolveDefaultTmemRoot(workspaceRoot));
+  const rt = await loadInProcessRuntime(tmemRoot);
+  if (rt) {
+    try {
+      return rt.handleDshHook(
+        event,
+        { workspaceRoot, ...payload },
+        rt.executeCapture
+      );
+    } catch (_err) {
+      return {};
+    }
+  }
+  return invokeTmemHookCliFallback(event, payload, { ...options, workspaceRoot, tmemRoot });
 }
 
 function createNoticeMessage(text, summary = "tmem") {
@@ -164,8 +244,10 @@ function createNoticeMessage(text, summary = "tmem") {
 
 export function apply(ctx, config = {}) {
   const configuredWorkspace = config.workspaceRoot ? resolve(config.workspaceRoot) : "";
-  const tmemRoot = resolve(config.tmemRoot || resolveDefaultTmemRoot(configuredWorkspace || process.cwd()));
-  const pythonBin = config.pythonBin || process.env.TMEM_PYTHON || "python3";
+  const tmemRoot = resolve(
+    config.tmemRoot || resolveDefaultTmemRoot(configuredWorkspace || process.cwd())
+  );
+  const nodeBin = config.nodeBin || process.env.TMEM_NODE || process.execPath;
 
   const MUTATE_TOOLS = new Set([
     "write",
@@ -206,7 +288,7 @@ export function apply(ctx, config = {}) {
               commandId: invocation?.commandId || "",
               args: invocation?.rawInput ?? invocation?.args ?? "",
             },
-            { workspaceRoot, tmemRoot, pythonBin }
+            { workspaceRoot, tmemRoot, nodeBin }
           );
           if (out && (out.kind === "error" || out.kind === "failure")) {
             return {
@@ -232,7 +314,7 @@ export function apply(ctx, config = {}) {
   }
 
   // 2. Pre-Step Hook: Inject speculative execution memory (`<tmem_speculative_memory>`)
-  ctx.on("agent/pre-step", async ({ agent, messages, step, signal }, next) => {
+  ctx.on("agent/pre-step", async ({ agent, messages, step }, next) => {
     const decision = await next();
     if (decision?.action === "abort") return decision;
 
@@ -242,7 +324,6 @@ export function apply(ctx, config = {}) {
         ? [...messages]
         : [];
 
-    // Find latest real user message
     let lastUserInput = "";
     let lastUserIndex = -1;
     for (let i = currentMessages.length - 1; i >= 0; i--) {
@@ -257,7 +338,6 @@ export function apply(ctx, config = {}) {
     const workspaceRoot = resolveSessionWorkspace(ctx, agent, configuredWorkspace);
     const sessionId = agent?.session?.id || "default";
 
-    // Hot-path optimization: avoid spawning Python on every agent loop step when user input hasn't changed.
     const prevSeenInput = seenPreStepInputBySession.get(sessionId);
     if (typeof step === "number" && step > 0 && prevSeenInput === lastUserInput) {
       return decision;
@@ -274,7 +354,7 @@ export function apply(ctx, config = {}) {
         step,
         lastUserInput,
       },
-      { workspaceRoot, tmemRoot, pythonBin }
+      { workspaceRoot, tmemRoot, nodeBin }
     );
 
     if (out && typeof out.injectedContext === "string" && out.injectedContext.trim()) {
@@ -333,17 +413,15 @@ export function apply(ctx, config = {}) {
     const sessionId = exec?.agent?.session?.id || "default";
     const toolName = String(exec?.name || "");
 
-    // Hot-path optimization: skip Python cold-start on routine read/search calls unless an error
-    // occurred or a bounded L1 co-change watch (TTL <= 3 steps) is active for this session.
     const watchStepsLeft = activeCochangeWatch.get(sessionId) || 0;
     const isDirectAction =
       isError ||
       (exitCode !== null && exitCode !== 0) ||
       MUTATE_TOOLS.has(toolName) ||
       SHELL_TOOLS.has(toolName);
-    const shouldInvokePython = isDirectAction || watchStepsLeft > 0;
+    const shouldInvoke = isDirectAction || watchStepsLeft > 0;
 
-    if (!shouldInvokePython) {
+    if (!shouldInvoke) {
       return downstream;
     }
 
@@ -367,7 +445,7 @@ export function apply(ctx, config = {}) {
         isError,
         exitCode,
       },
-      { workspaceRoot, tmemRoot, pythonBin }
+      { workspaceRoot, tmemRoot, nodeBin }
     );
 
     if (out && typeof out.additionalContext === "string" && out.additionalContext.trim()) {
