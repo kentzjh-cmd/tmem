@@ -2,6 +2,10 @@
 
 **中文文档** | [English](./README_EN.md)
 
+<p align="center">
+  <img src="./docs/assets/tmem-demo.gif" alt="tmem Demo: Deterministic Trace Slicing and Strong-Signal Interception" width="100%" />
+</p>
+
 `tmem`（**Trace Memory**）是一个**零外部依赖、聚焦 `@deepseek-ai/dsh` (DeepSeek Harness)、仓库级（`.tmem/`）**的确定性工程记忆与**历史会话零 Token 摘要引擎**。
 
 它对 DSH 历史执行轨迹进行确定性裁剪与回放归纳：在不消耗任何 LLM Summarization Token 的前提下，将冗长会话压缩为面向**特定需求（Intent）与实际行为（Read → Edit → Repair → Verify）**的免费结构化摘要，并**内联保留原始历史 `session_id` 溯源链路**；同时在 DSH 运行时提供强信号拦截（报错即时注入 L2 同源修复、改代码文件即时提醒 L1 统计共变、累计 `.tmem/env_facts.json` 环境事实），关闭对泛自然语言 Prompt 的低质量猜测注入。
