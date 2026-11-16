@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Unit & Integration Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install package (zero-dependency core)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Check DSH plugin JS syntax
+        run: node --check tmem/dsh_plugin.mjs
+
+      - name: Run unit & integration test suite
+        run: python -m unittest discover -s tests -v
+
+      - name: Verify CLI entrypoint
+        run: tmem --help
+
+      - name: Verify optional AST dependencies & tests (Python 3.12)
+        if: matrix.python-version == '3.12'
+        run: |
+          pip install -e ".[ast]"
+          python -m unittest tests/test_ast_parser.py -v
+
+  benchmarks:
+    name: Reproducible Benchmarks & README Sync Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Run benchmark regression gates, report diff & README sync check
+        run: python scripts/verify_benchmarks.py --verbose
+
+      - name: Smoke test CLI evaluation report
+        run: python -m tmem.evaluate
+
+      - name: Ensure benchmark checks leave repository clean
+        run: git diff --exit-code

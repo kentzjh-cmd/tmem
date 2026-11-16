@@ -10,7 +10,7 @@ By deterministically slicing and indexing past DSH trajectories without spending
 
 ## 1. Empirical Benchmarks
 
-All scripts and datasets are reproducible under `benchmarks/`:
+All scripts and datasets are reproducible under `benchmarks/` (CI runs `python3 scripts/verify_benchmarks.py` to enforce regression gates, saved report consistency, and README table sync):
 
 ### 1.1 DSH End-to-End Strong-Signal Replay & Telemetry
 Reproduction command: `python3 benchmarks/eval_dsh_e2e.py` ([Script](./benchmarks/eval_dsh_e2e.py)):
@@ -27,21 +27,21 @@ Across **50 high-quality real trajectories** (25 original SWE-bench/DSH + 25 `re
 | Slicing Strategy | Precision | Recall | F1-Score | Mean Retained Steps | Mean LLM Score (1–5) |
 |---|:---:|:---:|:---:|:---:|:---:|
 | **B0 Trivial Baseline (Landed files + Final test)** | 81.1% | 66.5% | 71.4% | 4.7 steps | 3.20 |
-| **B1 `tmem` Phase 1 Temporal Causal Slicer** | **93.5%** | **95.0%** | **93.4%** | 5.1 steps | **4.80** (**49:1 / 98.0% win rate**) |
+| **B1 `tmem` Phase 1 Temporal Causal Slicer** | **93.8%** | **95.0%** | **93.6%** | 5.1 steps | **4.80** (**49:1 / 98.0% win rate**) |
 | **B2 Oracle Upper Bound (LLM Gold-50)** | 98.0% | 98.0% | 98.0% | 5.0 steps | — |
 
 > **Honest Limitation**: On rare edge cases such as `sympy__sympy-22005`, when an agent modifies a test file *after* its final passing reproduction command and submits without re-running tests, offline `tmem` (`use_git_ground_truth=False`) retains that trailing unverified edit. On the original 25-trace benchmark (`benchmarks/gold/gold_annotations.json`), B1 Precision likewise improved from 63.2% to 92.3% (F1 81.8% vs. B0's 81.0%).
 
 ### 1.3 50-Trajectory Plugin Scale Stress Test & Retrieval
 Reproduction commands: `python3 benchmarks/eval_plugin_scale.py` ([Scale Report](./benchmarks/runs/plugin_scale_50_report.json)) and `python3 benchmarks/eval_retrieval.py` ([Retrieval Log](./benchmarks/runs/retrieval_report.json)):
-- **50-Trace Corpus Compilation & Compression**: 49/50 compiled playbooks (`pytest-dev__pytest-7168` pruned as empty deleted-scratch session), reducing **898 → 158 L0 steps** (**82.4%** step reduction, **94.6%** RawTrace-to-L0 char compression), **0.72 ms** avg slice time, **5.99 ms** `MEMORIES.md` sync.
-- **`handle_dsh_hook` Runtime Validation (49-Playbook DB)**: **6.97 ms** avg hook latency; **0.0%** `pre_step` negative FP (`0/10`); **100.0%** explicit anchor recall (`48/48`); **100.0%** `post_tool_use` L2 interception & green resolution (`3/3`, `l2_resolution_rate = 1.0`).
+- **50-Trace Corpus Compilation & Compression**: 49/50 compiled playbooks (`pytest-dev__pytest-7168` pruned as empty deleted-scratch session), reducing **898 → 157 L0 steps** (**82.5%** step reduction, **94.7%** RawTrace-to-L0 char compression), **0.82 ms** avg slice time, **6.98 ms** `MEMORIES.md` sync.
+- **`handle_dsh_hook` Runtime Validation (49-Playbook DB)**: **8.79 ms** avg hook latency; **0.0%** `pre_step` negative FP (`0/10`); **100.0%** explicit anchor recall (`48/48`); **100.0%** `post_tool_use` L2 interception & green resolution (`7/7`, `l2_resolution_rate = 1.0`).
 - **Independent Raw Issue Retrieval**: Across 24 issue-query traces in `eval_retrieval.py`, **Recall@1 = 100.0% / Recall@3 = 100.0% / MRR = 1.0**, and negative holdout FP dropped to **0.0%** after word-boundary and token-coverage fixes in `tmem/store.py` (under the 49-playbook scale DB, lexical FTS5 negative FP is **10.0%** while `pre_step` remains **0.0%**).
 
 ### 1.4 Cross-Format Trajectory Compression & Runtime Footprint (9 real trajectories)
 Reproduction command: `python3 -m tmem.evaluate`:
 - **Mean Step Compression**: **56.5%** (106 → 43 steps; 5,406 → 1,480 chars; ~1,348 → ~367 est. tokens)
-- **High-Entropy L2 Causal Pairs Extracted**: **7 pairs** (verified via traceback file intersection + same-origin command verification)
+- **High-Entropy L2 Causal Pairs Extracted**: **8 pairs** (verified via traceback file intersection + same-origin command verification)
 - **Mean Deterministic Slicing Latency**: **0.88 ms** (zero external dependencies, zero LLM calls)
 
 ---
