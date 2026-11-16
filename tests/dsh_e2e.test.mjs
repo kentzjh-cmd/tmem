@@ -516,7 +516,7 @@ test("Pure-Node plugin source contracts, license, and zero Python dependency", (
 
   const pkgJson = JSON.parse(readFileSync(path.join(REPO_ROOT, "package.json"), "utf-8"));
   assert.ok((pkgJson.files || []).includes("LICENSE"));
-  assert.equal(pkgJson.bin?.tmem, "./tmem/cli.mjs");
+  assert.equal(pkgJson.bin?.tmem, "tmem/cli.mjs");
 
   const pluginCode = readFileSync(path.join(REPO_ROOT, "tmem", "dsh_plugin.mjs"), "utf-8");
   assert.ok(!pluginCode.includes("spawnSync"));

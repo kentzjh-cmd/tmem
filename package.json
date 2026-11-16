@@ -5,7 +5,7 @@
   "type": "module",
   "main": "./tmem/dsh_plugin.mjs",
   "bin": {
-    "tmem": "./tmem/cli.mjs"
+    "tmem": "tmem/cli.mjs"
   },
   "exports": {
     ".": "./tmem/dsh_plugin.mjs",
