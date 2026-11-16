@@ -136,14 +136,24 @@ def execute_capture(
         fingerprint = f"{pb.problem_intent}|{'|'.join(pb.touched_files)}|{'|'.join(pb.error_signatures)}"
         pb.trace_id = "tr_" + hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()[:10]
 
-    # Save full-fidelity raw execution trace for forensic replay & progressive disclosure
-    raw_store = RawTraceStore(workspace_root)
+    # Build full-fidelity raw execution trace and bind it inside save_playbook
+    # so pre-write similarity merging never leaves orphan .raw.json files.
     raw_trace = slicer.build_raw_trace(session, pb)
-    raw_store.save_raw_trace(raw_trace)
-    pb.raw_trace_path = f"raw/{pb.trace_id}.raw.json"
-
     store = ProjectMemoryStore(workspace_root)
-    proj_id, _ = store.save_playbook(pb, target_scope="project")
+    proj_id, _ = store.save_playbook(pb, target_scope="project", raw_trace=raw_trace)
+
+    persisted_pb = pb
+    if proj_id:
+        persisted_file = store.project_traces_dir / f"{proj_id}.json"
+        if persisted_file.exists():
+            try:
+                from tmem.models import TracePlaybook
+
+                persisted_pb = TracePlaybook.from_dict(
+                    json.loads(persisted_file.read_text(encoding="utf-8"))
+                )
+            except (json.JSONDecodeError, OSError, TypeError):
+                pass
 
     # Advance incremental step cursor and reset pending milestone state
     max_step = max((a.step_idx for a in session.actions), default=min_step)
@@ -158,14 +168,14 @@ def execute_capture(
         "agent": agent_name,
         "scope": "project",
         "project_trace_id": proj_id,
-        "raw_trace_path": pb.raw_trace_path,
-        "problem_intent": pb.problem_intent,
-        "touched_files": pb.touched_files,
-        "is_trivial": pb.is_trivial,
-        "confidence": pb.confidence,
-        "raw_steps": pb.raw_steps_count,
-        "sliced_steps": pb.sliced_steps_count,
-        "compression_ratio": f"{pb.raw_steps_count} -> {pb.sliced_steps_count}",
+        "raw_trace_path": persisted_pb.raw_trace_path,
+        "problem_intent": persisted_pb.problem_intent,
+        "touched_files": persisted_pb.touched_files,
+        "is_trivial": persisted_pb.is_trivial,
+        "confidence": persisted_pb.confidence,
+        "raw_steps": persisted_pb.raw_steps_count,
+        "sliced_steps": persisted_pb.sliced_steps_count,
+        "compression_ratio": f"{persisted_pb.raw_steps_count} -> {persisted_pb.sliced_steps_count}",
     }
 
 

@@ -474,6 +474,47 @@ class TestIntentGraph(unittest.TestCase):
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+    def test_global_cordis_patch_and_quoted_post_commit_hook(self) -> None:
+        """Verify global ~/.dsh/cordis.patch.yml uses package plugin path and post-commit hook quotes PYTHONPATH."""
+        import os
+        import subprocess
+        from unittest.mock import patch
+        from tmem.cli import install_invisible_integration
+
+        temp_dir = Path(tempfile.mkdtemp(prefix="tmem_init_portable_"))
+        try:
+            ws = temp_dir / "my repo with spaces"
+            ws.mkdir(parents=True)
+            dsh_home = temp_dir / "dsh_home"
+            subprocess.run(["git", "init"], cwd=ws, check=True, capture_output=True)
+
+            with patch.dict(os.environ, {"DSH_HOME": str(dsh_home)}):
+                info = install_invisible_integration(str(ws), ["dsh"], install_git_hook=True)
+            self.assertTrue(info["git_hook"])
+
+            ws_patch = (ws / ".dsh" / "tmem.patch.yml").read_text(encoding="utf-8")
+            self.assertIn("./.dsh/plugins/tmem-dsh-plugin.mjs", ws_patch)
+
+            home_patch = (dsh_home / "cordis.patch.yml").read_text(encoding="utf-8")
+            self.assertNotIn("./.dsh/plugins/tmem-dsh-plugin.mjs", home_patch)
+            self.assertIn("dsh_plugin.mjs", home_patch)
+
+            post_commit = (ws / ".git" / "hooks" / "post-commit").read_text(encoding="utf-8")
+            expected_pkg = Path(__file__).resolve().parent.parent
+            self.assertTrue(
+                str(expected_pkg) in post_commit or expected_pkg.as_posix() in post_commit,
+                f"Expected package root {expected_pkg} in post-commit hook: {post_commit}",
+            )
+            self.assertNotIn(f"PYTHONPATH={ws} ", post_commit)
+            sh_check = subprocess.run(
+                ["/bin/sh", "-n", str(ws / ".git" / "hooks" / "post-commit")],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(sh_check.returncode, 0, sh_check.stderr)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
 
 if __name__ == "__main__":
     unittest.main()

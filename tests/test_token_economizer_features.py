@@ -392,6 +392,422 @@ class TestPhase1TemporalCausality(unittest.TestCase):
             self.assertIn("pip install redis pytest", l0_cmds)
             self.assertIn("pytest tests/test_limiter.py", l0_cmds)
 
+    def test_which_prefix_and_dot_slash_normalization_and_atomic_state(self) -> None:
+        from concurrent.futures import ThreadPoolExecutor
+        from tmem.adapters.base import normalize_rel_path
+        from tmem.hooks.state import default_runtime_state, load_runtime_state, save_runtime_state
+
+        slicer = BackwardTraceSlicer()
+        self.assertEqual(
+            slicer._extract_canonical_verification_cmd("which pytest && pytest tests/test_a.py"),
+            "pytest tests/test_a.py",
+        )
+        self.assertIsNone(slicer._extract_canonical_verification_cmd("which pytest"))
+        self.assertEqual(
+            slicer._extract_canonical_verification_cmd("pytest -k 'which_case'"),
+            "pytest -k 'which_case'",
+        )
+        self.assertIsNone(
+            slicer._extract_canonical_verification_cmd(
+                'PYTHONPATH=. python3 -c "import pytest; pytest.main()"'
+            )
+        )
+
+        with tempfile.TemporaryDirectory() as ws:
+            (Path(ws) / "src").mkdir()
+            (Path(ws) / "src" / "foo.py").write_text("def foo(): return 1\n", encoding="utf-8")
+            self.assertEqual(normalize_rel_path("./src/foo.py", ws), "src/foo.py")
+
+            session = ParsedSession(
+                agent_name="dsh",
+                session_id="s-norm",
+                workspace_root=ws,
+                user_intents=["Update foo in src/foo.py"],
+                actions=[
+                    ActionNode(
+                        step_idx=1,
+                        kind=ActionKind.READ,
+                        tool_name="read_file",
+                        target_file=normalize_rel_path("./src/foo.py", ws),
+                    ),
+                    ActionNode(
+                        step_idx=2,
+                        kind=ActionKind.MUTATE,
+                        tool_name="edit_file",
+                        target_file="src/foo.py",
+                        symbols_touched=["foo"],
+                    ),
+                    ActionNode(
+                        step_idx=3,
+                        kind=ActionKind.READ,
+                        tool_name="read_file",
+                        target_file="src/foo.py",
+                    ),
+                    ActionNode(
+                        step_idx=4,
+                        kind=ActionKind.ENV_EXEC,
+                        tool_name="run_command",
+                        command="which pytest && pytest -q",
+                        exit_code=0,
+                    ),
+                ],
+            )
+            pb = slicer.slice_session(session, use_git_ground_truth=False)
+            self.assertIsNotNone(pb)
+            assert pb is not None
+            l0_reads = [s for s in pb.l0_critical_path if s["action"] == "READ"]
+            self.assertEqual(len(l0_reads), 1)
+            self.assertEqual(pb.l1_verification_cmds, ["pytest -q"])
+
+            # Concurrent atomic state persistence across 8 threads leaves no .tmp artifacts and drops no session
+            def _save(idx: int) -> None:
+                st = default_runtime_state(f"conc_sess_{idx}")
+                st["recent_files"] = [f"src/file_{idx}.py"]
+                save_runtime_state(ws, st)
+
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                list(pool.map(_save, range(8)))
+
+            tmp_leftovers = list((Path(ws) / ".tmem").glob(".runtime_state.*.tmp"))
+            self.assertEqual(tmp_leftovers, [])
+            for idx in range(8):
+                loaded = load_runtime_state(ws, f"conc_sess_{idx}")
+                self.assertEqual(loaded["recent_files"], [f"src/file_{idx}.py"])
+
+    def test_sqlite_connections_closed_on_all_store_operations(self) -> None:
+        import os
+        import sqlite3
+        from unittest.mock import patch
+        import tmem.store as store_mod
+
+        opened = 0
+        closed = 0
+        orig_connect = sqlite3.connect
+
+        class _TrackedConn:
+            def __init__(self, inner: sqlite3.Connection) -> None:
+                self._inner = inner
+
+            def __enter__(self):
+                self._inner.__enter__()
+                return self._inner
+
+            def __exit__(self, exc_type, exc, tb):
+                return self._inner.__exit__(exc_type, exc, tb)
+
+            def close(self) -> None:
+                nonlocal closed
+                closed += 1
+                self._inner.close()
+
+            def __getattr__(self, name: str):
+                return getattr(self._inner, name)
+
+        def _tracked_connect(*args, **kwargs):
+            nonlocal opened
+            opened += 1
+            return _TrackedConn(orig_connect(*args, **kwargs))
+
+        with tempfile.TemporaryDirectory() as ws:
+            (Path(ws) / "app.py").write_text("def run():\n    return 1\n", encoding="utf-8")
+            pb = _make_sample_playbook("tr_close_test", target_file="app.py")
+            pb.problem_intent = "Fix KeyError in app"
+            pb.error_signatures = ["KeyError: 'cfg'"]
+            pb.l2_causal_repairs = [
+                CausalRepairPair(
+                    error_signature="KeyError: 'cfg'",
+                    failed_command="pytest -q",
+                    repair_action="edit app.py (run)",
+                    verification_cmd="pytest -q",
+                )
+            ]
+            pb.touched_symbols = ["run"]
+
+            with patch.object(store_mod.sqlite3, "connect", side_effect=_tracked_connect):
+                st = ProjectMemoryStore(ws)
+                st.save_playbook(pb, merge_similar=False)
+                st.cascading_lookup("KeyError in app", file_paths=["app.py"])
+                st.lookup_l2_repair(["KeyError: 'cfg'"], file_paths=["app.py"])
+                st.record_trace_outcome(["tr_close_test"], "success")
+                st.get_linked_traces("run")
+                st.run_metabolism_gc()
+                st.delete_playbook("tr_close_test")
+
+                self.assertGreater(opened, 0)
+                self.assertEqual(opened, closed, f"Leaked SQLite connections: opened={opened}, closed={closed}")
+                if st.project_db_path.exists():
+                    os.unlink(st.project_db_path)
+
+    def test_post_commit_hook_cross_platform_diagnostics(self) -> None:
+        import os
+        import subprocess
+        from unittest.mock import patch
+        from tmem.installer import install_invisible_integration, resolve_dsh_entry_js
+
+        with tempfile.TemporaryDirectory() as td:
+            ws = Path(td) / "repo"
+            ws.mkdir()
+            subprocess.run(["git", "init"], cwd=ws, check=True, capture_output=True)
+            dsh_home = Path(td) / "dsh_home"
+
+            with patch.dict(os.environ, {"DSH_HOME": str(dsh_home)}):
+                install_invisible_integration(str(ws), ["dsh"], install_git_hook=True)
+
+            hook_path = ws / ".git" / "hooks" / "post-commit"
+            hook_text = hook_path.read_text(encoding="utf-8")
+            self.assertNotIn("|| true", hook_text)
+            self.assertIn("TMEM_PY=", hook_text)
+            self.assertIn("TMEM_PKG_ROOT=", hook_text)
+            self.assertIn("[tmem] warning:", hook_text)
+
+            # Verify runtime warning is emitted (not silently swallowed) if package root is unreachable
+            broken_hook = hook_text.replace(
+                f"TMEM_PKG_ROOT=",
+                "TMEM_PKG_ROOT='/nonexistent_tmem_pkg_root_xyz' # ",
+                1,
+            )
+            broken_path = Path(td) / "broken_hook.sh"
+            broken_path.write_text(broken_hook, encoding="utf-8")
+            res = subprocess.run(
+                ["/bin/sh", str(broken_path)],
+                cwd=ws,
+                env={"PATH": os.environ.get("PATH", ""), "HOME": td},
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(res.returncode, 0)
+            self.assertIn("[tmem] warning:", res.stderr)
+
+            # Verify resolve_dsh_entry_js respects DSH_PACKAGE_ENTRY override
+            fake_entry = Path(td) / "lib" / "index.js"
+            fake_entry.parent.mkdir(parents=True)
+            fake_entry.write_text("// fake entry\n", encoding="utf-8")
+            with patch.dict(os.environ, {"DSH_PACKAGE_ENTRY": str(fake_entry)}):
+                self.assertEqual(resolve_dsh_entry_js(), fake_entry.resolve())
+
+    def test_partial_edit_schemas_and_unified_diff_preserve_l2_and_symbols(self) -> None:
+        import subprocess
+        from tmem.adapters.dsh import DshAdapter, parse_apply_patch_details
+        from tmem.cli import execute_capture
+
+        variants = [
+            (
+                "edit_file_old_new",
+                "edit_file",
+                {
+                    "file_path": "src/parser.py",
+                    "old_string": "    return text.strip()",
+                    "new_string": '    if text is None:\n        return ""\n    return text.strip()',
+                },
+            ),
+            (
+                "str_replace_editor",
+                "str_replace_editor",
+                {
+                    "path": "src/parser.py",
+                    "old_str": "    return text.strip()",
+                    "new_str": '    if text is None:\n        return ""\n    return text.strip()',
+                },
+            ),
+            (
+                "apply_patch_codex",
+                "apply_patch",
+                {
+                    "input": (
+                        "*** Begin Patch\n"
+                        "*** Update File: src/parser.py\n"
+                        "@@\n"
+                        "-    return text.strip()\n"
+                        "+    if text is None:\n"
+                        '+        return ""\n'
+                        "+    return text.strip()\n"
+                        "*** End Patch"
+                    )
+                },
+            ),
+            (
+                "apply_patch_unified_diff",
+                "apply_patch",
+                {
+                    "patch": (
+                        "diff --git a/src/parser.py b/src/parser.py\n"
+                        "--- a/src/parser.py\n"
+                        "+++ b/src/parser.py\n"
+                        "@@ -1,2 +1,4 @@ def parse(text):\n"
+                        " def parse(text):\n"
+                        "-    return text.strip()\n"
+                        "+    if text is None:\n"
+                        '+        return ""\n'
+                        "+    return text.strip()\n"
+                    )
+                },
+            ),
+        ]
+
+        # Check unified diff parsing directly
+        parsed_ud = parse_apply_patch_details(variants[-1][2]["patch"])
+        self.assertEqual(len(parsed_ud), 1)
+        self.assertEqual(parsed_ud[0][0], "src/parser.py")
+        self.assertEqual(parsed_ud[0][2], [(1, 4)])
+
+        for label, tool_name, tool_args in variants:
+            with self.subTest(label=label):
+                with tempfile.TemporaryDirectory() as ws:
+                    ws_p = Path(ws)
+                    (ws_p / "src").mkdir()
+                    (ws_p / "tests").mkdir()
+                    (ws_p / "src" / "parser.py").write_text(
+                        "def parse(text):\n    return text.strip()\n", encoding="utf-8"
+                    )
+                    (ws_p / "tests" / "test_parser.py").write_text(
+                        'from src.parser import parse\ndef test_p():\n    assert parse(None) == ""\n',
+                        encoding="utf-8",
+                    )
+                    subprocess.run(["git", "init"], cwd=ws, check=True, capture_output=True)
+                    subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=ws, check=True)
+                    subprocess.run(["git", "config", "user.name", "t"], cwd=ws, check=True)
+                    subprocess.run(["git", "add", "."], cwd=ws, check=True)
+                    subprocess.run(["git", "commit", "-m", "init"], cwd=ws, check=True, capture_output=True)
+
+                    # Fixed file on disk after agent edit
+                    (ws_p / "src" / "parser.py").write_text(
+                        'def parse(text):\n    if text is None:\n        return ""\n    return text.strip()\n',
+                        encoding="utf-8",
+                    )
+
+                    sess_path = ws_p / f"{label}.v4.jsonl"
+                    events = [
+                        {"version": 4, "id": f"sess_{label}", "createdAt": 1731225600000},
+                        {
+                            "type": "user/message",
+                            "seq": 1,
+                            "data": {
+                                "role": "user",
+                                "content": [{"type": "text", "text": "Fix AttributeError in src/parser.py"}],
+                                "source": {"kind": "user"},
+                            },
+                        },
+                        {
+                            "type": "tool/call",
+                            "seq": 2,
+                            "data": {"callId": "c1", "name": "bash", "arguments": json.dumps({"command": "pytest tests/test_parser.py"})},
+                        },
+                        {
+                            "type": "tool/result",
+                            "seq": 3,
+                            "data": {
+                                "message": {
+                                    "callId": "c1",
+                                    "content": [{"type": "text", "text": 'File "src/parser.py", line 2, in parse\nAttributeError: NoneType object has no attribute strip\n[exit code: 1]'}],
+                                    "isError": False,
+                                }
+                            },
+                        },
+                        {
+                            "type": "tool/call",
+                            "seq": 4,
+                            "data": {"callId": "c2", "name": tool_name, "arguments": json.dumps(tool_args)},
+                        },
+                        {
+                            "type": "tool/result",
+                            "seq": 5,
+                            "data": {"message": {"callId": "c2", "content": [{"type": "text", "text": "OK"}], "isError": False}},
+                        },
+                        {
+                            "type": "tool/call",
+                            "seq": 6,
+                            "data": {"callId": "c3", "name": "bash", "arguments": json.dumps({"command": "pytest tests/test_parser.py"})},
+                        },
+                        {
+                            "type": "tool/result",
+                            "seq": 7,
+                            "data": {"message": {"callId": "c3", "content": [{"type": "text", "text": "1 passed\n[exit code: 0]"}], "isError": False}},
+                        },
+                    ]
+                    sess_path.write_text("\n".join(json.dumps(ev) for ev in events), encoding="utf-8")
+
+                    for use_git in (False, True):
+                        sess = DshAdapter().parse_transcript(str(sess_path), ws)
+                        pb = BackwardTraceSlicer().slice_session(sess, use_git_ground_truth=use_git)
+                        self.assertIsNotNone(pb)
+                        assert pb is not None
+                        self.assertFalse(pb.is_trivial, f"{label} (git={use_git}) falsely marked trivial: {pb.pitfalls}")
+                        self.assertEqual(len(pb.l2_causal_repairs), 1)
+                        self.assertIn("src/parser.py (parse)", pb.l2_causal_repairs[0].repair_action)
+
+                    cap = execute_capture(
+                        workspace_root=ws,
+                        agent_name="dsh",
+                        transcript_path=str(sess_path),
+                        session_id=f"sess_{label}",
+                    )
+                    self.assertEqual(cap["status"], "compiled")
+
+        # Verify unified-diff apply_patch also tracks target_file in post_tool_use hook and top-level source edits keep L2
+        with tempfile.TemporaryDirectory() as ws:
+            (Path(ws) / "src").mkdir()
+            (Path(ws) / "src" / "cfg.py").write_text("TIMEOUT = 60\n", encoding="utf-8")
+            handle_dsh_hook(
+                "post_tool_use",
+                {
+                    "workspaceRoot": ws,
+                    "sessionId": "s_ud_hook",
+                    "toolCall": {
+                        "name": "apply_patch",
+                        "args": {"patch": "--- a/src/cfg.py\n+++ b/src/cfg.py\n@@ -1 +1 @@\n-TIMEOUT = 0\n+TIMEOUT = 60\n"},
+                    },
+                },
+            )
+            ms = handle_dsh_hook(
+                "post_tool_use",
+                {
+                    "workspaceRoot": ws,
+                    "sessionId": "s_ud_hook",
+                    "toolCall": {"name": "bash", "args": {"command": "pytest -q"}},
+                    "resultText": "1 passed\n[exit code: 0]",
+                },
+            )
+            self.assertIn("<tmem_milestone_reached>", ms.get("additionalContext", ""))
+            self.assertIn("src/cfg.py", ms.get("additionalContext", ""))
+
+            # Top-level source edit (no enclosing function/class symbol) still retains L2 causality
+            top_sess = ParsedSession(
+                agent_name="dsh",
+                session_id="s_top_level",
+                workspace_root=ws,
+                user_intents=["Fix timeout ValueError in src/cfg.py"],
+                actions=[
+                    ActionNode(
+                        step_idx=1,
+                        kind=ActionKind.ENV_EXEC,
+                        tool_name="bash",
+                        command="pytest tests/test_cfg.py",
+                        exit_code=1,
+                        error_signature="ValueError: timeout must be positive",
+                    ),
+                    ActionNode(
+                        step_idx=2,
+                        kind=ActionKind.MUTATE,
+                        tool_name="edit_file",
+                        target_file="src/cfg.py",
+                        symbols_touched=[],
+                    ),
+                    ActionNode(
+                        step_idx=3,
+                        kind=ActionKind.ENV_EXEC,
+                        tool_name="bash",
+                        command="pytest tests/test_cfg.py",
+                        exit_code=0,
+                    ),
+                ],
+            )
+            pb_top = BackwardTraceSlicer().slice_session(top_sess, use_git_ground_truth=False)
+            self.assertIsNotNone(pb_top)
+            assert pb_top is not None
+            self.assertFalse(pb_top.is_trivial)
+            self.assertEqual(len(pb_top.l2_causal_repairs), 1)
+            self.assertEqual(pb_top.l2_causal_repairs[0].repair_action, "edit src/cfg.py")
+
 
 if __name__ == "__main__":
     unittest.main()

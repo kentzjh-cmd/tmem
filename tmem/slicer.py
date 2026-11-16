@@ -24,6 +24,7 @@ from tmem.adapters.base import (
     extract_local_imports,
     extract_symbols_for_line_ranges,
     extract_traceback_files,
+    infer_modified_symbols,
     is_code_file,
     is_doc_file,
     is_filler_user_intent,
@@ -97,6 +98,60 @@ def _normalize_rel_path(path_str: str) -> str:
     return cleaned.rstrip("/")
 
 
+def _split_shell_clauses(cmd: str) -> List[str]:
+    """Split shell command on unquoted `&&`, `;`, or newlines while preserving quoted strings."""
+    clauses: List[str] = []
+    buf: List[str] = []
+    in_single = False
+    in_double = False
+    escaped = False
+    i = 0
+    n = len(cmd)
+    while i < n:
+        ch = cmd[i]
+        if escaped:
+            buf.append(ch)
+            escaped = False
+            i += 1
+            continue
+        if ch == "\\" and not in_single:
+            buf.append(ch)
+            escaped = True
+            i += 1
+            continue
+        if ch == "'" and not in_double:
+            in_single = not in_single
+            buf.append(ch)
+            i += 1
+            continue
+        if ch == '"' and not in_single:
+            in_double = not in_double
+            buf.append(ch)
+            i += 1
+            continue
+        if not in_single and not in_double:
+            if ch in (";", "\n"):
+                part = "".join(buf).strip()
+                if part:
+                    clauses.append(part)
+                buf.clear()
+                i += 1
+                continue
+            if ch == "&" and i + 1 < n and cmd[i + 1] == "&":
+                part = "".join(buf).strip()
+                if part:
+                    clauses.append(part)
+                buf.clear()
+                i += 2
+                continue
+        buf.append(ch)
+        i += 1
+    tail = "".join(buf).strip()
+    if tail:
+        clauses.append(tail)
+    return clauses
+
+
 def _extract_killed_targets_from_command(cmd: str, known_files: Set[str]) -> Set[str]:
     """Identify file paths destroyed or reverted by rm/unlink/git checkout|restore|reset."""
     if not cmd:
@@ -104,8 +159,7 @@ def _extract_killed_targets_from_command(cmd: str, known_files: Set[str]) -> Set
     killed: Set[str] = set()
     norm_known = {_normalize_rel_path(f): f for f in known_files if f}
 
-    for raw_part in re.split(r"&&|\n|;", cmd):
-        part = raw_part.strip()
+    for part in _split_shell_clauses(cmd):
         if not part:
             continue
         try:
@@ -651,6 +705,10 @@ class BackwardTraceSlicer:
         )
         self.last_git_diff = git_diff_patch
 
+        per_file_symbols: Dict[str, List[str]] = {
+            f: list(syms) for f, syms in git_symbols.items() if syms
+        }
+
         # 2. Extract Error -> Fix Causal Pairs (L2 Universal Invariants)
         causal_repairs, repair_step_indices = self._extract_causal_repairs_with_indices(
             raw_actions,
@@ -658,6 +716,7 @@ class BackwardTraceSlicer:
             workspace_root=session.workspace_root,
             dead_files=dead_target_files,
             last_kill_step=last_kill_step,
+            file_symbols=per_file_symbols,
         )
 
         # 3. Backward Slicing: Filter READ, MUTATE, ENV_EXEC into minimal critical path
@@ -708,10 +767,6 @@ class BackwardTraceSlicer:
                     ):
                         if later_mutate > traceback_dep_last_mutate.get(tf, -1):
                             traceback_dep_last_mutate[tf] = later_mutate
-
-        per_file_symbols: Dict[str, List[str]] = {
-            f: list(syms) for f, syms in git_symbols.items() if syms
-        }
 
         env_install_entries: List[Tuple[int, str, Dict[str, object]]] = []
         install_cmds_seen: Set[str] = set()
@@ -1028,6 +1083,7 @@ class BackwardTraceSlicer:
         workspace_root: str = "",
         dead_files: Optional[Set[str]] = None,
         last_kill_step: Optional[Dict[str, int]] = None,
+        file_symbols: Optional[Dict[str, List[str]]] = None,
     ) -> Tuple[List[CausalRepairPair], List[int]]:
         """
         Scan action trajectory within a bounded causal window for pattern:
@@ -1040,6 +1096,7 @@ class BackwardTraceSlicer:
         seen_sigs: Set[str] = set()
         dead_set = dead_files or set()
         kill_map = last_kill_step or {}
+        sym_map = file_symbols or {}
 
         for i, act in enumerate(actions):
             is_failure = act.kind == ActionKind.ENV_EXEC and (
@@ -1085,7 +1142,25 @@ class BackwardTraceSlicer:
                     and nxt.step_idx > kill_map.get(nxt.target_file, -1)
                 ):
                     intervening_mutated_files.add(nxt.target_file)
-                    sym_note = f" ({', '.join(nxt.symbols_touched[:3])})" if nxt.symbols_touched else ""
+                    node_syms = list(nxt.symbols_touched)
+                    if not node_syms and nxt.target_file:
+                        if sym_map.get(nxt.target_file):
+                            node_syms = list(sym_map[nxt.target_file])
+                        elif workspace_root and nxt.raw_input:
+                            raw_in = nxt.raw_input
+                            snip = str(
+                                raw_in.get("content")
+                                or raw_in.get("new_string")
+                                or raw_in.get("new_str")
+                                or raw_in.get("file_text")
+                                or raw_in.get("replacement")
+                                or ""
+                            )
+                            if snip:
+                                node_syms = infer_modified_symbols(
+                                    workspace_root, nxt.target_file, new_snippet=snip
+                                )
+                    sym_note = f" ({', '.join(node_syms[:3])})" if node_syms else ""
                     fix_desc = f"edit {nxt.target_file}{sym_note}"
                     if fix_desc not in intervening_fixes:
                         intervening_fixes.append(fix_desc)
@@ -1108,6 +1183,7 @@ class BackwardTraceSlicer:
             # Quality gate on causal repair pairs:
             # Must have non-empty fixes and verified command.
             if intervening_fixes and verified_cmd:
+                has_symbol_or_multifile = True
                 if not is_env:
                     # Reject if intervening edits only modified documentation files
                     if all(is_doc_file(f) for f in intervening_mutated_files):
@@ -1127,10 +1203,13 @@ class BackwardTraceSlicer:
                         ):
                             continue
 
-                    has_concrete_target = any(
+                    has_symbol_or_multifile = any(
                         "(" in fix or len(effective_files) > 1 for fix in intervening_fixes
                     )
-                    if not has_concrete_target:
+                    has_source_fix = any(
+                        is_source_code_file(f) for f in intervening_mutated_files
+                    )
+                    if not (has_symbol_or_multifile or has_source_fix):
                         continue
 
                 seen_sigs.add(err_sig)
@@ -1144,10 +1223,13 @@ class BackwardTraceSlicer:
                     )
                 )
                 self._last_repair_fix_indices.append(list(intervening_indices))
-                step_indices.append(act.step_idx)
-                step_indices.extend(intervening_indices)
-                if verify_idx is not None:
-                    step_indices.append(verify_idx)
+                if has_symbol_or_multifile or is_env:
+                    step_indices.append(act.step_idx)
+                    step_indices.extend(intervening_indices)
+                    if verify_idx is not None:
+                        step_indices.append(verify_idx)
+                else:
+                    step_indices.extend(intervening_indices)
         return repairs, step_indices
 
     def build_raw_trace(
@@ -1290,8 +1372,7 @@ class BackwardTraceSlicer:
         """Extract clean package/toolchain installation sub-clause from a command string."""
         if not cmd:
             return None
-        for raw_part in re.split(r"&&|\n|;", cmd):
-            part = raw_part.strip()
+        for part in _split_shell_clauses(cmd):
             if not part or "tmem.cli" in part:
                 continue
             if TOOLCHAIN_INSTALL_RE.search(part):
@@ -1307,15 +1388,11 @@ class BackwardTraceSlicer:
         if not cmd:
             return None
         stripped = cmd.strip()
-        if any(
-            k in stripped
-            for k in ("for pkg in ", "which ")
-        ):
+        if "for pkg in " in stripped:
             return None
 
         kept_clauses: List[str] = []
-        for raw_part in re.split(r"&&|\n|;", stripped):
-            part = raw_part.strip()
+        for part in _split_shell_clauses(stripped):
             if not part:
                 continue
             # Reject non-gating commands that explicitly swallow failures (e.g. `cmd || true`)
@@ -1329,11 +1406,11 @@ class BackwardTraceSlicer:
                 continue
             if EXPLORATORY_CLAUSE_RE.match(base_part):
                 continue
-            if re.match(r"^(?:python\d*(?:\.\d+)?\s+-c\b|node\s+-e\b)", base_part):
-                continue
-            # Strip leading POSIX env-var prefixes (e.g. `PYTHONPATH=. python3 ...`) before syntax checks
+            # Strip leading POSIX env-var prefixes (e.g. `PYTHONPATH=. python3 ...`) before syntax & inline checks
             cmd_for_syntax = ENV_ASSIGN_PREFIX_RE.sub("", base_part).strip()
             if not cmd_for_syntax:
+                continue
+            if is_inline_script_command(cmd_for_syntax):
                 continue
             # Reject lines with code assignment syntax or python/js statement keywords
             if re.search(r"\s+=\s+", cmd_for_syntax) or re.match(

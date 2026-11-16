@@ -417,6 +417,153 @@ class TestPhase3DshArchitecture(unittest.TestCase):
         self.assertEqual(len(matched_yaml), 1)
         self.assertEqual(matched_yaml[0].playbook.trace_id, "tr_yaml_only")
 
+    def test_merged_capture_binds_raw_trace_without_orphans_and_gc_prunes_raw(self) -> None:
+        from tmem.cli import execute_capture
+
+        (self.ws / "src").mkdir(exist_ok=True)
+        (self.ws / "tests").mkdir(exist_ok=True)
+        (self.ws / "src" / "calc.py").write_text("def div(a, b):\n    return a / b\n", encoding="utf-8")
+        (self.ws / "tests" / "test_calc.py").write_text("def test_div(): assert True\n", encoding="utf-8")
+
+        def _write_transcript(path: Path, sess_id: str, prompt: str, include_extra_read: bool) -> None:
+            events = [
+                {"version": 4, "id": sess_id, "createdAt": 1731225600000},
+                {
+                    "type": "user/message",
+                    "seq": 1,
+                    "data": {"role": "user", "content": [{"type": "text", "text": prompt}], "source": {"kind": "user"}},
+                },
+            ]
+            seq = 2
+            if include_extra_read:
+                events.extend([
+                    {
+                        "type": "tool/call",
+                        "seq": seq,
+                        "data": {"callId": "r1", "name": "read", "arguments": json.dumps({"file_path": "src/calc.py"})},
+                    },
+                    {
+                        "type": "tool/result",
+                        "seq": seq + 1,
+                        "data": {"message": {"callId": "r1", "content": [{"type": "text", "text": "def div(a, b): return a / b"}], "isError": False}},
+                    },
+                ])
+                seq += 2
+            events.extend([
+                {
+                    "type": "tool/call",
+                    "seq": seq,
+                    "data": {"callId": "e1", "name": "edit", "arguments": json.dumps({"file_path": "src/calc.py", "new_string": "def div(a, b):\n    return a / b if b else 0"})},
+                },
+                {
+                    "type": "tool/result",
+                    "seq": seq + 1,
+                    "data": {"message": {"callId": "e1", "content": [{"type": "text", "text": "Edited"}], "isError": False}},
+                },
+                {
+                    "type": "tool/call",
+                    "seq": seq + 2,
+                    "data": {"callId": "e2", "name": "edit", "arguments": json.dumps({"file_path": "tests/test_calc.py", "new_string": "def test_div(): assert True"})},
+                },
+                {
+                    "type": "tool/result",
+                    "seq": seq + 3,
+                    "data": {"message": {"callId": "e2", "content": [{"type": "text", "text": "Edited"}], "isError": False}},
+                },
+                {
+                    "type": "tool/call",
+                    "seq": seq + 4,
+                    "data": {"callId": "b1", "name": "bash", "arguments": json.dumps({"command": "pytest tests/test_calc.py"})},
+                },
+                {
+                    "type": "tool/result",
+                    "seq": seq + 5,
+                    "data": {"message": {"callId": "b1", "content": [{"type": "text", "text": "1 passed\n[exit code: 0]"}], "isError": False}},
+                },
+            ])
+            path.write_text("\n".join(json.dumps(ev) for ev in events), encoding="utf-8")
+
+        t1 = self.ws / "s1.v4.jsonl"
+        t2 = self.ws / "s2.v4.jsonl"
+        t3 = self.ws / "s3.v4.jsonl"
+        _write_transcript(t1, "sess_merge_1", "Fix ZeroDivisionError in src/calc.py", include_extra_read=True)
+        _write_transcript(t2, "sess_merge_2", "Fix ZeroDivisionError in src/calc.py edge case", include_extra_read=False)
+        _write_transcript(t3, "sess_merge_3", "Fix ZeroDivisionError in src/calc.py another case", include_extra_read=True)
+
+        res1 = execute_capture(str(self.ws), agent_name="dsh", transcript_path=str(t1), session_id="sess_merge_1")
+        self.assertEqual(res1["status"], "compiled")
+        primary_id = res1["project_trace_id"]
+
+        # Shorter L0 incoming session merges into primary_id without creating an orphan .raw.json
+        res2 = execute_capture(str(self.ws), agent_name="dsh", transcript_path=str(t2), session_id="sess_merge_2")
+        self.assertEqual(res2["project_trace_id"], primary_id)
+        self.assertEqual(res2["raw_trace_path"], f"raw/{primary_id}.raw.json")
+        raw_files = list((self.ws / ".tmem" / "raw").glob("*.raw.json"))
+        self.assertEqual([p.name for p in raw_files], [f"{primary_id}.raw.json"])
+
+        # Equal-or-longer L0 incoming session updates primary_id.raw.json in place (no orphan, updated session_id)
+        res3 = execute_capture(str(self.ws), agent_name="dsh", transcript_path=str(t3), session_id="sess_merge_3")
+        self.assertEqual(res3["project_trace_id"], primary_id)
+        raw_files_after = list((self.ws / ".tmem" / "raw").glob("*.raw.json"))
+        self.assertEqual([p.name for p in raw_files_after], [f"{primary_id}.raw.json"])
+        store = ProjectMemoryStore(str(self.ws))
+        loaded_raw = store.get_raw_trace(primary_id)
+        self.assertIsNotNone(loaded_raw)
+        assert loaded_raw is not None
+        self.assertEqual(loaded_raw.trace_id, primary_id)
+        self.assertEqual(loaded_raw.session_id, "sess_merge_3")
+
+        # GC pruning deletes exact .raw.json without touching prefix-neighbor raw traces
+        pb_short = TracePlaybook(
+            trace_id="tr_gc",
+            agent_source="dsh",
+            scope="project",
+            problem_intent="Removed file trace",
+            touched_files=["src/missing_only.py", "tests/test_missing_only.py"],
+            guards=[GuardProbe(probe_type="file_exists", target="src/missing_only.py")],
+            l0_critical_path=[{"step": 1, "action": "MUTATE", "target": "src/missing_only.py"}],
+            confidence=0.7,
+        )
+        pb_neighbor = TracePlaybook(
+            trace_id="tr_gc_keep",
+            agent_source="dsh",
+            scope="project",
+            problem_intent="Existing file neighbor sharing prefix",
+            touched_files=["src/calc.py", "tests/test_calc.py"],
+            guards=[GuardProbe(probe_type="file_exists", target="src/calc.py")],
+            l0_critical_path=[{"step": 1, "action": "MUTATE", "target": "src/calc.py"}],
+            confidence=0.7,
+        )
+        store.save_playbook(
+            pb_short,
+            merge_similar=False,
+            raw_trace=RawExecutionTrace(
+                trace_id="tr_gc",
+                session_id="s_gc",
+                agent_source="dsh",
+                workspace_root=str(self.ws),
+                created_at="2026-11-16T00:00:00Z",
+            ),
+        )
+        store.save_playbook(
+            pb_neighbor,
+            merge_similar=False,
+            raw_trace=RawExecutionTrace(
+                trace_id="tr_gc_keep",
+                session_id="s_gc_keep",
+                agent_source="dsh",
+                workspace_root=str(self.ws),
+                created_at="2026-11-16T00:00:00Z",
+            ),
+        )
+        for _ in range(3):
+            store.run_metabolism_gc(prune_stale=True)
+
+        self.assertFalse((self.ws / ".tmem" / "traces" / "tr_gc.json").exists())
+        self.assertFalse((self.ws / ".tmem" / "raw" / "tr_gc.raw.json").exists())
+        self.assertTrue((self.ws / ".tmem" / "traces" / "tr_gc_keep.json").exists())
+        self.assertTrue((self.ws / ".tmem" / "raw" / "tr_gc_keep.raw.json").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

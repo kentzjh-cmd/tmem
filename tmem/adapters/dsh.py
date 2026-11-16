@@ -15,7 +15,7 @@ from tmem.adapters.base import (
     clean_rationale,
     extract_assistant_conclusion,
     extract_error_signature,
-    extract_symbols_from_text,
+    infer_modified_symbols,
     is_filler_user_intent,
     normalize_rel_path,
     scrub_secrets,
@@ -27,6 +27,8 @@ APPLY_PATCH_FILE_RE = re.compile(
     r"^\*\*\*\s+(?!(?:Begin|End)\s+Patch\b|\d+(?:,\d+)?\s+\*{4}\s*$)(?:(?:Update|Add|Delete|Move to)\s+File:\s+)?([^\r\n]+)",
     re.MULTILINE,
 )
+UNIFIED_DIFF_GIT_RE = re.compile(r"^diff --git\s+a/(.+?)\s+b/(.+)$")
+UNIFIED_HUNK_RE = re.compile(r"^@@\s+-\d+(?:,\d+)?\s+\+(\d+)(?:,(\d+))?\s+@@(.*)$")
 
 
 def _extract_dsh_text(content: Any) -> str:
@@ -66,35 +68,131 @@ def _ms_to_iso(ts_val: Any) -> str:
     return ""
 
 
-def parse_apply_patch_targets(patch_text: str) -> List[Tuple[str, str]]:
+def _strip_diff_path_prefix(raw_path: str, expected_prefix: str, strip_prefix: bool) -> str:
+    cleaned = raw_path.split("\t", 1)[0].strip().strip('"').strip("'")
+    if strip_prefix and cleaned.startswith(expected_prefix):
+        cleaned = cleaned[len(expected_prefix) :]
+    return cleaned
+
+
+def parse_apply_patch_details(
+    patch_text: str,
+) -> List[Tuple[str, str, List[Tuple[int, int]], str]]:
     """
-    Parse Codex / dsh `apply_patch` input into a list of (file_path, added_lines_text).
+    Parse both Codex/dsh `apply_patch` format (`*** Update File: ...`) and standard
+    unified diffs (`diff --git` / `--- a/...` / `+++ b/...` / `@@ -old +new @@`)
+    into `(file_path, added_lines_text, line_ranges, hunk_headers_text)`.
     """
     if not patch_text:
         return []
-    results: List[Tuple[str, str]] = []
+
+    is_codex_patch = "*** Begin Patch" in patch_text or bool(APPLY_PATCH_FILE_RE.search(patch_text))
+    results: List[Tuple[str, str, List[Tuple[int, int]], str]] = []
     current_file: Optional[str] = None
     added_lines: List[str] = []
+    line_ranges: List[Tuple[int, int]] = []
+    hunk_headers: List[str] = []
+    pending_old_file: Optional[str] = None
+    pending_has_a_prefix = False
+    saw_git_diff_header = False
+
+    def _flush() -> None:
+        if current_file:
+            results.append(
+                (
+                    current_file,
+                    "\n".join(added_lines),
+                    list(line_ranges),
+                    "\n".join(hunk_headers),
+                )
+            )
 
     for raw_line in patch_text.splitlines():
         stripped = raw_line.strip()
-        m = APPLY_PATCH_FILE_RE.match(stripped)
-        if m:
-            candidate = m.group(1).split("\t", 1)[0].strip()
+        m_codex = APPLY_PATCH_FILE_RE.match(stripped)
+        if m_codex:
+            candidate = m_codex.group(1).split("\t", 1)[0].strip()
             if not candidate or candidate == "/dev/null" or candidate.endswith("****"):
                 continue
-            if current_file:
-                results.append((current_file, "\n".join(added_lines)))
+            _flush()
             current_file = candidate
             added_lines = []
+            line_ranges = []
+            hunk_headers = []
             continue
+
+        if not is_codex_patch:
+            m_git = UNIFIED_DIFF_GIT_RE.match(raw_line)
+            if m_git:
+                _flush()
+                current_file = m_git.group(2).strip().strip('"')
+                added_lines = []
+                line_ranges = []
+                hunk_headers = []
+                pending_old_file = m_git.group(1).strip().strip('"')
+                pending_has_a_prefix = True
+                saw_git_diff_header = True
+                continue
+
+            if raw_line.startswith("--- ") and not stripped.endswith("----"):
+                old_raw = raw_line[4:].split("\t", 1)[0].strip().strip('"')
+                pending_has_a_prefix = old_raw.startswith("a/")
+                pending_old_file = (
+                    None
+                    if old_raw == "/dev/null"
+                    else _strip_diff_path_prefix(old_raw, "a/", pending_has_a_prefix)
+                )
+                continue
+
+            if raw_line.startswith("+++ ") and not stripped.endswith("++++"):
+                new_raw = raw_line[4:].split("\t", 1)[0].strip().strip('"')
+                strip_b = saw_git_diff_header or pending_has_a_prefix or (
+                    pending_old_file is None and new_raw.startswith("b/")
+                )
+                if new_raw == "/dev/null":
+                    target_path = pending_old_file
+                else:
+                    target_path = _strip_diff_path_prefix(new_raw, "b/", strip_b)
+                if target_path:
+                    if saw_git_diff_header and current_file:
+                        current_file = target_path
+                    else:
+                        _flush()
+                        current_file = target_path
+                        added_lines = []
+                        line_ranges = []
+                        hunk_headers = []
+                saw_git_diff_header = False
+                pending_old_file = None
+                pending_has_a_prefix = False
+                continue
+
         if current_file is not None:
+            m_hunk = UNIFIED_HUNK_RE.match(raw_line)
+            if m_hunk:
+                start_ln = max(1, int(m_hunk.group(1)))
+                count = int(m_hunk.group(2)) if m_hunk.group(2) is not None else 1
+                end_ln = start_ln if count == 0 else start_ln + count - 1
+                line_ranges.append((start_ln, end_ln))
+                ctx = m_hunk.group(3).strip()
+                if ctx:
+                    hunk_headers.append(ctx)
+                continue
             if raw_line.startswith("+") and not raw_line.startswith("+++"):
                 added_lines.append(raw_line[1:])
 
-    if current_file:
-        results.append((current_file, "\n".join(added_lines)))
+    _flush()
     return results
+
+
+def parse_apply_patch_targets(patch_text: str) -> List[Tuple[str, str]]:
+    """
+    Parse Codex / dsh `apply_patch` or unified diff input into a list of (file_path, added_lines_text).
+    """
+    return [
+        (file_path, added_body)
+        for file_path, added_body, _, _ in parse_apply_patch_details(patch_text)
+    ]
 
 
 class DshAdapter(AgentAdapter):
@@ -345,20 +443,27 @@ class DshAdapter(AgentAdapter):
             else:
                 cleaned_args[k] = v
 
-        # 1. `apply_patch` (Codex / dsh multi-file patch format)
+        # 1. `apply_patch` (Codex / dsh multi-file patch or standard unified diff format)
         if low == "apply_patch":
             patch_input = str(args.get("input") or args.get("patch") or args.get("diff") or "")
-            targets = parse_apply_patch_targets(patch_input)
-            if targets:
+            details = parse_apply_patch_details(patch_input)
+            if details:
                 nodes: List[ActionNode] = []
-                for raw_path, added_body in targets:
+                for raw_path, added_body, line_ranges, hunk_headers in details:
+                    rel_path = normalize_rel_path(raw_path, workspace_root)
                     nodes.append(
                         ActionNode(
                             step_idx=step_idx,
                             kind=ActionKind.MUTATE,
                             tool_name=tool_name,
-                            target_file=normalize_rel_path(raw_path, workspace_root),
-                            symbols_touched=extract_symbols_from_text(added_body, raw_path),
+                            target_file=rel_path,
+                            symbols_touched=infer_modified_symbols(
+                                workspace_root,
+                                rel_path,
+                                new_snippet=added_body,
+                                line_ranges=line_ranges,
+                                hunk_headers=hunk_headers,
+                            ),
                             timestamp=timestamp,
                             raw_input=cleaned_args,
                             rationale=rationale,
@@ -393,6 +498,7 @@ class DshAdapter(AgentAdapter):
 
         # 3. File mutation tools (`write`, `edit`, `str_replace_editor`)
         if low in ("write", "edit", "str_replace_editor", "write_file", "edit_file", "apply_patch"):
+            rel_path = normalize_rel_path(file_arg, workspace_root)
             code_body = str(
                 args.get("content")
                 or args.get("new_string")
@@ -400,6 +506,7 @@ class DshAdapter(AgentAdapter):
                 or args.get("file_text")
                 or args.get("replacement")
                 or args.get("old_string")
+                or args.get("old_str")
                 or ""
             )
             return [
@@ -407,8 +514,12 @@ class DshAdapter(AgentAdapter):
                     step_idx=step_idx,
                     kind=ActionKind.MUTATE,
                     tool_name=tool_name,
-                    target_file=normalize_rel_path(file_arg, workspace_root),
-                    symbols_touched=extract_symbols_from_text(code_body, str(file_arg or "")),
+                    target_file=rel_path,
+                    symbols_touched=infer_modified_symbols(
+                        workspace_root,
+                        rel_path,
+                        new_snippet=code_body,
+                    ),
                     timestamp=timestamp,
                     raw_input=cleaned_args,
                     rationale=rationale,

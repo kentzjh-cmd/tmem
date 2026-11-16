@@ -71,10 +71,20 @@ class RawTraceStore:
                 return None
         return None
 
-    def delete_raw_trace(self, trace_id: str) -> bool:
-        """Delete raw trace file by ID or prefix."""
+    def delete_raw_trace(self, trace_id: str, exact: bool = False) -> bool:
+        """Delete raw trace file by exact ID or ID prefix."""
         tid = trace_id.strip()
         if not tid or not self.raw_dir.exists():
+            return False
+
+        if exact:
+            target = self.raw_dir / f"{tid}.raw.json"
+            if target.exists():
+                try:
+                    target.unlink()
+                    return True
+                except OSError as e:
+                    logger.debug("Failed deleting raw trace %s: %s", target, e)
             return False
 
         deleted = False

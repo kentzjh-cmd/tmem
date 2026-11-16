@@ -442,7 +442,7 @@ def handle_dsh_hook(
         # 3. Track touched files & resolve/emit L1 co-change hints
         touched_paths: List[str] = []
         if t_name == "apply_patch":
-            patch_input = str(args.get("input") or args.get("patch") or "")
+            patch_input = str(args.get("input") or args.get("patch") or args.get("diff") or "")
             for p_raw, _ in parse_apply_patch_targets(patch_input):
                 rel = normalize_rel_path(p_raw, workspace_root)
                 if rel:

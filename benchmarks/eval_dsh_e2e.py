@@ -24,7 +24,7 @@ if str(WORKSPACE_ROOT) not in sys.path:
     sys.path.insert(0, str(WORKSPACE_ROOT))
 
 from tmem.hooks.dsh import handle_dsh_hook
-from tmem.installer import install_invisible_integration
+from tmem.installer import install_invisible_integration, resolve_dsh_entry_js
 from tmem.models import CausalRepairPair, GuardProbe, TracePlaybook
 from tmem.store import ProjectMemoryStore
 from tmem.telemetry import compute_telemetry_summary
@@ -185,11 +185,16 @@ def run_dsh_e2e_benchmark() -> Dict[str, Any]:
                 fp_count += 1
         fp_rate_pct = round((fp_count / len(nl_holdout_prompts)) * 100.0, 2)
 
-        # Measure real Node.js `dsh_plugin.mjs` Python-spawn gating efficiency
-        plugin_url = (ws / ".dsh" / "plugins" / "tmem-dsh-plugin.mjs").as_uri()
-        spawn_bench_js = f"""
+        # Measure real Node.js `dsh_plugin.mjs` Python-spawn gating efficiency (if @deepseek-ai/dsh + node exist)
+        dsh_entry = resolve_dsh_entry_js()
+        node_bin = shutil.which("node")
+        plugin_timing: Dict[str, Any] = {"elapsedMs": None}
+        if dsh_entry and node_bin:
+            plugin_url = (ws / ".dsh" / "plugins" / "tmem-dsh-plugin.mjs").as_uri()
+            dsh_entry_url = dsh_entry.as_uri()
+            spawn_bench_js = f"""
 import {{ createRequire }} from "node:module";
-const req = createRequire("/usr/lib/node_modules/@deepseek-ai/dsh/lib/index.js");
+const req = createRequire({json.dumps(dsh_entry_url)});
 const {{ Context }} = req("@deepseek-ai/cordis");
 const dshCommands = req("@deepseek-ai/dsh-commands");
 const tmemPlugin = await import({json.dumps(plugin_url)});
@@ -240,15 +245,15 @@ for (let r = 0; r < 15; r++) {{
 const elapsedMs = performance.now() - tStart;
 console.log(JSON.stringify({{ elapsedMs: Math.round(elapsedMs * 100) / 100 }}));
 """
-        node_proc = subprocess.run(
-            ["node", "--input-type=module", "-e", spawn_bench_js],
-            cwd=ws,
-            env={**os.environ, "PYTHONPATH": str(WORKSPACE_ROOT)},
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        plugin_timing = json.loads(node_proc.stdout.strip().splitlines()[-1])
+            node_proc = subprocess.run(
+                [node_bin, "--input-type=module", "-e", spawn_bench_js],
+                cwd=ws,
+                env={**os.environ, "PYTHONPATH": str(WORKSPACE_ROOT)},
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            plugin_timing = json.loads(node_proc.stdout.strip().splitlines()[-1])
 
         elapsed_total_ms = round((time.perf_counter() - t0) * 1000.0, 2)
         step_reduction_pct = round(((baseline_steps - with_tmem_steps) / baseline_steps) * 100.0, 2)
@@ -261,6 +266,7 @@ console.log(JSON.stringify({{ elapsedMs: Math.round(elapsedMs * 100) / 100 }}));
             "l2_triggered": l2_triggered,
             "telemetry": tel,
             "negative_holdout_fp_pct": fp_rate_pct,
+            "dsh_node_runtime_available": bool(dsh_entry and node_bin),
             "hot_path_21_steps_ms": plugin_timing["elapsedMs"],
             "total_bench_ms": elapsed_total_ms,
         }

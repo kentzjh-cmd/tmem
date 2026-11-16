@@ -3,8 +3,16 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - non-POSIX fallback
+    fcntl = None  # type: ignore[assignment]
 
 from tmem import logger
 
@@ -87,31 +95,75 @@ def load_runtime_state(workspace_root: str, conv_id: str = "default") -> Dict[st
     return default_runtime_state(target_id)
 
 
+@contextmanager
+def _runtime_state_lock(state_dir: Path) -> Iterator[None]:
+    """Acquire an advisory POSIX lock around runtime_state.json read-modify-write."""
+    if fcntl is None:
+        yield
+        return
+    lock_path = state_dir / ".runtime_state.lock"
+    lock_fp = None
+    try:
+        lock_fp = lock_path.open("a+", encoding="utf-8")
+        fcntl.flock(lock_fp.fileno(), fcntl.LOCK_EX)
+        yield
+    except OSError:
+        yield
+    finally:
+        if lock_fp is not None:
+            try:
+                fcntl.flock(lock_fp.fileno(), fcntl.LOCK_UN)
+            except OSError:
+                pass
+            try:
+                lock_fp.close()
+            except OSError:
+                pass
+
+
 def save_runtime_state(workspace_root: str, state: Dict[str, Any]) -> None:
     state_file = Path(workspace_root) / ".tmem" / "runtime_state.json"
     state_file.parent.mkdir(parents=True, exist_ok=True)
     conv_id = str(state.get("conversation_id") or "default")
-    sessions, _ = _read_state_container(state_file)
 
-    if conv_id in sessions:
-        sessions.pop(conv_id, None)
-    sessions[conv_id] = _normalize_session_state(state, conv_id)
+    with _runtime_state_lock(state_file.parent):
+        sessions, _ = _read_state_container(state_file)
 
-    while len(sessions) > MAX_TRACKED_SESSIONS:
-        oldest_key = next(iter(sessions))
-        sessions.pop(oldest_key, None)
+        if conv_id in sessions:
+            sessions.pop(conv_id, None)
+        sessions[conv_id] = _normalize_session_state(state, conv_id)
 
-    container = {
-        "latest_session_id": conv_id,
-        "sessions": sessions,
-    }
-    try:
-        state_file.write_text(
-            json.dumps(container, indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
-    except OSError as e:
-        logger.debug("Failed to write runtime_state.json: %s", e)
+        while len(sessions) > MAX_TRACKED_SESSIONS:
+            oldest_key = next(iter(sessions))
+            sessions.pop(oldest_key, None)
+
+        container = {
+            "latest_session_id": conv_id,
+            "sessions": sessions,
+        }
+        tmp_path: Optional[str] = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=str(state_file.parent),
+                prefix=".runtime_state.",
+                suffix=".tmp",
+                delete=False,
+            ) as tmp_fp:
+                tmp_path = tmp_fp.name
+                tmp_fp.write(json.dumps(container, indent=2, ensure_ascii=False))
+                tmp_fp.flush()
+            os.replace(tmp_path, state_file)
+            tmp_path = None
+        except OSError as e:
+            logger.debug("Failed to write runtime_state.json: %s", e)
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
 
 
 def record_tool_outcome_for_loop(

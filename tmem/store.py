@@ -11,19 +11,31 @@ Architectural inspirations absorbed:
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
 import re
 import sqlite3
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, Iterator, List, Optional, Set, Tuple
 
 from tmem import logger
 from tmem.guards import EvaluatedPlaybook, evaluate_guards
 from tmem.mem_doc import sync_memories_file
 from tmem.models import CausalRepairPair, RawExecutionTrace, TracePlaybook
 from tmem.raw_storage import RawTraceStore
+
+
+@contextlib.contextmanager
+def _connect_sqlite(db_path: Path) -> Iterator[sqlite3.Connection]:
+    """Open SQLite with transactional commit/rollback and guaranteed close on exit."""
+    conn = sqlite3.connect(str(db_path))
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
 
 
 class ProjectMemoryStore:
@@ -60,7 +72,7 @@ class ProjectMemoryStore:
 
     def _init_sqlite(self, db_path: Path) -> None:
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(str(db_path)) as conn:
+        with _connect_sqlite(db_path) as conn:
             conn.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS playbooks (
@@ -107,7 +119,7 @@ class ProjectMemoryStore:
 
         json_files = list(self.project_traces_dir.glob("*.json"))
         disk_ids = {jf.stem for jf in json_files}
-        with sqlite3.connect(str(self.project_db_path)) as conn:
+        with _connect_sqlite(self.project_db_path) as conn:
             cur = conn.execute("SELECT trace_id FROM playbooks")
             db_ids = {row[0] for row in cur.fetchall()}
 
@@ -234,9 +246,6 @@ class ProjectMemoryStore:
             existing.l0_critical_path = incoming.l0_critical_path
             existing.raw_steps_count = incoming.raw_steps_count or existing.raw_steps_count
             existing.sliced_steps_count = incoming.sliced_steps_count or existing.sliced_steps_count
-            if incoming.raw_trace_path:
-                existing.raw_trace_path = incoming.raw_trace_path
-                existing.raw_trace_hash = incoming.raw_trace_hash
 
         if incoming.root_cause and (not existing.root_cause or len(incoming.root_cause) > len(existing.root_cause)):
             existing.root_cause = incoming.root_cause
@@ -249,33 +258,63 @@ class ProjectMemoryStore:
         playbook: TracePlaybook,
         target_scope: str = "project",
         merge_similar: bool = True,
+        raw_trace: Optional[RawExecutionTrace] = None,
     ) -> Tuple[Optional[str], Optional[str]]:
         """
         Save playbook to Project Tier (.tmem/traces/<id>.json) and index into SQLite.
         When `merge_similar=True`, merges into an existing playbook sharing the same L2 repair
         or high-overlap file set + intent instead of spawning duplicate files.
+        If `raw_trace` is provided, binds and saves it under the final (merged) `trace_id`
+        so `.tmem/raw/` never accumulates orphan files or mismatched IDs.
         Returns (project_trace_id, None).
         """
         self.ensure_initialized(init_project=True)
-        raw_path = self.project_raw_dir / f"{playbook.trace_id}.raw.json"
-        if raw_path.exists():
-            if not playbook.raw_trace_path:
-                playbook.raw_trace_path = f"raw/{playbook.trace_id}.raw.json"
-            if not playbook.raw_trace_hash:
-                playbook.raw_trace_hash = hashlib.sha256(raw_path.read_bytes()).hexdigest()[:16]
+        orig_trace_id = playbook.trace_id
+        incoming_l0_len = len(playbook.l0_critical_path)
+        incoming_has_guards = bool(playbook.guards)
 
         playbook.scope = "project"
+        merged = False
+        existing_l0_len = 0
         if merge_similar:
             similar = self._find_similar_playbook(playbook)
             if similar is not None:
+                existing_l0_len = len(similar.l0_critical_path)
                 playbook = self._merge_playbooks(similar, playbook)
+                merged = True
+
+        raw_path = self.project_raw_dir / f"{playbook.trace_id}.raw.json"
+        l0_refreshed = incoming_has_guards and incoming_l0_len >= existing_l0_len
+
+        if raw_trace is not None:
+            if not merged or l0_refreshed or not raw_path.exists():
+                raw_trace.trace_id = playbook.trace_id
+                self.raw_store.save_raw_trace(raw_trace)
+        elif merged and orig_trace_id != playbook.trace_id:
+            orig_raw_path = self.project_raw_dir / f"{orig_trace_id}.raw.json"
+            if orig_raw_path.exists():
+                if l0_refreshed or not raw_path.exists():
+                    try:
+                        raw_obj = RawExecutionTrace.from_dict(
+                            json.loads(orig_raw_path.read_text(encoding="utf-8"))
+                        )
+                        raw_obj.trace_id = playbook.trace_id
+                        self.raw_store.save_raw_trace(raw_obj)
+                    except (json.JSONDecodeError, OSError, TypeError):
+                        pass
+                if not (self.project_traces_dir / f"{orig_trace_id}.json").exists():
+                    orig_raw_path.unlink(missing_ok=True)
+
+        if raw_path.exists():
+            playbook.raw_trace_path = f"raw/{playbook.trace_id}.raw.json"
+            playbook.raw_trace_hash = hashlib.sha256(raw_path.read_bytes()).hexdigest()[:16]
 
         proj_file = self.project_traces_dir / f"{playbook.trace_id}.json"
         proj_file.write_text(
             json.dumps(playbook.to_dict(), indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
-        with sqlite3.connect(str(self.project_db_path)) as conn:
+        with _connect_sqlite(self.project_db_path) as conn:
             self._upsert_to_db(conn, playbook)
         proj_id = playbook.trace_id
         try:
@@ -411,7 +450,7 @@ class ProjectMemoryStore:
     ) -> List[Tuple[TracePlaybook, float]]:
         scores: Dict[str, float] = {}
 
-        with sqlite3.connect(str(db_path)) as conn:
+        with _connect_sqlite(db_path) as conn:
             # 1. Exact Error triggers
             for err in error_signatures:
                 cur = conn.execute(
@@ -501,7 +540,7 @@ class ProjectMemoryStore:
             return []
 
         scores: Dict[str, float] = {}
-        with sqlite3.connect(str(self.project_db_path)) as conn:
+        with _connect_sqlite(self.project_db_path) as conn:
             cur = conn.execute(
                 "SELECT trace_id, trigger_key FROM exact_triggers WHERE trigger_type = 'error'"
             )
@@ -564,7 +603,7 @@ class ProjectMemoryStore:
         if not self.project_traces_dir.exists():
             return stats
 
-        with sqlite3.connect(str(self.project_db_path)) as conn:
+        with _connect_sqlite(self.project_db_path) as conn:
             for jf in list(self.project_traces_dir.glob("*.json")):
                 try:
                     pb = TracePlaybook.from_dict(json.loads(jf.read_text(encoding="utf-8")))
@@ -590,6 +629,7 @@ class ProjectMemoryStore:
                                 pb.guard_fail_streak >= 3 or pb.confidence <= 0.1
                             ):
                                 jf.unlink(missing_ok=True)
+                                self.raw_store.delete_raw_trace(pb.trace_id, exact=True)
                                 conn.execute("DELETE FROM playbooks WHERE trace_id = ?", (pb.trace_id,))
                                 conn.execute("DELETE FROM exact_triggers WHERE trace_id = ?", (pb.trace_id,))
                                 conn.execute("DELETE FROM playbooks_fts WHERE trace_id = ?", (pb.trace_id,))
@@ -655,7 +695,7 @@ class ProjectMemoryStore:
                         pass
                     if self.project_db_path.exists():
                         try:
-                            with sqlite3.connect(str(self.project_db_path)) as conn:
+                            with _connect_sqlite(self.project_db_path) as conn:
                                 conn.execute("DELETE FROM playbooks WHERE trace_id = ?", (matched_id,))
                                 conn.execute("DELETE FROM exact_triggers WHERE trace_id = ?", (matched_id,))
                                 conn.execute("DELETE FROM playbooks_fts WHERE trace_id = ?", (matched_id,))
@@ -699,7 +739,7 @@ class ProjectMemoryStore:
         if not symbol or not self.project_db_path.exists():
             return []
         try:
-            with sqlite3.connect(str(self.project_db_path)) as conn:
+            with _connect_sqlite(self.project_db_path) as conn:
                 cur = conn.execute(
                     "SELECT trace_id FROM trace_links WHERE symbol = ? AND trace_id != ? LIMIT 3",
                     (symbol.lower(), exclude_trace_id),
@@ -726,7 +766,7 @@ class ProjectMemoryStore:
         self.sync_project_index_if_needed()
         updated: Dict[str, float] = {}
         try:
-            with sqlite3.connect(str(self.project_db_path)) as conn:
+            with _connect_sqlite(self.project_db_path) as conn:
                 for tid in dict.fromkeys(trace_ids):
                     jf = self.project_traces_dir / f"{tid}.json"
                     if not jf.exists():

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -25,6 +26,7 @@ from tmem.adapters import get_adapter
 from tmem.adapters.base import extract_symbols_from_text
 from tmem.adapters.dsh import DshAdapter
 from tmem.cli import handle_dsh_hook, install_invisible_integration
+from tmem.installer import resolve_dsh_entry_js
 from tmem.slicer import BackwardTraceSlicer
 from tmem.store import ProjectMemoryStore
 
@@ -421,6 +423,10 @@ class TestDshPluginEndToEnd(unittest.TestCase):
             self.assertTrue((self.workspace / "AGENTS.md").exists())
             self.assertTrue(info["git_hook"])
 
+        dsh_entry = resolve_dsh_entry_js()
+        if not (shutil.which("dsh") and shutil.which("node") and dsh_entry):
+            self.skipTest("@deepseek-ai/dsh CLI/Node runtime is not installed on this host")
+
         # 1. Verify `dsh --profile headless --patch <ws>/.dsh/tmem.patch.yml --dump-config` succeeds on real dsh CLI
         dump_proc = subprocess.run(
             [
@@ -443,9 +449,10 @@ class TestDshPluginEndToEnd(unittest.TestCase):
         # 2. Run a live Node.js E2E harness importing @deepseek-ai/cordis, @deepseek-ai/dsh-commands,
         # and our generated `.dsh/plugins/tmem-dsh-plugin.mjs`
         plugin_url = (self.workspace / ".dsh" / "plugins" / "tmem-dsh-plugin.mjs").as_uri()
+        dsh_entry_url = dsh_entry.as_uri()
         harness_js = f"""
 import {{ createRequire }} from "node:module";
-const req = createRequire("/usr/lib/node_modules/@deepseek-ai/dsh/lib/index.js");
+const req = createRequire({json.dumps(dsh_entry_url)});
 const {{ Context }} = req("@deepseek-ai/cordis");
 const dshCommands = req("@deepseek-ai/dsh-commands");
 const tmemPlugin = await import({json.dumps(plugin_url)});

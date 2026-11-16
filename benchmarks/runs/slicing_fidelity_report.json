@@ -8,9 +8,9 @@
       "avg_steps": 4.7
     },
     "B1_tmem_slicer": {
-      "mean_precision": 93.5,
+      "mean_precision": 93.8,
       "mean_recall": 95.0,
-      "mean_f1": 93.4,
+      "mean_f1": 93.6,
       "avg_steps": 5.1
     },
     "B2_oracle_upper_bound": {
@@ -1113,10 +1113,10 @@
         "steps": 6
       },
       "b1": {
-        "p": 87.5,
+        "p": 100.0,
         "r": 100.0,
-        "f1": 93.3,
-        "steps": 8
+        "f1": 100.0,
+        "steps": 7
       },
       "b2": {
         "p": 100.0,

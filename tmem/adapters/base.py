@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import os
 import re
+import textwrap
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
@@ -198,6 +199,8 @@ def normalize_rel_path(raw_path: Optional[str], workspace_root: str) -> Optional
             resolved = target.resolve()
             if resolved == ws or ws in resolved.parents:
                 return str(resolved.relative_to(ws))
+        while cleaned.startswith("./"):
+            cleaned = cleaned[2:]
         return cleaned
     except Exception:
         return cleaned
@@ -402,16 +405,18 @@ def extract_symbols_from_text(text: str, file_path: Optional[str] = None) -> Lis
     symbols = set()
     is_py = file_path and file_path.lower().endswith(".py")
     if is_py:
-        try:
-            tree = ast.parse(text)
-            for node in ast.walk(tree):
-                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                    if node.name.lower() not in SYMBOL_STOPWORDS:
-                        symbols.add(node.name)
-            if symbols:
-                return sorted(symbols)
-        except Exception:
-            pass
+        for candidate in (text, textwrap.dedent(text)):
+            try:
+                tree = ast.parse(candidate)
+                for node in ast.walk(tree):
+                    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                        if node.name.lower() not in SYMBOL_STOPWORDS:
+                            symbols.add(node.name)
+                if symbols:
+                    return sorted(symbols)
+                break
+            except Exception:
+                continue
 
     ts_syms = extract_ts_symbols_from_text(text, file_path, stopwords=SYMBOL_STOPWORDS)
     if ts_syms:
@@ -536,6 +541,89 @@ def extract_symbols_for_line_ranges(
     if file_path and file_path.lower().endswith(".py"):
         return extract_python_symbols_for_line_ranges(content, line_ranges)
     return extract_ts_symbols_for_line_ranges(content, file_path, line_ranges)
+
+
+def _locate_snippet_line_ranges(disk_content: str, snippet: str) -> List[Tuple[int, int]]:
+    """Locate unambiguous 1-indexed line ranges for an edited code snippet inside `disk_content`."""
+    norm = snippet.strip("\r\n")
+    if not norm.strip():
+        return []
+
+    is_multiline = "\n" in norm
+    # 1. Exact substring match when multi-line or uniquely occurring on disk
+    if is_multiline or disk_content.count(norm) == 1:
+        idx = disk_content.find(norm)
+        if idx >= 0:
+            start_ln = disk_content[:idx].count("\n") + 1
+            end_ln = start_ln + norm.count("\n")
+            return [(start_ln, end_ln)]
+
+    # 2. Line-by-line unique fallback (useful for multi-hunk Codex apply_patch added bodies)
+    disk_lines = disk_content.splitlines()
+    line_to_nums: Dict[str, List[int]] = {}
+    for ln_no, raw_ln in enumerate(disk_lines, start=1):
+        key = raw_ln.strip()
+        if len(key) >= 8:
+            line_to_nums.setdefault(key, []).append(ln_no)
+
+    ranges: List[Tuple[int, int]] = []
+    for raw_snip_ln in norm.splitlines():
+        key = raw_snip_ln.strip()
+        if len(key) < 8:
+            continue
+        matches = line_to_nums.get(key)
+        if matches and len(matches) == 1:
+            ln = matches[0]
+            ranges.append((ln, ln))
+            if len(ranges) >= 8:
+                break
+    return ranges
+
+
+def infer_modified_symbols(
+    workspace_root: str,
+    file_path: Optional[str],
+    new_snippet: str = "",
+    line_ranges: Optional[List[Tuple[int, int]]] = None,
+    hunk_headers: str = "",
+) -> List[str]:
+    """
+    Infer modified AST symbol names (`func`, `Class`, `Class.method`) for partial edits
+    (`old_string`/`new_string`, `str_replace_editor`, `apply_patch` unified/Codex diffs)
+    by resolving line ranges against the workspace file on disk, falling back to snippet/header parsing.
+    """
+    if not file_path or not is_code_file(file_path):
+        return []
+
+    disk_content = ""
+    if workspace_root:
+        try:
+            full_path = Path(workspace_root) / file_path
+            if full_path.is_file():
+                disk_content = full_path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            disk_content = ""
+
+    if disk_content:
+        target_ranges = list(line_ranges or [])
+        if not target_ranges and new_snippet:
+            target_ranges = _locate_snippet_line_ranges(disk_content, new_snippet)
+        if target_ranges:
+            syms = extract_symbols_for_line_ranges(disk_content, file_path, target_ranges)
+            if syms:
+                return syms
+
+    if new_snippet:
+        syms = extract_symbols_from_text(new_snippet, file_path)
+        if syms:
+            return syms
+
+    if hunk_headers:
+        syms = extract_symbols_from_text(hunk_headers, file_path)
+        if syms:
+            return syms
+
+    return []
 
 
 def extract_local_imports(
