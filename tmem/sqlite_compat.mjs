@@ -8,30 +8,42 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
 let _sqliteModulePromise = null;
-let _warningFilterInstalled = false;
 let _openHook = null;
 let _closeHook = null;
 
 function installSqliteWarningFilter() {
-  if (_warningFilterInstalled) return;
-  _warningFilterInstalled = true;
-  const origEmit = process.emit.bind(process);
-  process.emit = function filteredEmit(name, data, ...rest) {
+  const origEmit = process.emit;
+  let restored = false;
+  const restore = () => {
+    if (restored) return;
+    restored = true;
+    if (process.emit === filteredEmit) {
+      process.emit = origEmit;
+    }
+  };
+  function filteredEmit(name, data) {
     if (
       name === "warning" &&
       data &&
       data.name === "ExperimentalWarning" &&
       String(data.message || "").includes("SQLite")
     ) {
+      restore();
       return false;
     }
-    return origEmit(name, data, ...rest);
-  };
+    return Reflect.apply(origEmit, this, arguments);
+  }
+  process.emit = filteredEmit;
+  return restore;
 }
 
-// Install synchronously on module load and import node:sqlite via top-level await.
-installSqliteWarningFilter();
+// Suppress the one-time SQLite ExperimentalWarning during module load, then restore process.emit.
+const _restoreEmit = installSqliteWarningFilter();
 const { DatabaseSync } = await import("node:sqlite");
+const _fallbackTimer = setImmediate(_restoreEmit);
+if (typeof _fallbackTimer.unref === "function") {
+  _fallbackTimer.unref();
+}
 
 export function setConnectionTrackingHooks(onOpen, onClose) {
   _openHook = typeof onOpen === "function" ? onOpen : null;
@@ -41,6 +53,16 @@ export function setConnectionTrackingHooks(onOpen, onClose) {
 export function openDatabase(dbPath) {
   mkdirSync(dirname(dbPath), { recursive: true });
   const db = new DatabaseSync(dbPath);
+  try {
+    db.exec("PRAGMA busy_timeout = 3000;");
+  } catch (err) {
+    try {
+      db.close();
+    } catch (_closeErr) {
+      // ignore close errors
+    }
+    throw err;
+  }
   if (_openHook) _openHook(dbPath);
   return db;
 }

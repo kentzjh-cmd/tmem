@@ -69,6 +69,11 @@ function sanitizePythonLines(content) {
 
     while (i < line.length) {
       if (inTriple) {
+        if (line[i] === "\\") {
+          out += "  ";
+          i += 2;
+          continue;
+        }
         if (line.startsWith(inTriple, i)) {
           out += "   ";
           i += 3;
@@ -226,15 +231,61 @@ export function parsePythonStructure(content) {
   return { definitions, assignments };
 }
 
+const REGEX_PREV_CHARS = new Set([
+  "",
+  "(",
+  "[",
+  "{",
+  ",",
+  ";",
+  ":",
+  "=",
+  "!",
+  "&",
+  "|",
+  "?",
+  "~",
+  "+",
+  "-",
+  "*",
+  "%",
+  "^",
+  "<",
+  ">",
+  "\n",
+]);
+
+const REGEX_PREV_WORDS = new Set([
+  "return",
+  "case",
+  "throw",
+  "typeof",
+  "void",
+  "delete",
+  "in",
+  "of",
+  "instanceof",
+  "new",
+  "yield",
+  "await",
+]);
+
 /**
- * Strip comments and string literals from brace-delimited languages (JS/TS/Go/Rust/Java/C/C++/C#)
- * while preserving line numbers and braces/identifiers outside comments and strings.
+ * Strip comments, string literals, and regex literals from brace-delimited languages
+ * (JS/TS/Go/Rust/Java/C/C++/C#) while preserving line numbers and braces/identifiers
+ * outside comments, strings, and regexes.
  */
 function sanitizeBraceSource(content) {
   let out = "";
   let i = 0;
   const n = content.length;
-  let state = "code"; // code | line_comment | block_comment | sq | dq | bq
+  let state = "code"; // code | line_comment | block_comment | sq | dq | bq | regex
+  let regexInClass = false;
+  let lastSigChar = "";
+  let lastWord = "";
+
+  const canStartRegex = () =>
+    REGEX_PREV_WORDS.has(lastWord) || REGEX_PREV_CHARS.has(lastSigChar);
 
   while (i < n) {
     const ch = content[i];
@@ -263,6 +314,45 @@ function sanitizeBraceSource(content) {
       continue;
     }
 
+    if (state === "regex") {
+      if (ch === "\\") {
+        out += " ";
+        if (next) {
+          out += next === "\n" ? "\n" : " ";
+          i += 2;
+        } else {
+          i++;
+        }
+        continue;
+      }
+      if (ch === "\n") {
+        out += "\n";
+        state = "code";
+        regexInClass = false;
+        i++;
+        continue;
+      }
+      if (ch === "[") {
+        regexInClass = true;
+      } else if (ch === "]") {
+        regexInClass = false;
+      } else if (ch === "/" && !regexInClass) {
+        out += " ";
+        i++;
+        while (i < n && /[A-Za-z]/.test(content[i])) {
+          out += " ";
+          i++;
+        }
+        state = "code";
+        lastSigChar = "/";
+        lastWord = "";
+        continue;
+      }
+      out += " ";
+      i++;
+      continue;
+    }
+
     if (state === "sq" || state === "dq" || state === "bq") {
       const quote = state === "sq" ? "'" : state === "dq" ? '"' : "`";
       if (ch === "\\") {
@@ -278,6 +368,8 @@ function sanitizeBraceSource(content) {
       if (ch === quote) {
         out += " ";
         state = "code";
+        lastSigChar = quote;
+        lastWord = "";
       } else {
         out += ch === "\n" ? "\n" : " ";
       }
@@ -296,6 +388,13 @@ function sanitizeBraceSource(content) {
       out += "  ";
       i += 2;
       state = "block_comment";
+      continue;
+    }
+    if (ch === "/" && canStartRegex()) {
+      out += " ";
+      i++;
+      state = "regex";
+      regexInClass = false;
       continue;
     }
     if (ch === "'") {
@@ -317,6 +416,17 @@ function sanitizeBraceSource(content) {
       continue;
     }
     out += ch;
+    if (/[A-Za-z0-9_$]/.test(ch)) {
+      if (!/[A-Za-z0-9_$]/.test(lastSigChar)) {
+        lastWord = ch;
+      } else {
+        lastWord += ch;
+      }
+      lastSigChar = ch;
+    } else if (!/\s/.test(ch)) {
+      lastSigChar = ch;
+      lastWord = "";
+    }
     i++;
   }
   return out;
@@ -347,28 +457,20 @@ export function parseBraceStructure(content, lang) {
   const clean = sanitizeBraceSource(content);
   const lines = clean.split(/\r?\n/);
 
-  // Compute brace depth at start of each line and matching closing lines for definitions
   const definitions = [];
-  const containerStack = []; // { name, braceDepth, defObj }
+  const containerStack = []; // { name, type, braceDepth, defObj }
   let braceDepth = 0;
+  let parenDepth = 0;
+  let pendingDef = null; // { type, name, defObj }
 
-  // Precompute line brace events
   for (let idx = 0; idx < lines.length; idx++) {
     const lineNum = idx + 1;
     const raw = lines[idx];
     const trimmed = raw.trim();
 
-    // Pop containers whose closing brace occurred before this line
-    while (
-      containerStack.length > 0 &&
-      braceDepth < containerStack[containerStack.length - 1].braceDepth
-    ) {
-      const top = containerStack.pop();
-      top.defObj.endLine = Math.max(top.defObj.startLine, lineNum - 1);
-    }
-
-    if (trimmed) {
+    if (trimmed && !pendingDef && parenDepth === 0) {
       let matched = null;
+      let isSingleExprArrow = false;
 
       // 1. Class / struct / interface / enum / trait / impl
       let mContainer = null;
@@ -386,7 +488,9 @@ export function parseBraceStructure(content, lang) {
 
       if (mContainer) {
         const cname = mContainer[1];
-        const prefix = containerStack.map((c) => c.name);
+        const prefix = containerStack
+          .filter((c) => c.type === "container")
+          .map((c) => c.name);
         const qualified = prefix.length ? `${prefix.join(".")}.${cname}` : cname;
         const defObj = {
           qualified,
@@ -417,27 +521,34 @@ export function parseBraceStructure(content, lang) {
           );
           if (mC && !BRACE_IGNORED_METHOD_NAMES.has(mC[1])) fname = mC[1];
         } else {
+          const mArrow = trimmed.match(
+            /^(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(?:async\s+)?(?:\([^)]*\)|[A-Za-z_$][A-Za-z0-9_$]*)\s*=>/
+          );
           const mFn =
             trimmed.match(
               /^(?:export\s+(?:default\s+)?)?(?:async\s+)?function\s*\*?\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*[<(]/
             ) ||
-            trimmed.match(
-              /^(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(?:async\s+)?(?:\([^)]*\)|[A-Za-z_$][A-Za-z0-9_$]*)\s*=>/
-            ) ||
+            mArrow ||
             trimmed.match(
               /^(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(?:async\s+)?function\b/
             );
           if (mFn) {
             fname = mFn[1];
-          } else if (containerStack.length > 0) {
+            if (mArrow && /=>\s*(?!\{)\S/.test(trimmed)) {
+              isSingleExprArrow = true;
+            }
+          } else if (
+            containerStack.length > 0 &&
+            containerStack[containerStack.length - 1].type === "container" &&
+            braceDepth === containerStack[containerStack.length - 1].braceDepth
+          ) {
             const mMethod = trimmed.match(
-              /^(?:public|private|protected|static|async|override|readonly|abstract|\s)*?(?:get\s+|set\s+)?([A-Za-z_$][A-Za-z0-9_$]*)\s*(?:<[^>]*>)?\s*\([^)]*\)\s*(?::[^{=]+)?\{?/
+              /^(?:public|private|protected|static|async|override|readonly|abstract|\s)*?(?:get\s+|set\s+)?([A-Za-z_$][A-Za-z0-9_$]*)\s*(?:<[^>]*>)?\s*\(/
             );
             if (
               mMethod &&
               !BRACE_IGNORED_METHOD_NAMES.has(mMethod[1]) &&
-              !trimmed.startsWith("return ") &&
-              !trimmed.includes("=")
+              !trimmed.startsWith("return ")
             ) {
               fname = mMethod[1];
             }
@@ -445,7 +556,13 @@ export function parseBraceStructure(content, lang) {
         }
 
         if (fname) {
-          const prefix = containerStack.map((c) => c.name);
+          const topIsContainer =
+            containerStack.length > 0 &&
+            containerStack[containerStack.length - 1].type === "container" &&
+            braceDepth === containerStack[containerStack.length - 1].braceDepth;
+          const prefix = topIsContainer
+            ? containerStack.filter((c) => c.type === "container").map((c) => c.name)
+            : [];
           const qualified = prefix.length ? `${prefix.join(".")}.${fname}` : fname;
           const defObj = {
             qualified,
@@ -456,42 +573,47 @@ export function parseBraceStructure(content, lang) {
             openDepth: braceDepth + 1,
           };
           definitions.push(defObj);
-          matched = { type: "function", name: fname, defObj };
+          if (!isSingleExprArrow) {
+            matched = { type: "function", name: fname, defObj };
+          }
         }
       }
 
-      // Update braces for this line
-      let opensOnLine = 0;
-      let closesOnLine = 0;
-      for (const ch of raw) {
-        if (ch === "{") opensOnLine++;
-        else if (ch === "}") closesOnLine++;
+      if (matched) {
+        pendingDef = matched;
       }
+    }
 
-      if (matched && opensOnLine > 0) {
-        const targetDepth = braceDepth + 1;
-        // Only push if it doesn't close on the same line
-        if (braceDepth + opensOnLine - closesOnLine >= targetDepth) {
+    for (let cIdx = 0; cIdx < raw.length; cIdx++) {
+      const ch = raw[cIdx];
+      if (ch === "(") {
+        parenDepth++;
+      } else if (ch === ")") {
+        parenDepth = Math.max(0, parenDepth - 1);
+      } else if (ch === "{") {
+        braceDepth++;
+        if (pendingDef && parenDepth === 0) {
           containerStack.push({
-            name: matched.name,
-            braceDepth: targetDepth,
-            defObj: matched.defObj,
+            name: pendingDef.name,
+            type: pendingDef.type,
+            braceDepth,
+            defObj: pendingDef.defObj,
           });
-        } else {
-          matched.defObj.endLine = lineNum;
+          pendingDef = null;
         }
+      } else if (ch === "}") {
+        braceDepth = Math.max(0, braceDepth - 1);
+        while (
+          containerStack.length > 0 &&
+          braceDepth < containerStack[containerStack.length - 1].braceDepth
+        ) {
+          const top = containerStack.pop();
+          top.defObj.endLine = lineNum;
+        }
+      } else if (ch === ";" && parenDepth === 0 && pendingDef) {
+        pendingDef.defObj.endLine = lineNum;
+        pendingDef = null;
       }
-
-      braceDepth = Math.max(0, braceDepth + opensOnLine - closesOnLine);
-      while (
-        containerStack.length > 0 &&
-        braceDepth < containerStack[containerStack.length - 1].braceDepth
-      ) {
-        const top = containerStack.pop();
-        top.defObj.endLine = lineNum;
-      }
-    } else {
-      // Blank line still checks brace balance (none here)
     }
   }
 

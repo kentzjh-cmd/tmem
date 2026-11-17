@@ -10,6 +10,6 @@ description: >-
 ## Commands
 
 1. **Save Memory Trace**:
-   `python3 -m tmem.cli capture --agent dsh`
+   `tmem capture --agent dsh`
 2. **Check Memory & Telemetry Status**:
-   `python3 -m tmem.cli status`
+   `tmem status`

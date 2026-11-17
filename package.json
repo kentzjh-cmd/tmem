@@ -28,6 +28,7 @@
   "scripts": {
     "test": "node --test tests/*.test.mjs",
     "evaluate": "node tmem/cli.mjs evaluate",
+    "verify:benchmarks": "node scripts/verify_benchmarks.mjs",
     "check": "node --check tmem/cli.mjs && node --check tmem/dsh_plugin.mjs"
   },
   "repository": {

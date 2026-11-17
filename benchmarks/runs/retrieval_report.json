@@ -2,11 +2,11 @@
   "total_indexed_playbooks": 24,
   "total_eval_queries": 24,
   "metrics": {
-    "recall_at_1": 100.0,
-    "recall_at_3": 100.0,
-    "mrr": 1.0,
+    "recall_at_1": 100,
+    "recall_at_3": 100,
+    "mrr": 1,
     "negative_holdout_queries": 6,
-    "false_positive_rate": 0.0
+    "false_positive_rate": 0
   },
   "queries": [
     {

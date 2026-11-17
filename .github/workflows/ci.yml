@@ -3,9 +3,11 @@ name: CI
 on:
   push:
     branches:
+      - main
       - node
   pull_request:
     branches:
+      - main
       - node
   workflow_dispatch:
 
@@ -47,3 +49,6 @@ jobs:
 
       - name: Smoke test CLI evaluation report
         run: node tmem/cli.mjs evaluate
+
+      - name: Verify benchmark gates, saved reports, and README sync
+        run: node scripts/verify_benchmarks.mjs

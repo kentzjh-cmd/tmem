@@ -14,17 +14,17 @@
 
 ## 一、真实评测结果（Empirical Benchmarks）
 
-所有脚本与数据均可在 `benchmarks/` 下复现（CI 通过 `python3 scripts/verify_benchmarks.py` 自动校验回归阈值、报告文件与文档表格一致性）：
+所有脚本与数据均可在 `benchmarks/` 下复现（CI 通过 `node scripts/verify_benchmarks.mjs` 自动校验回归阈值、报告文件与文档表格一致性）：
 
 ### 1. DSH 端到端强信号回放与遥测评测
-复现命令：`python3 benchmarks/eval_dsh_e2e.py`（[评测脚本](./benchmarks/eval_dsh_e2e.py)）：
+复现命令：`node benchmarks/eval_dsh_e2e.mjs`（[评测脚本](./benchmarks/eval_dsh_e2e.mjs)）：
 - **端到端交互步数精简**：**37.5%**（8 步试错基线 → 5 步完成）
 - **运行时遥测命中收益**：L2 报错修复转绿率 **100%**（`1/1`），L1 共变提醒采纳率 **100%**（`1/1`）
 - **泛自然语言负例误注入率**：**0.0%**（10 条无代码/报错锚点的日常对话均保持静默）
-- **Cordis 插件热路径耗时**：21 次高频事件（6 轮 `agent/pre-step` + 15 次只读 `tools/post-execute`）总耗时 **116.66 ms**（免除重复 `python3` 冷启动）
+- **Cordis 插件热路径耗时**：21 次高频事件（6 轮 `agent/pre-step` + 15 次只读 `tools/post-execute`）总耗时 **~5 ms**（纯 Node.js ESM 进程内直调，零子进程冷启动）
 
 ### 2. 时间因果切片与 50 轨迹 LLM 盲测评审
-复现命令：`python3 benchmarks/eval_slicing_fidelity.py --gold-path benchmarks/gold/gold_annotations_50.json` 与 `python3 benchmarks/eval_llm_judge.py`（[50 轨迹盲测报告](./benchmarks/runs/llm_judge_50_report.json) / [Gold-50 标注集](./benchmarks/gold/gold_annotations_50.json)）：
+复现命令：`node benchmarks/eval_slicing_fidelity.mjs --gold-path benchmarks/gold/gold_annotations_50.json` 与 `node benchmarks/eval_llm_judge.mjs`（[50 轨迹盲测报告](./benchmarks/runs/llm_judge_50_report.json) / [Gold-50 标注集](./benchmarks/gold/gold_annotations_50.json)）：
 
 在扩展至 **50 条高质量真实轨迹**（原有 25 条 SWE-bench/DSH + 从 `sailplane/swe-agent-trajs` 筛选的 25 条 `resolved=True` 多仓库修复轨迹）上，由 5 组独立 LLM 盲测评审对随机打乱的 A/B 切片结果打分：
 
@@ -34,16 +34,16 @@
 | **B1 `tmem` Phase 1 时间因果切片** | **93.8%** | **95.0%** | **93.6%** | 5.1 步 | **4.80**（成对胜率 **49:1 / 98.0%**） |
 | **B2 Oracle 上限（LLM Gold-50 标注）** | 98.0% | 98.0% | 98.0% | 5.0 步 | — |
 
-> **诚实局限**：在极少数样本（如 `sympy__sympy-22005`）中，若 Agent 在最后一次通过测试之后又编辑了测试文件却未再运行验证，`tmem` 在离线无 Git 状态下仍会保留该末尾未验证修改；在原始 25 标注集（`benchmarks/gold/gold_annotations.json`，复现命令：`python3 benchmarks/eval_slicing_fidelity.py --gold-path benchmarks/gold/gold_annotations.json`）基准评测中，B1 Precision 亦已从 63.2% 提升至 92.3%（F1 81.8% > B0 81.0%）。
+> **诚实局限**：在极少数样本（如 `sympy__sympy-22005`）中，若 Agent 在最后一次通过测试之后又编辑了测试文件却未再运行验证，`tmem` 在离线无 Git 状态下仍会保留该末尾未验证修改；在原始 25 标注集（`benchmarks/gold/gold_annotations.json`，复现命令：`node benchmarks/eval_slicing_fidelity.mjs --gold-path benchmarks/gold/gold_annotations.json`）基准评测中，B1 Precision 亦已从 63.2% 提升至 92.3%（F1 81.8% > B0 81.0%）。
 
 ### 3. 50 轨迹规模压力测试与独立检索评测
-复现命令：`python3 benchmarks/eval_plugin_scale.py`（[规模报告](./benchmarks/runs/plugin_scale_50_report.json)）与 `python3 benchmarks/eval_retrieval.py`（[检索日志](./benchmarks/runs/retrieval_report.json)）：
-- **50 轨迹全量压缩入库**：50 条编译为 **49** 条 Playbook（自动过滤空变更 `pytest-dev__pytest-7168`），原始 **898 步 → L0 157 步**（步数精简 **82.5%**，字符体积压缩 **94.7%**），平均单条切片 **0.82 ms**，`MEMORIES.md` 全量原子同步 **6.98 ms**。
-- **`handle_dsh_hook` 规模运行验证**：49 条库规模下平均 Hook 延迟 **8.79 ms**；`pre_step` 负例误注入 **0.0%**（`0/10`）、显式锚点召回 **100.0%**（`48/48`）；`post_tool_use` L2 同源报错拦截与验证转绿率 **100.0%**（`7/7`）。
-- **独立原始 Issue 检索**：24 条含原始需求文本的样本在 `eval_retrieval.py` 取得 **Recall@1 = 100.0% / Recall@3 = 100.0% / MRR = 1.0**，词边界与词元覆盖率门控生效后 **负例误召回率降至 0.0%**（49 条全库压力下 FTS5 负例误召回 **10.0%**，且已被 `pre_step` 显式锚点策略兜底为 **0.0%**）。
+复现命令：`node benchmarks/eval_plugin_scale.mjs`（[规模报告](./benchmarks/runs/plugin_scale_50_report.json)）与 `node benchmarks/eval_retrieval.mjs`（[检索日志](./benchmarks/runs/retrieval_report.json)）：
+- **50 轨迹全量压缩入库**：50 条编译为 **49** 条 Playbook（自动过滤空变更 `pytest-dev__pytest-7168`），原始 **898 步 → L0 157 步**（步数精简 **82.5%**，字符体积压缩 **94.8%**），纯 Node.js 单条切片耗时在毫秒级。
+- **`handleDshHook` 规模运行验证**：49 条库规模下 `pre_step` 负例误注入 **0.0%**（`0/10`）、显式锚点召回 **100.0%**（`48/48`）；`post_tool_use` L2 同源报错拦截与验证转绿率 **100.0%**（`7/7`）。
+- **独立原始 Issue 检索**：24 条含原始需求文本的样本在 `eval_retrieval.mjs` 取得 **Recall@1 = 100.0% / Recall@3 = 100.0% / MRR = 1.0**，词边界与词元覆盖率门控生效后 **负例误召回率降至 0.0%**（49 条全库压力下 FTS5 负例误召回 **10.0%**，且已被 `pre_step` 显式锚点策略兜底为 **0.0%**）。
 
 ### 4. 跨格式轨迹压缩与运行时开销评测（9 条真实轨迹）
-复现命令：`python3 -m tmem.evaluate`：
+复现命令：`node tmem/cli.mjs evaluate`：
 - **L0 步骤精简率**：**56.5%**（106 步 → 43 步，5,406 → 1,480 字符，~1,348 tok → ~367 tok）
 - **高熵 L2 因果修复对**：**8 组**（经同源验证命令与堆栈交集双重校验）
 - **平均确定性切片耗时**：**0.88 ms**（零外部依赖与零 LLM Token 耗时）
@@ -57,7 +57,7 @@ flowchart LR
     DSH["DSH Cordis 插件<br/>tmem/dsh_plugin.mjs"] -->|"仅首轮新输入 / 强锚点"| Pre["pre_invocation<br/>env_facts + 显式锚点召回"]
     DSH -->|"报错 / 编辑 / 验测（跳过日常 read）"| Post["post_tool_use 强信号拦截"]
     Post -->|"命令报错"| L2["lookup_l2_repair<br/>即时注入同源 L2 修复"]
-    Post -->|"编辑代码文件"| L1["cochange.py<br/>即时提示强共变搭档 <tmem_cochange_hint>"]
+    Post -->|"编辑代码文件"| L1["cochange.mjs<br/>即时提示强共变搭档 <tmem_cochange_hint>"]
     Post -->|"验证通过 / 转绿"| Tel["telemetry.jsonl + GC<br/>统计采纳率与自动合并/淘汰"]
     Log["session.v4.jsonl + Git Diff"] --> Gate{"Default-Deny + 写前去重合并"}
     Gate -->|"常规单文件"| Env[".tmem/env_facts.json"]
@@ -78,16 +78,17 @@ flowchart LR
 
 ---
 
-## 三、快速开始（Node.js 分支版本）
+## 三、快速开始（Node.js 版本）
 
-> 运行环境要求：**Node.js >= 22.5.0**（使用内置 `node:sqlite` FTS5，零外部 npm 依赖，无需 Python）。
+> 运行环境要求：**Node.js >= 22.5.0**（使用内置 `node:sqlite` FTS5，零外部 npm 依赖，无需 Python；原始 Python 版本归档于 `python` 分支）。
 
 ### 安装与初始化
 ```bash
 npm link                                      # 链接全局 `tmem` CLI（零外部依赖，免构建直接运行）
 tmem init                                     # 初始化 .tmem/、安装 DSH Cordis 插件与 git post-commit hook
-dsh plugin add github:kentzjh-cmd/tmem#node   # 或直接通过 dsh 安装 node 分支插件
+dsh plugin add github:kentzjh-cmd/tmem        # 或直接通过 dsh 安装插件
 npm test                                      # 运行 node --test 完整测试套件
+npm run verify:benchmarks                     # 运行基准回归门禁、报告校验与 README 同步校验
 ```
 
 ### 常用命令
@@ -106,7 +107,7 @@ tmem gc --prune                                  # 校验 Guard 漂移并清理�
 ## 四、设计边界与局限
 
 1. **只聚焦 DSH 单一运行时**：主动裁剪了多宿主并行维护成本，全部运行时能力围绕 `@deepseek-ai/dsh` `session.v4.jsonl` 与 Cordis 生命周期打磨（保留 `swe_bench` 适配器仅用于离线评测）。
-2. **启发式切片非形式化推导**：基于 Git 落盘、Python AST 顶级符号和退出码反推；非 Python 文件暂仅做文件级与测试命令校验。
+2. **启发式切片非形式化推导**：基于 Git 落盘、纯 Node 多语言结构化 AST 解析（[`tmem/ast_parser.mjs`](./tmem/ast_parser.mjs)，支持 Python / JS / TS / Go / Rust 等）和退出码反推，不构建完整跨文件调用图与数据流分析。
 3. **探针仅覆盖浅层存在性**：检查文件与符号是否存在，若函数签名未变但内部逻辑重构，仍需依赖终端验证命令确认结果。
 
 ---

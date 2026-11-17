@@ -203,6 +203,36 @@ Subcommands:
   telemetry   Show runtime L2 repair & L1 co-change adoption telemetry`);
 }
 
+const VALUE_FLAGS = new Set([
+  "workspace",
+  "agents",
+  "agent",
+  "transcript",
+  "scope",
+  "intent",
+  "query",
+  "file",
+  "error",
+  "format",
+  "data-dir",
+  "level",
+]);
+
+function assignValueFlag(flags, key, val) {
+  if (key === "workspace") flags.workspace = val;
+  else if (key === "agents") flags.agents = val;
+  else if (key === "agent") flags.agent = val;
+  else if (key === "transcript") flags.transcript = val;
+  else if (key === "scope") flags.scope = val;
+  else if (key === "intent") flags.intent = val;
+  else if (key === "query") flags.query = val;
+  else if (key === "file") flags.file.push(val);
+  else if (key === "error") flags.error.push(val);
+  else if (key === "format") flags.format = val;
+  else if (key === "data-dir") flags.dataDir = val;
+  else if (key === "level") flags.level = val;
+}
+
 function parseCliArgs(argv) {
   const flags = {
     verbose: false,
@@ -258,26 +288,16 @@ function parseCliArgs(argv) {
       } else {
         flags.quiet = true;
       }
+    } else if (tok === "-e" && i + 1 < argv.length) {
+      flags.error.push(argv[++i]);
     } else if (tok.startsWith("--")) {
       const eqIdx = tok.indexOf("=");
       const key = eqIdx >= 0 ? tok.slice(2, eqIdx) : tok.slice(2);
-      const val = eqIdx >= 0 ? tok.slice(eqIdx + 1) : argv[++i];
-      if (key === "workspace") flags.workspace = val;
-      else if (key === "agents") flags.agents = val;
-      else if (key === "agent") flags.agent = val;
-      else if (key === "transcript") flags.transcript = val;
-      else if (key === "scope") flags.scope = val;
-      else if (key === "intent") flags.intent = val;
-      else if (key === "query") flags.query = val;
-      else if (key === "file") flags.file.push(val);
-      else if (key === "error") flags.error.push(val);
-      else if (key === "format") flags.format = val;
-      else if (key === "data-dir") flags.dataDir = val;
-      else if (key === "level") flags.level = val;
-    } else if (tok === "-e" && i + 1 < argv.length) {
-      flags.error.push(argv[++i]);
-    } else if (tok === "--file" && i + 1 < argv.length) {
-      flags.file.push(argv[++i]);
+      if (eqIdx >= 0) {
+        assignValueFlag(flags, key, tok.slice(eqIdx + 1));
+      } else if (VALUE_FLAGS.has(key) && i + 1 < argv.length) {
+        assignValueFlag(flags, key, argv[++i]);
+      }
     } else {
       positionals.push(tok);
     }
@@ -294,10 +314,8 @@ export function main(argv = process.argv.slice(2), io = { log: console.log, err:
     return 0;
   }
   if (flags.help || positionals.length === 0) {
-    if (flags.help || positionals.length === 0) {
-      printHelp();
-      return 0;
-    }
+    printHelp();
+    return 0;
   }
 
   if (flags.verbose || process.env.TMEM_DEBUG === "1") {
