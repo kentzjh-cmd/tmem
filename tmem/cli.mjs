@@ -4,7 +4,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { VERSION, logger, setDebug } from "./index.mjs";
@@ -676,9 +676,17 @@ export function main(argv = process.argv.slice(2), io = { log: console.log, err:
   return 0;
 }
 
+function safeRealpath(targetPath) {
+  try {
+    return realpathSync(targetPath);
+  } catch {
+    return path.resolve(targetPath);
+  }
+}
+
 const isEntrypoint =
-  process.argv[1] &&
-  path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+  Boolean(process.argv[1]) &&
+  safeRealpath(process.argv[1]) === safeRealpath(fileURLToPath(import.meta.url));
 if (isEntrypoint) {
   process.exitCode = main();
 }

@@ -359,6 +359,7 @@ test("Live @deepseek-ai/dsh Cordis runtime and pure-Node CLI E2E", async (t) => 
   );
   assert.ok(dumpOut.includes("id: tmem"));
   assert.ok(dumpOut.includes("tmem-dsh-plugin.mjs"));
+  assert.ok(dumpOut.includes(pathToFileURL(path.join(ws, ".dsh", "plugins", "tmem-dsh-plugin.mjs")).href));
 
   // Load real @deepseek-ai/cordis + @deepseek-ai/dsh-commands + generated plugin in-process
   const req = createRequire(pathToFileURL(dshEntry).href);

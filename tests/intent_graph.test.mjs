@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -238,12 +238,26 @@ test("portable init contracts and quoted post-commit hook with spaces in path", 
   assert.equal(existsSync(path.join(ws, ".agents")), false);
   assert.ok(existsSync(path.join(ws, ".dsh", "skills", "tmem", "SKILL.md")));
 
-  const wsPatch = readFileSync(path.join(ws, ".dsh", "tmem.patch.yml"), "utf-8");
-  assert.ok(wsPatch.includes("./.dsh/plugins/tmem-dsh-plugin.mjs"));
+  const wsPatchPath = path.join(ws, ".dsh", "tmem.patch.yml");
+  const wsPatch = readFileSync(wsPatchPath, "utf-8");
+  const wsNameMatch = wsPatch.match(/^\s*name:\s*(.+)\s*$/m);
+  assert.ok(wsNameMatch, "workspace patch should declare plugin name");
+  const wsRawName = wsNameMatch[1].trim().replace(/^["']|["']$/g, "");
+  const resolvedWsPlugin = path.resolve(path.dirname(wsPatchPath), wsRawName);
+  assert.ok(existsSync(resolvedWsPlugin), `resolved patch target must exist: ${resolvedWsPlugin}`);
+  assert.equal(resolvedWsPlugin, path.join(ws, ".dsh", "plugins", "tmem-dsh-plugin.mjs"));
 
   const homePatch = readFileSync(path.join(dshHome, "cordis.patch.yml"), "utf-8");
-  assert.ok(!homePatch.includes("./.dsh/plugins/tmem-dsh-plugin.mjs"));
-  assert.ok(homePatch.includes("dsh_plugin.mjs"));
+  const homeNameMatch = homePatch.match(/^\s*name:\s*(.+)\s*$/m);
+  assert.ok(homeNameMatch, "home cordis.patch.yml should declare plugin name");
+  const homeRawName = JSON.parse(homeNameMatch[1].trim());
+  assert.ok(path.isAbsolute(homeRawName), `home patch target must be absolute: ${homeRawName}`);
+  assert.ok(existsSync(homeRawName), `home patch target must exist: ${homeRawName}`);
+
+  const symlinkBin = path.join(tempDir, "tmem-symlink");
+  symlinkSync(path.join(REPO_ROOT, "tmem", "cli.mjs"), symlinkBin);
+  const helpOut = execFileSync(process.execPath, [symlinkBin, "--help"], { encoding: "utf-8" });
+  assert.ok(helpOut.includes("tmem"), "symlinked CLI entrypoint must execute main()");
 
   const postCommitPath = path.join(ws, ".git", "hooks", "post-commit");
   const postCommit = readFileSync(postCommitPath, "utf-8");
