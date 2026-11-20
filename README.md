@@ -1,4 +1,4 @@
-# `tmem` — 面向 DeepSeek Harness (`dsh`) 的仓库级确定性工程记忆引擎
+# `tmem` — 面向 DeepSeek Harness (`dsh`) 的上下文压缩切片与确定性工程记忆引擎
 
 **中文文档** | [English](./README_EN.md)
 
@@ -6,9 +6,12 @@
   <img src="./docs/assets/tmem-demo.gif" alt="tmem Demo: Deterministic Trace Slicing and Strong-Signal Interception" width="100%" />
 </p>
 
-`tmem`（**Trace Memory**）是一个**零外部依赖、聚焦 `@deepseek-ai/dsh` (DeepSeek Harness)、仓库级（`.tmem/`）**的确定性工程记忆与**历史会话零 Token 摘要引擎**。
+`tmem`（**Trace Memory**，npm 包名 [`dsh-tmem`](https://www.npmjs.com/package/dsh-tmem)）是一个**零外部依赖、聚焦 `@deepseek-ai/dsh` (DeepSeek Harness)、仓库级（`.tmem/`）**的**上下文压缩切片 + 倒排索引渐进披露记忆与确定性工程 Trace 引擎**。
 
-它对 DSH 历史执行轨迹进行确定性裁剪与回放归纳：在不消耗任何 LLM Summarization Token 的前提下，将冗长会话压缩为面向**特定需求（Intent）与实际行为（Read → Edit → Repair → Verify）**的免费结构化摘要，并**内联保留原始历史 `session_id` 溯源链路**；同时在 DSH 运行时提供强信号拦截（报错即时注入 L2 同源修复、改代码文件即时提醒 L1 统计共变、累计 `.tmem/env_facts.json` 环境事实），关闭对泛自然语言 Prompt 的低质量猜测注入。
+它与 DSH 宿主生命周期深度整合：
+1. **压缩即切片（Compaction-Triggered Episode Slicing）**：自动监听 DSH `session/event`（`compaction/summary`、`compaction/end`、`compaction/prune`），无需额外 LLM 总结 Token，即可将每次上下文压缩折叠的会话区间与被 `toolResultPruner` 截断的超长日志中段完整归档为阶段切片（`.tmem/episodes/`，支持 30 天 TTL + 200MB LRU 自动回收），支持**多意图子切片切分**与**跨多轮 Compact 时间线串联**；高价值轨迹同步晋升为仓库级可共享 Playbook（`.tmem/traces/` + `MEMORIES.md`）。
+2. **零 LLM 多维倒排索引 + L0→L3 渐进式披露**：在 `index.db` 中构建 Turn 级 8 维语义角色加权倒排表（`intent`、`error`、`decision`、`symbol`、`file`、`command`、`diff`、`raw_output`），并在压缩后向对话注入 `<tmem_compacted_index>` 路标；通过注册于 DSH 的 `tmem_search` 与 `tmem_expand` 工具，支持从 `index`（L0）→ `slice`（L1）→ `turn` / `diff`（L2）→ `raw`（L3）按需无损回放。
+3. **运行时强信号即时拦截与 AST 签名守卫**：错误发生时即时注入 L2 同源修复，编辑源码时基于 Git/Trace 统计共变即时提醒 `<tmem_cochange_hint>`（支持基于遥测忽略历史自动降噪），并通过多语言结构化 AST 解析提供 `symbol_present` 与 `signature_match` 签名级守卫降级保护。
 
 ---
 
@@ -48,33 +51,45 @@
 - **高熵 L2 因果修复对**：**8 组**（经同源验证命令与堆栈交集双重校验）
 - **平均确定性切片耗时**：**0.88 ms**（零外部依赖与零 LLM Token 耗时）
 
+### 5. 上下文压缩后倒排渐进恢复基准（`eval_compact_recall.mjs`）
+复现命令：`node benchmarks/eval_compact_recall.mjs`（[评测脚本](./benchmarks/eval_compact_recall.mjs)）：
+
+覆盖 4 类典型“压缩/截断后遗忘”场景（早期架构约束召回、18KB 被截断工具日志中段根因定位、多意图分簇与跨轮时间线串联、精确 Diff 恢复 + 尾部未验证编辑裁剪 + AST `signature_match` 守卫）：
+- **关键细节召回率**：原生 Compact 摘要 + Prune 基线 **0.0%**（`0/4`）→ `Compact + tmem` 倒排渐进披露 **100.0%**（`4/4`）
+- **上下文 Token 节省率**：L0 索引路标注入 **91.6%**（`7,157 tok` → `603 tok`）；L0 + 按需 L1/L2 定向展开总节省 **87.0%**（`933 tok`）
+- **平均检索 / 展开延迟**：单次倒排检索 **~6 ms**，按需层级展开 **< 10 ms**
+
 ---
 
 ## 二、工作原理与核心机制
 
 ```mermaid
 flowchart LR
-    DSH["DSH Cordis 插件<br/>tmem/dsh_plugin.mjs"] -->|"仅首轮新输入 / 强锚点"| Pre["pre_invocation<br/>env_facts + 显式锚点召回"]
-    DSH -->|"报错 / 编辑 / 验测（跳过日常 read）"| Post["post_tool_use 强信号拦截"]
-    Post -->|"命令报错"| L2["lookup_l2_repair<br/>即时注入同源 L2 修复"]
-    Post -->|"编辑代码文件"| L1["cochange.mjs<br/>即时提示强共变搭档 <tmem_cochange_hint>"]
-    Post -->|"验证通过 / 转绿"| Tel["telemetry.jsonl + GC<br/>统计采纳率与自动合并/淘汰"]
-    Log["session.v4.jsonl + Git Diff"] --> Gate{"Default-Deny + 写前去重合并"}
-    Gate -->|"常规单文件"| Env[".tmem/env_facts.json"]
-    Gate -->|"高价值且相似"| Merge["就地合并已有 Playbook"]
-    Gate -->|"高价值且新主题"| Traces[".tmem/traces/*.json + MEMORIES.md"]
+    DSH["DSH Cordis 插件<br/>tmem/dsh_plugin.mjs"] -->|"session/event"| Cmp["compaction/end & prune<br/>多意图切分 + 时间线串联"]
+    Cmp --> Eps[".tmem/episodes/*.json<br/>TTL + LRU 统一存储"]
+    Eps --> Inv["inverted_index.mjs<br/>Turn 级 8 维语义角色倒排索引"]
+    DSH -->|"agent/pre-step"| Pre["pre_invocation<br/><tmem_compacted_index> + 显式锚点召回"]
+    Pre -->|"按需查询"| Tools["tmem_search / tmem_expand<br/>L0 index → L1 slice → L2 turn/diff → L3 raw"]
+    DSH -->|"报错 / 编辑 / 验测"| Post["post_tool_use 强信号拦截"]
+    Post -->|"命令报错"| L2["lookupL2Repair<br/>即时注入同源 L2 修复"]
+    Post -->|"编辑代码文件"| L1["cochange.mjs<br/>方向置信度 + 忽略自动抑制"]
+    Post -->|"验证通过 / 转绿"| Tel["telemetry.jsonl + GC<br/>统计采纳率与自动淘汰"]
+    Log["session.v4.jsonl + Git Diff"] --> Gate{"Default-Deny + 写前合并 + AST 签名守卫"}
+    Gate -->|"常规单文件"| Env[".tmem/env_facts.json + episodes/"]
+    Gate -->|"高价值轨迹"| Traces[".tmem/traces/*.json + MEMORIES.md"]
 ```
 
-1. **DSH 热路径瘦身与强信号即时拦截**（[`tmem/dsh_plugin.mjs`](./tmem/dsh_plugin.mjs)、[`tmem/hooks/dsh.mjs`](./tmem/hooks/dsh.mjs)）：
-   - **进程内零冷启动**：基于纯 Node.js ESM 实现，DSH Cordis 插件进程内直调钩子逻辑，彻底免除子进程冷启动开销；`agent/pre-step` 对同输入后续推理步直接放行，`tools/post-execute` 跳过常规 `read`/`grep`/`glob`；
-   - **降级泛猜测**：`pre_invocation` 不再拿自然语言做模糊 BM25 猜测，仅在首轮注入 `env_facts` 或命中显式文件路径/报错名时召回；
-   - **实时拦截**：报错时通过 `lookupL2Repair` 即时注入经过同源验证的 L2 修复动作；修改源码文件后基于 Git/Trace 统计共变即时注入 `<tmem_cochange_hint>`。
-2. **时间因果切片、写前合并与漂移淘汰**（[`tmem/slicer.mjs`](./tmem/slicer.mjs)、[`tmem/store.mjs`](./tmem/store.mjs)）：
-   - **时间因果图裁剪**：识别并剔除语法拒改重试、`rm`/`git checkout|restore|reset` 销毁回滚屏障前失效操作、独立临时复现脚本及写后悬空读；拆分持续有效的 `ENV_INSTALL` 与最新 epoch `VERIFY_GATE`（过滤 `|| true` 伪通过命令并支持 `PYTHONPATH=.` 等环境前缀）；
-   - **符号归因与词边界检索**：基于 `git diff -U0` + 纯 Node 多语言结构化解析（[`tmem/ast_parser.mjs`](./tmem/ast_parser.mjs)）精准归因修改符号，默认拒绝单文件无修复常规修改，并将触发器检索收紧为 `len >= 4` 词边界匹配；
-   - **写前合并与 Guard 漂移淘汰**：同 L2/高重合度自动就地合并防止 `.tmem/traces/` 膨胀，`tmem gc --prune` 清理长期漂移且无 L2 价值的过期条目。
-3. **真实收益遥测闭环**（[`tmem/telemetry.mjs`](./tmem/telemetry.mjs)）：
-   - 记录每次 L2 注入后下轮同源命令是否转绿、以及 L1 共变提示后是否读/改了目标搭档文件，通过 `tmem telemetry` 或 `tmem status` 量化真实采纳率。
+1. **压缩切片与倒排渐进披露引擎**（[`tmem/episodes.mjs`](./tmem/episodes.mjs)、[`tmem/inverted_index.mjs`](./tmem/inverted_index.mjs)、[`tmem/dsh_tools.mjs`](./tmem/dsh_tools.mjs)）：
+   - **非侵入式 DSH 宿主挂载**：通过宿主 `session/event` 拦截 `compaction/summary`、`compaction/end`、`compaction/prune`，兼容 DSH CLI / Headless / Web Presets（即使压缩插件运行在隔离 preset 组内）；同时向 DSH 注册 `tmem_search` 与 `tmem_expand` 模型工具。
+   - **多意图切分与时间线串联**：跨 `git commit` 边界或不相交文件模块簇自动拆分为高内聚子切片，并在 `.tmem/episodes/` 中维护同会话 `prev_episode_id` / `phase_index` 链条。
+   - **8 维角色加权倒排检索**：纯内置 SQLite 持久化 `inverted_postings`，按 `intent`、`error`、`decision`、`symbol`、`file`、`command`、`diff`、`raw_output` 语义权重与同 Turn 局部共现打分，支持中英文混合分词及驼峰/蛇形符号拆解，无需额外 LLM 总结或改写。
+2. **DSH 热路径瘦身与强信号即时拦截**（[`tmem/dsh_plugin.mjs`](./tmem/dsh_plugin.mjs)、[`tmem/hooks/dsh.mjs`](./tmem/hooks/dsh.mjs)）：
+   - **进程内零冷启动**：基于纯 Node.js ESM 实现，DSH Cordis 插件进程内直调钩子逻辑；`agent/pre-step` 自动识别新落盘 `compact-checkpoint` 注入 `<tmem_compacted_index>` 路标，同输入常规推理步直接放行；`tools/post-execute` 跳过常规 `read`/`grep`/`glob`。
+   - **降级泛猜测 & L2/L1 即时拦截**：报错时通过 `lookupL2Repair` 即时注入同源 L2 修复动作；修改源码文件后基于方向性 Git/Trace 共变统计（叠加 `.git/HEAD` 缓存与基于遥测的自动抑制）注入 `<tmem_cochange_hint>`。
+3. **时间因果切片（Phase 2）、AST 签名守卫与漂移淘汰**（[`tmem/slicer.mjs`](./tmem/slicer.mjs)、[`tmem/guards.mjs`](./tmem/guards.mjs)、[`tmem/store.mjs`](./tmem/store.mjs)）：
+   - **时间因果图 + 尾部裁剪**：剔除语法拒改重试、`rm`/`git checkout|restore|reset` 销毁屏障前失效操作、临时复现脚本及末次通过 `VERIFY_GATE` 后的未验证试探性编辑（后者保留于 Episode `raw` 层取证）。
+   - **多语言结构化 AST 解析与 `signature_match`**：[`tmem/ast_parser.mjs`](./tmem/ast_parser.mjs) 提取文件符号与参数签名指纹，一旦函数签名重构，自动将 Playbook 从 `L0_FULL` 降级为 `L1_TOPOLOGY` / `L2_INVARIANT`。
+   - **写前合并与双轨 GC**：`.tmem/traces/` 通过 `tmem gc --prune` 淘汰长期漂移条目；`.tmem/episodes/` 默认按 30 天 TTL 与 200MB LRU 自动回收，并统计 L2 转绿率与 L1 采纳率遥测。
 
 ---
 
@@ -84,31 +99,36 @@ flowchart LR
 
 ### 安装与初始化
 ```bash
-npm link                                      # 链接全局 `tmem` CLI（零外部依赖，免构建直接运行）
+npm install -g dsh-tmem                       # 或 git clone 后执行 npm link
 tmem init                                     # 初始化 .tmem/、安装 DSH Cordis 插件与 git post-commit hook
-dsh plugin add github:kentzjh-cmd/tmem        # 或直接通过 dsh 安装插件
-npm test                                      # 运行 node --test 完整测试套件
+dsh plugin add npm:dsh-tmem                   # 或通过 dsh plugin add github:kentzjh-cmd/tmem 安装
+npm test                                      # 运行 node --test 完整测试套件（50/50）
 npm run verify:benchmarks                     # 运行基准回归门禁、报告校验与 README 同步校验
 ```
 
-### 常用命令
+### 常用 CLI 与 DSH Slash / 工具
 ```bash
-tmem status                                      # 查看当前仓库记忆、探针与实时遥测统计
+tmem status                                      # 查看 Playbook、Episode 与实时遥测统计
 tmem telemetry                                   # 查看 L2 纠偏率与 L1 共变采纳率明细
-tmem capture --agent dsh                         # 从最新 DSH 会话切片并合并/保存到 .tmem/
-tmem lookup "TypeError" --file src/validator.py  # 本地检索 + 探针校验 + 分级预览
+tmem capture --agent dsh                         # 同步归档 Episode 至 .tmem/episodes/ 并编译高价值 Playbook
+tmem search "jwt_guard.ts leewaySec"             # 多维倒排索引检索（支持 --files / --symbols / --errors / --roles）
+tmem episodes --session <id>                     # 列出已归档的压缩阶段切片与时间线
+tmem expand <episode_id> --level slice           # 渐进展开：index (L0) -> slice (L1) -> turn / diff (L2) -> raw (L3)
+tmem lookup "TypeError" --file src/validator.py  # 本地 Playbook 检索 + 探针校验 + 分级预览
 tmem inspect <trace_id> --level playbook         # 查看三层 Playbook 详情
 tmem sync                                        # 校验探针并刷新 MEMORIES.md
-tmem gc --prune                                  # 校验 Guard 漂移并清理已失效且无 L2 的记忆
+tmem gc --prune                                  # 校验 Guard 漂移，并按 --max-episodes-mb / --max-episode-days 清理缓存
 ```
+
+在 DSH 会话内，模型可直接调用已注册工具 **`tmem_search`** 与 **`tmem_expand`**，用户也可使用斜杠命令 **`/tmem [status|search|episodes|expand|list|inspect|replay|diff|sync|gc|forget|telemetry|evaluate]`**。
 
 ---
 
 ## 四、设计边界与局限
 
-1. **只聚焦 DSH 单一运行时**：主动裁剪了多宿主并行维护成本，全部运行时能力围绕 `@deepseek-ai/dsh` `session.v4.jsonl` 与 Cordis 生命周期打磨（保留 `swe_bench` 适配器仅用于离线评测）。
+1. **只聚焦 DSH 单一运行时**：主动裁剪了多宿主并行维护成本，全部运行时能力围绕 `@deepseek-ai/dsh` `session.v4.jsonl`、宿主 `session/event` 与 Cordis 生命周期打磨（保留 `swe_bench` 适配器仅用于离线评测）。
 2. **启发式切片非形式化推导**：基于 Git 落盘、纯 Node 多语言结构化 AST 解析（[`tmem/ast_parser.mjs`](./tmem/ast_parser.mjs)，支持 Python / JS / TS / Go / Rust 等）和退出码反推，不构建完整跨文件调用图与数据流分析。
-3. **探针仅覆盖浅层存在性**：检查文件与符号是否存在，若函数签名未变但内部逻辑重构，仍需依赖终端验证命令确认结果。
+3. **探针聚焦存在性与签名指纹**：已通过 `signature_match` 检查函数参数列表稳定性；若函数签名未变而内部逻辑重构，仍需依赖终端验证命令确认结果。
 
 ---
 
