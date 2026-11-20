@@ -688,11 +688,240 @@ export function checkTsSymbolPresent(content, filePath, expectedSymbol) {
   }
 
   const defs = parseBraceStructure(content, lang);
-  for (const d of defs) {
-    if (d.qualified === target) return true;
-    if (!target.includes(".") && d.leaf === target) return true;
+  return defs.some((d) => d.qualified === target || (!target.includes(".") && d.leaf === target));
+}
+
+function splitTopLevelCommas(paramStr) {
+  const parts = [];
+  let buf = "";
+  let depthParen = 0;
+  let depthBracket = 0;
+  let depthBrace = 0;
+  let depthAngle = 0;
+
+  for (let i = 0; i < paramStr.length; i++) {
+    const ch = paramStr[i];
+    if (ch === "(") depthParen++;
+    else if (ch === ")") depthParen = Math.max(0, depthParen - 1);
+    else if (ch === "[") depthBracket++;
+    else if (ch === "]") depthBracket = Math.max(0, depthBracket - 1);
+    else if (ch === "{") depthBrace++;
+    else if (ch === "}") depthBrace = Math.max(0, depthBrace - 1);
+    else if (ch === "<") depthAngle++;
+    else if (ch === ">") depthAngle = Math.max(0, depthAngle - 1);
+
+    if (
+      ch === "," &&
+      depthParen === 0 &&
+      depthBracket === 0 &&
+      depthBrace === 0 &&
+      depthAngle === 0
+    ) {
+      if (buf.trim()) parts.push(buf.trim());
+      buf = "";
+    } else {
+      buf += ch;
+    }
   }
-  return false;
+  if (buf.trim()) parts.push(buf.trim());
+  return parts;
+}
+
+function stripTopLevelSuffix(param, sepChar) {
+  let depthParen = 0;
+  let depthBracket = 0;
+  let depthBrace = 0;
+  let depthAngle = 0;
+  for (let i = 0; i < param.length; i++) {
+    const ch = param[i];
+    if (ch === "(") depthParen++;
+    else if (ch === ")") depthParen = Math.max(0, depthParen - 1);
+    else if (ch === "[") depthBracket++;
+    else if (ch === "]") depthBracket = Math.max(0, depthBracket - 1);
+    else if (ch === "{") depthBrace++;
+    else if (ch === "}") depthBrace = Math.max(0, depthBrace - 1);
+    else if (ch === "<") depthAngle++;
+    else if (ch === ">") depthAngle = Math.max(0, depthAngle - 1);
+    else if (
+      ch === sepChar &&
+      depthParen === 0 &&
+      depthBracket === 0 &&
+      depthBrace === 0 &&
+      depthAngle === 0
+    ) {
+      if (sepChar === ":" && param[i + 1] === ":") {
+        i++;
+        continue;
+      }
+      return param.slice(0, i).trim();
+    }
+  }
+  return param.trim();
+}
+
+function extractParenBody(text, startIdx = 0) {
+  const openIdx = text.indexOf("(", startIdx);
+  if (openIdx < 0) return null;
+  let depth = 0;
+  for (let i = openIdx; i < text.length; i++) {
+    if (text[i] === "(") depth++;
+    else if (text[i] === ")") {
+      depth--;
+      if (depth === 0) {
+        return text.slice(openIdx + 1, i);
+      }
+    }
+  }
+  return null;
+}
+
+function normalizePythonParamList(rawInside) {
+  const rawParams = splitTopLevelCommas(rawInside);
+  const out = [];
+  for (let idx = 0; idx < rawParams.length; idx++) {
+    let p = rawParams[idx].trim();
+    if (!p || p === "/" || p === "*") continue;
+    p = stripTopLevelSuffix(p, "=");
+    p = stripTopLevelSuffix(p, ":");
+    p = p.replace(/\s+/g, "");
+    if (idx === 0 && (p === "self" || p === "cls")) continue;
+    if (p) out.push(p);
+  }
+  return out;
+}
+
+function normalizeBraceParamList(rawInside, lang) {
+  const rawParams = splitTopLevelCommas(rawInside);
+  const out = [];
+  for (let idx = 0; idx < rawParams.length; idx++) {
+    let p = rawParams[idx].trim();
+    if (!p) continue;
+    if (lang === "rust" && idx === 0 && /^&?(?:mut\s+)?self$/.test(p)) continue;
+    p = stripTopLevelSuffix(p, "=");
+    p = stripTopLevelSuffix(p, ":");
+    p = p
+      .replace(/^(?:public|private|protected|readonly|mut|ref|in|out|final)\s+/g, "")
+      .trim();
+    if (p.startsWith("{")) {
+      out.push("{}");
+      continue;
+    }
+    if (p.startsWith("[")) {
+      out.push("[]");
+      continue;
+    }
+    const isRest = p.startsWith("...");
+    if (lang === "go" || lang === "c" || lang === "cpp" || lang === "java" || lang === "c_sharp") {
+      const toks = p.split(/\s+/).filter(Boolean);
+      const ident = (lang === "go" ? toks[0] : toks[toks.length - 1] || "")
+        .replace(/^[&*]+|[?]+$/g, "");
+      if (ident) out.push(isRest ? `...${ident}` : ident);
+      continue;
+    }
+    const cleanIdent = p.replace(/\?$/, "").replace(/\s+/g, "");
+    if (cleanIdent) out.push(cleanIdent);
+  }
+  return out;
+}
+
+/**
+ * Extract canonical normalized parameter signature `fnName(p1,p2,...)` for a function/method symbol.
+ * Returns null if the symbol is not found or is not a callable function/method.
+ */
+export function extractSymbolSignature(content, filePath, symbolName) {
+  const lang = detectLanguage(filePath);
+  if (!lang || !content || !symbolName) return null;
+  const target = String(symbolName).trim();
+  if (!target) return null;
+
+  if (lang === "python") {
+    const cleanLines = sanitizePythonLines(content);
+    const { definitions } = parsePythonStructure(content);
+    const def = definitions.find(
+      (d) =>
+        d.kind === "function" &&
+        (d.qualified === target || (!target.includes(".") && d.leaf === target))
+    );
+    if (!def) return null;
+    const windowText = cleanLines
+      .slice(def.startLine - 1, Math.min(cleanLines.length, def.startLine + 8))
+      .join(" ");
+    const inside = extractParenBody(windowText, 0);
+    if (inside === null) return null;
+    const params = normalizePythonParamList(inside);
+    return `${def.leaf}(${params.join(",")})`;
+  }
+
+  const clean = sanitizeBraceSource(content);
+  const lines = clean.split(/\r?\n/);
+  const defs = parseBraceStructure(content, lang);
+  const def = defs.find(
+    (d) =>
+      d.kind === "function" &&
+      (d.qualified === target || (!target.includes(".") && d.leaf === target))
+  );
+  if (!def) return null;
+
+  const windowText = lines
+    .slice(def.startLine - 1, Math.min(lines.length, def.startLine + 8))
+    .join(" ");
+  let searchFrom = 0;
+  const leafIdx = windowText.indexOf(def.leaf);
+  if (leafIdx >= 0) {
+    searchFrom = leafIdx + def.leaf.length;
+  }
+  // Skip generic `<...>` between function name and `(`
+  while (searchFrom < windowText.length && /\s/.test(windowText[searchFrom])) searchFrom++;
+  if (windowText[searchFrom] === "<") {
+    let angleDepth = 0;
+    while (searchFrom < windowText.length) {
+      if (windowText[searchFrom] === "<") angleDepth++;
+      else if (windowText[searchFrom] === ">") {
+        angleDepth--;
+        if (angleDepth === 0) {
+          searchFrom++;
+          break;
+        }
+      }
+      searchFrom++;
+    }
+  }
+  // Handle single-identifier arrow function `const fn = x => ...`
+  const afterEq = windowText.slice(searchFrom).trimStart();
+  if (afterEq.startsWith("=")) {
+    const mSingleArrow = afterEq.match(/^=\s*(?:async\s+)?([A-Za-z_$][A-Za-z0-9_$]*)\s*=>/);
+    if (mSingleArrow) {
+      return `${def.leaf}(${mSingleArrow[1]})`;
+    }
+  }
+  const inside = extractParenBody(windowText, searchFrom);
+  if (inside === null) return null;
+  const params = normalizeBraceParamList(inside, lang);
+  return `${def.leaf}(${params.join(",")})`;
+}
+
+/**
+ * Verify whether a function/method in `content` still matches `expectedSpec`
+ * (formatted either as `"qualifiedSymbol:leaf(p1,p2)"` or `"leaf(p1,p2)"`).
+ */
+export function checkSymbolSignatureMatch(content, filePath, expectedSpec) {
+  if (!content || !filePath || !expectedSpec) return false;
+  const raw = String(expectedSpec).trim();
+  let symbolName = raw;
+  let expectedSig = raw;
+  const colonIdx = raw.indexOf(":");
+  if (colonIdx > 0 && raw.indexOf("(") > colonIdx) {
+    symbolName = raw.slice(0, colonIdx).trim();
+    expectedSig = raw.slice(colonIdx + 1).trim();
+  } else {
+    const parenIdx = raw.indexOf("(");
+    if (parenIdx > 0) {
+      symbolName = raw.slice(0, parenIdx).trim();
+    }
+  }
+  const actualSig = extractSymbolSignature(content, filePath, symbolName);
+  if (!actualSig) return false;
+  return actualSig === expectedSig;
 }
 
 export function extractTsLocalImports(content, filePath, candidateFiles) {

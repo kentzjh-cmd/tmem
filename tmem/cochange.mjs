@@ -7,10 +7,35 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { logger } from "./index.mjs";
 import { isCodeFile, isDocFile } from "./adapters/base.mjs";
+import { loadTelemetryEvents } from "./telemetry.mjs";
+
+const _gitTxCache = new Map();
+
+function getGitHeadSignature(ws) {
+  try {
+    const headPath = path.join(ws, ".git", "HEAD");
+    if (!existsSync(headPath)) return "";
+    const headContent = readFileSync(headPath, "utf-8").trim();
+    if (headContent.startsWith("ref: ")) {
+      const refRel = headContent.slice(5).trim();
+      const refPath = path.join(ws, ".git", refRel);
+      if (existsSync(refPath)) {
+        return readFileSync(refPath, "utf-8").trim();
+      }
+      const logsHead = path.join(ws, ".git", "logs", "HEAD");
+      if (existsSync(logsHead)) {
+        return `${headContent}:${statSync(logsHead).mtimeMs}`;
+      }
+    }
+    return headContent;
+  } catch (_err) {
+    return "";
+  }
+}
 
 const IGNORED_PREFIXES = [".tmem/", ".agents/", ".dsh/", ".git/"];
 const IGNORED_FILENAMES = new Set([
@@ -25,11 +50,20 @@ const IGNORED_FILENAMES = new Set([
 ]);
 
 export class CoChangePair {
-  constructor({ file_a, file_b, count, confidence }) {
+  constructor({
+    file_a,
+    file_b,
+    count,
+    confidence,
+    conf_a_to_b = confidence,
+    conf_b_to_a = confidence,
+  }) {
     this.file_a = file_a;
     this.file_b = file_b;
     this.count = count;
     this.confidence = confidence;
+    this.conf_a_to_b = conf_a_to_b;
+    this.conf_b_to_a = conf_b_to_a;
   }
 
   formatLabel() {
@@ -48,8 +82,15 @@ function isTrackableCochangeFile(pathStr) {
 function loadGitTransactions(workspaceRoot, maxCommits = 100, maxFilesPerTx = 10) {
   const ws = path.resolve(workspaceRoot);
   if (!existsSync(path.join(ws, ".git"))) {
-    return { transactions: [], seenHashes: new Set() };
+    return { transactions: [], allFileFreq: new Map(), seenHashes: new Set() };
   }
+  const headSig = getGitHeadSignature(ws);
+  const cacheKey = `${ws}\0${maxCommits}\0${maxFilesPerTx}`;
+  const cached = _gitTxCache.get(cacheKey);
+  if (cached && headSig && cached.headSig === headSig) {
+    return cached.value;
+  }
+
   let stdout = "";
   try {
     stdout = execFileSync(
@@ -64,19 +105,30 @@ function loadGitTransactions(workspaceRoot, maxCommits = 100, maxFilesPerTx = 10
     );
   } catch (err) {
     logger.debug("git log co-change scan skipped:", err?.message || err);
-    return { transactions: [], seenHashes: new Set() };
+    return { transactions: [], allFileFreq: new Map(), seenHashes: new Set() };
   }
 
   const transactions = [];
+  const allFileFreq = new Map();
   const seenHashes = new Set();
   let currentFiles = [];
+
+  const flushCommit = () => {
+    const uniq = Array.from(new Set(currentFiles)).sort();
+    if (uniq.length >= 1 && uniq.length <= maxFilesPerTx) {
+      for (const f of uniq) {
+        allFileFreq.set(f, (allFileFreq.get(f) || 0) + 1);
+      }
+    }
+    if (uniq.length >= 2 && uniq.length <= maxFilesPerTx) {
+      transactions.push(uniq);
+    }
+  };
 
   for (const rawLine of stdout.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (line.startsWith("---COMMIT:")) {
-      if (currentFiles.length >= 2 && currentFiles.length <= maxFilesPerTx) {
-        transactions.push(Array.from(new Set(currentFiles)).sort());
-      }
+      flushCommit();
       currentFiles = [];
       const h = line.slice("---COMMIT:".length).trim();
       if (h) seenHashes.add(h);
@@ -89,11 +141,14 @@ function loadGitTransactions(workspaceRoot, maxCommits = 100, maxFilesPerTx = 10
     }
   }
 
-  if (currentFiles.length >= 2 && currentFiles.length <= maxFilesPerTx) {
-    transactions.push(Array.from(new Set(currentFiles)).sort());
-  }
+  flushCommit();
 
-  return { transactions, seenHashes };
+  const result = { transactions, allFileFreq, seenHashes };
+  if (headSig) {
+    if (_gitTxCache.size > 32) _gitTxCache.clear();
+    _gitTxCache.set(cacheKey, { headSig, value: result });
+  }
+  return result;
 }
 
 export function computeCochangeStats(
@@ -106,12 +161,14 @@ export function computeCochangeStats(
     maxFilesPerTx = 10,
   } = {}
 ) {
-  const { transactions, seenHashes } = loadGitTransactions(
+  const { transactions, allFileFreq, seenHashes } = loadGitTransactions(
     workspaceRoot,
     maxCommits,
     maxFilesPerTx
   );
 
+  const fileFreq = new Map(allFileFreq || []);
+  const extraTransactions = [];
   if (playbooks) {
     for (const pb of playbooks) {
       if (pb.is_trivial || pb.status === "invalidated") continue;
@@ -119,21 +176,23 @@ export function computeCochangeStats(
       const files = Array.from(
         new Set((pb.touched_files || []).filter(isTrackableCochangeFile))
       ).sort();
+      if (files.length >= 1 && files.length <= maxFilesPerTx) {
+        for (const f of files) {
+          fileFreq.set(f, (fileFreq.get(f) || 0) + 1);
+        }
+      }
       if (files.length >= 2 && files.length <= maxFilesPerTx) {
-        transactions.push(files);
+        extraTransactions.push(files);
       }
     }
   }
 
-  if (transactions.length === 0) return [];
+  const allMultiTransactions = [...transactions, ...extraTransactions];
+  if (allMultiTransactions.length === 0) return [];
 
-  const fileFreq = new Map();
   const pairFreq = new Map();
 
-  for (const tx of transactions) {
-    for (const f of tx) {
-      fileFreq.set(f, (fileFreq.get(f) || 0) + 1);
-    }
+  for (const tx of allMultiTransactions) {
     for (let i = 0; i < tx.length; i++) {
       for (let j = i + 1; j < tx.length; j++) {
         const a = tx[i];
@@ -150,7 +209,9 @@ export function computeCochangeStats(
   for (const [key, count] of pairFreq.entries()) {
     if (count < minCount) continue;
     const [a, b] = key.split("\0");
-    const conf = Math.max(count / fileFreq.get(a), count / fileFreq.get(b));
+    const confAtoB = count / fileFreq.get(a);
+    const confBtoA = count / fileFreq.get(b);
+    const conf = Math.max(confAtoB, confBtoA);
     if (conf >= minConfidence) {
       pairs.push(
         new CoChangePair({
@@ -158,6 +219,8 @@ export function computeCochangeStats(
           file_b: b,
           count,
           confidence: Math.round(conf * 1000) / 1000,
+          conf_a_to_b: Math.round(confAtoB * 1000) / 1000,
+          conf_b_to_a: Math.round(confBtoA * 1000) / 1000,
         })
       );
     }
@@ -192,35 +255,86 @@ export function findCochangeForFiles(
   return matched.slice(0, limit);
 }
 
+function getSuppressedPartners(workspaceRoot) {
+  const events = loadTelemetryEvents(workspaceRoot, 500);
+  if (!events || events.length === 0) return new Set();
+  const stats = new Map();
+  const pendingTargetsBySrc = new Map();
+  for (const ev of events) {
+    if (ev.event === "l1_cochange_hinted") {
+      const src = ev.edited_file || "";
+      const targets = ev.suggested_files || [];
+      pendingTargetsBySrc.set(src, targets);
+      for (const tgt of targets) {
+        const k = `${src}->${tgt}`;
+        const cur = stats.get(k) || { hinted: 0, adopted: 0, ignored: 0 };
+        cur.hinted += 1;
+        stats.set(k, cur);
+      }
+    } else if (ev.event === "l1_outcome") {
+      const src = ev.edited_file || "";
+      if (ev.adopted) {
+        for (const tgt of ev.adopted_files || []) {
+          const k = `${src}->${tgt}`;
+          const cur = stats.get(k) || { hinted: 0, adopted: 0, ignored: 0 };
+          cur.adopted += 1;
+          stats.set(k, cur);
+        }
+      } else {
+        for (const tgt of pendingTargetsBySrc.get(src) || []) {
+          const k = `${src}->${tgt}`;
+          const cur = stats.get(k) || { hinted: 0, adopted: 0, ignored: 0 };
+          cur.ignored += 1;
+          stats.set(k, cur);
+        }
+      }
+    }
+  }
+  const suppressed = new Set();
+  for (const [k, cur] of stats.entries()) {
+    if (cur.ignored >= 3 && cur.adopted === 0) {
+      suppressed.add(k);
+    }
+  }
+  return suppressed;
+}
+
 export function findCochangePartnersForFiles(
   workspaceRoot,
   editedFiles,
   playbooks = null,
-  limit = 3
+  limit = 3,
+  minDirectionalConf = 0.5
 ) {
   const editedSet = new Set(Array.from(editedFiles || []).filter(Boolean));
   if (editedSet.size === 0) return [];
   const ws = path.resolve(workspaceRoot);
   const pairs = computeCochangeStats(workspaceRoot, playbooks);
+  const suppressed = getSuppressedPartners(ws);
   const out = [];
   const seenPartners = new Set();
 
   for (const p of pairs) {
     let partner;
     let src;
+    let dirConf;
     if (editedSet.has(p.file_a) && !editedSet.has(p.file_b)) {
       partner = p.file_b;
       src = p.file_a;
+      dirConf = p.conf_a_to_b ?? p.confidence;
     } else if (editedSet.has(p.file_b) && !editedSet.has(p.file_a)) {
       partner = p.file_a;
       src = p.file_b;
+      dirConf = p.conf_b_to_a ?? p.confidence;
     } else {
       continue;
     }
+    if (dirConf < minDirectionalConf) continue;
+    if (suppressed.has(`${src}->${partner}`)) continue;
     if (seenPartners.has(partner)) continue;
     if (!existsSync(path.join(ws, partner))) continue;
     seenPartners.add(partner);
-    out.push([src, partner, p.count, p.confidence]);
+    out.push([src, partner, p.count, dirConf]);
     if (out.length >= limit) break;
   }
   return out;

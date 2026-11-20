@@ -9,11 +9,26 @@ import {
   isCodeFile,
   normalizeRelPath,
 } from "../adapters/base.mjs";
-import { DSH_EXIT_CODE_RE, parseApplyPatchTargets } from "../adapters/dsh.mjs";
+import {
+  DSH_EXIT_CODE_RE,
+  parseApplyPatchTargets,
+  parseDshLiveSessionSpan,
+} from "../adapters/dsh.mjs";
 import { findCochangePartnersForFiles } from "../cochange.mjs";
+import { expandMemoryTarget } from "../dsh_tools.mjs";
+import {
+  compileEpisodeFromSpan,
+  compileEpisodesFromSpan,
+  formatCompactedIndexNotice,
+  formatSearchHits,
+} from "../episodes.mjs";
 import { BenchmarkEvaluator, formatMarkdownReport } from "../evaluate.mjs";
 import { formatInjectedContext } from "../guards.mjs";
-import { extractMicroSkills, formatMicroSkillsBlock } from "../mem_doc.mjs";
+import {
+  extractMicroSkills,
+  formatMicroSkillsBlock,
+  recordVerifiedEnvCmd,
+} from "../mem_doc.mjs";
 import {
   formatProgressiveView,
   formatRawTraceDiff,
@@ -63,6 +78,131 @@ export function registerDefaultCaptureFn(fn) {
   defaultCaptureFn = fn;
 }
 
+function extractBlocksText(content) {
+  if (!content) return "";
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((b) => (typeof b === "string" ? b : b?.type === "text" ? b.text || "" : ""))
+      .filter(Boolean)
+      .join("\n");
+  }
+  return "";
+}
+
+/**
+ * Handle live DSH session compaction & tool-result pruning events:
+ * compiles compacted spans into `.tmem/episodes/`, indexes them into the
+ * multi-dimensional inverted index, and promotes non-trivial spans to `.tmem/traces/`.
+ */
+export function handleDshSessionEvent(eventType, payload = {}) {
+  const session = payload.session;
+  if (!session) return {};
+
+  const workspaceRoot = String(
+    payload.workspaceRoot || session?.header?.cwd || process.cwd()
+  );
+  const store = new ProjectMemoryStore(workspaceRoot);
+  const cachedEvents = payload.cachedEvents instanceof Map ? payload.cachedEvents : null;
+
+  if (eventType === "compaction_committed") {
+    const summaryEvent = payload.summaryEvent;
+    const endEvent = payload.endEvent;
+    if (!summaryEvent || endEvent?.data?.error) return {};
+
+    const sData = summaryEvent.data || {};
+    const compactionId = String(sData.compactionId || endEvent?.data?.compactionId || "");
+    let shadowedSeqs = Array.isArray(sData.shadowedSeqs) ? [...sData.shadowedSeqs] : [];
+    if (
+      shadowedSeqs.length === 0 &&
+      sData.shadowedRange &&
+      Number.isInteger(sData.shadowedRange.start) &&
+      Number.isInteger(sData.shadowedRange.end)
+    ) {
+      for (let s = sData.shadowedRange.start; s <= sData.shadowedRange.end; s++) {
+        shadowedSeqs.push(s);
+      }
+    }
+    if (shadowedSeqs.length === 0) return {};
+
+    const dshSummary = extractBlocksText(sData.summary);
+    const spanData = parseDshLiveSessionSpan(session, shadowedSeqs, workspaceRoot, {
+      cachedEvents,
+      exactSeqOnly: false,
+    });
+    const { episodes, episode, candidatePlaybooks } = compileEpisodesFromSpan(spanData, {
+      compactionId,
+      trigger: "compaction",
+      dshSummary,
+      shadowedSeqs,
+      workspaceRoot,
+      useGitGroundTruth: false,
+    });
+    if (!episode || episodes.length === 0) return {};
+
+    for (const ep of episodes) {
+      store.saveEpisode(ep);
+      if (ep.verification_cmds && ep.verification_cmds.length > 0) {
+        recordVerifiedEnvCmd(
+          workspaceRoot,
+          ep.verification_cmds,
+          ep.session_id || ep.episode_id
+        );
+      }
+    }
+
+    let promotedPlaybookId = null;
+    for (const candidatePlaybook of candidatePlaybooks) {
+      try {
+        const [projId] = store.savePlaybook(candidatePlaybook, { targetScope: "project" });
+        if (projId) promotedPlaybookId = projId;
+      } catch (_err) {
+        // ignore non-critical playbook promotion error
+      }
+    }
+
+    const sessionTimeline = store.getSessionTimeline(
+      session.id || episode.session_id || "default"
+    );
+    return {
+      status: "archived",
+      episode_id: episode.episode_id,
+      episode_ids: episodes.map((e) => e.episode_id),
+      compaction_id: compactionId,
+      promoted_playbook_id: promotedPlaybookId,
+      noticeText: formatCompactedIndexNotice(episodes, { sessionTimeline }),
+    };
+  }
+
+  if (eventType === "compaction_prune") {
+    const pruneEvent = payload.pruneEvent;
+    const shadowedSeqs = Array.isArray(pruneEvent?.data?.shadowedSeqs)
+      ? pruneEvent.data.shadowedSeqs
+      : [];
+    if (shadowedSeqs.length === 0) return {};
+
+    const spanData = parseDshLiveSessionSpan(session, shadowedSeqs, workspaceRoot, {
+      cachedEvents,
+      exactSeqOnly: true,
+    });
+    const { episode } = compileEpisodeFromSpan(spanData, {
+      compactionId: `prune_${pruneEvent.seq ?? Date.now()}`,
+      trigger: "compaction_prune",
+      shadowedSeqs,
+      workspaceRoot,
+      useGitGroundTruth: false,
+    });
+    if (!episode) return {};
+    store.saveEpisode(episode);
+    return {
+      status: "pruned_archived",
+      episode_id: episode.episode_id,
+    };
+  }
+
+  return {};
+}
+
 export function handleDshHook(event, payload = {}, captureFn = null) {
   const workspaceRoot = String(
     payload.workspaceRoot ||
@@ -84,12 +224,15 @@ export function handleDshHook(event, payload = {}, captureFn = null) {
       const projCnt = existsSync(store.project_traces_dir)
         ? readdirSync(store.project_traces_dir).filter((f) => f.endsWith(".json")).length
         : 0;
+      const epCnt = existsSync(store.project_episodes_dir)
+        ? readdirSync(store.project_episodes_dir).filter((f) => f.endsWith(".json")).length
+        : 0;
       const tel = computeTelemetrySummary(workspaceRoot);
       return {
         kind: "success",
         text:
           `[tmem status]\n` +
-          `- Project Tier (${store.project_dir}): ${projCnt} trace(s)\n` +
+          `- Project Tier (${store.project_dir}): ${projCnt} trace(s), ${epCnt} episode(s)\n` +
           `- Telemetry: L2 ${tel.l2_injections} hint(s) (resolved=${tel.l2_resolved_green}/${
             tel.l2_resolved_green + tel.l2_unresolved
           }), L1 ${tel.l1_hints} hint(s) (adopted=${tel.l1_adopted}/${
@@ -109,9 +252,46 @@ export function handleDshHook(event, payload = {}, captureFn = null) {
     if (actionMode === "gc") {
       const pruneStale = customIntent.includes("--prune");
       const stats = store.runMetabolismGc(pruneStale);
+      const epStats = store.runEpisodeGc();
       return {
         kind: "success",
-        text: `[tmem gc] Guard metabolism completed: ${JSON.stringify(stats)}`,
+        text: `[tmem gc] Guard metabolism completed: ${JSON.stringify({
+          ...stats,
+          episodes: epStats,
+        })}`,
+      };
+    }
+
+    if (actionMode === "search") {
+      const hits = store.searchMemory({ query: customIntent, limit: 8 });
+      return {
+        kind: "success",
+        text: `[tmem search]\n${formatSearchHits(hits, customIntent)}`,
+      };
+    }
+
+    if (actionMode === "episodes") {
+      const eps = store.listEpisodes({ limit: 30 });
+      return {
+        kind: "success",
+        text: `[tmem episodes (${eps.length})]\n${JSON.stringify(eps, null, 2)}`,
+      };
+    }
+
+    if (actionMode === "expand") {
+      const parts = customIntent.trim().split(/\s+/).filter(Boolean);
+      const targetId = parts[0] || "";
+      const lvl = parts[1] || "slice";
+      if (!targetId) {
+        return {
+          kind: "error",
+          text: "Usage: /tmem expand <episode_id|trace_id> [index|slice|turn|diff|raw]",
+        };
+      }
+      const rendered = expandMemoryTarget(workspaceRoot, { id: targetId, level: lvl });
+      return {
+        kind: rendered.startsWith("Memory target '") ? "error" : "success",
+        text: rendered,
       };
     }
 
@@ -273,6 +453,27 @@ export function handleDshHook(event, payload = {}, captureFn = null) {
     }
 
     const preBlocks = [];
+    const compactedCheckpoints = Array.isArray(payload.compactedCheckpoints)
+      ? payload.compactedCheckpoints
+      : [];
+    if (compactedCheckpoints.length > 0) {
+      const injectedCompactions = new Set(state.injected_compaction_ids || []);
+      const sessionTimeline = store.getSessionTimeline(sessionId);
+      for (const cp of compactedCheckpoints) {
+        const cid = String(cp?.compactionId || cp || "").trim();
+        if (!cid || injectedCompactions.has(cid)) continue;
+        const eps = store.findEpisodesByCompactionId(cid, sessionId);
+        if (eps.length > 0) {
+          const notice = formatCompactedIndexNotice(eps, { sessionTimeline });
+          if (notice) {
+            preBlocks.push(notice);
+            injectedCompactions.add(cid);
+          }
+        }
+      }
+      state.injected_compaction_ids = Array.from(injectedCompactions);
+    }
+
     if (isNewUserTurn && !state.micro_skills_injected) {
       const skills = extractMicroSkills(store.getAllProjectPlaybooks(), {
         workspaceRoot,

@@ -30,7 +30,7 @@ import {
   scrubSecrets,
 } from "./adapters/base.mjs";
 import { findCochangeForFiles } from "./cochange.mjs";
-import { checkSymbolInAst } from "./guards.mjs";
+import { checkSymbolInAst, extractSymbolSignature } from "./guards.mjs";
 import {
   ActionKind,
   CausalRepairPair,
@@ -562,13 +562,84 @@ export class BackwardTraceSlicer {
     return scratch;
   }
 
-  sliceSession(session, useGitGroundTruth = true) {
-    const rawActions = session.actions || [];
-    if (rawActions.length === 0) {
+  /**
+   * Identify and prune trailing MUTATE actions that occur after the last passing
+   * verification command (`VERIFY_GATE` with `exit_code === 0`), preventing unverified
+   * experimental edits at the end of a session from polluting Playbook L0 paths.
+   */
+  pruneTrailingUnverifiedActions(actions) {
+    if (!Array.isArray(actions) || actions.length === 0) {
+      return { actions: [], prunedSteps: [], lastVerifyStep: -1 };
+    }
+    let lastVerifyStep = -1;
+    let hasPreVerifyMutate = false;
+    let firstMutateStep = Infinity;
+    for (const act of actions) {
+      if (
+        act.kind === ActionKind.MUTATE &&
+        act.target_file &&
+        !act.target_file.startsWith(".tmem/") &&
+        (act.exit_code === 0 || act.exit_code === null || act.exit_code === undefined) &&
+        !act.error_signature
+      ) {
+        firstMutateStep = Math.min(firstMutateStep, act.step_idx);
+      } else if (
+        act.kind === ActionKind.ENV_EXEC &&
+        act.command &&
+        (act.exit_code === 0 || act.exit_code === null || act.exit_code === undefined) &&
+        !act.error_signature
+      ) {
+        const canonicalCmd = this._extractCanonicalVerificationCmd(act.command);
+        if (!canonicalCmd) continue;
+        const clauses = canonicalCmd
+          .split("&&")
+          .map((c) => c.trim().replace(ENV_ASSIGN_PREFIX_RE, "").trim())
+          .filter(Boolean);
+        const allInstall =
+          clauses.length > 0 && clauses.every((c) => TOOLCHAIN_INSTALL_RE.test(c));
+        if (!allInstall && act.step_idx > firstMutateStep) {
+          hasPreVerifyMutate = true;
+          lastVerifyStep = Math.max(lastVerifyStep, act.step_idx);
+        }
+      }
+    }
+
+    if (!hasPreVerifyMutate || lastVerifyStep < 0) {
+      return { actions, prunedSteps: [], lastVerifyStep: -1 };
+    }
+
+    const kept = [];
+    const prunedSteps = [];
+    for (const act of actions) {
+      if (
+        act.kind === ActionKind.MUTATE &&
+        act.target_file &&
+        !act.target_file.startsWith(".tmem/") &&
+        act.step_idx > lastVerifyStep
+      ) {
+        prunedSteps.push({
+          step_idx: act.step_idx,
+          target_file: act.target_file,
+          last_verify_step: lastVerifyStep,
+        });
+        continue;
+      }
+      kept.push(act);
+    }
+    return { actions: kept, prunedSteps, lastVerifyStep };
+  }
+
+  sliceSession(session, useGitGroundTruth = true, { pruneTrailingUnverified = false } = {}) {
+    const allRawActions = session.actions || [];
+    if (allRawActions.length === 0) {
       this.last_sliced_step_indices = [];
       this.last_git_diff = null;
       return null;
     }
+
+    const { actions: rawActions, prunedSteps: prunedTrailingSteps } = pruneTrailingUnverified
+      ? this.pruneTrailingUnverifiedActions(allRawActions)
+      : { actions: allRawActions, prunedSteps: [] };
 
     const knownFiles = new Set();
     for (const a of rawActions) {
@@ -1075,6 +1146,11 @@ export class BackwardTraceSlicer {
     if (isTrivial) {
       playbook.pitfalls.push(`Trivial trace: ${trivialReason}`);
     }
+    for (const p of prunedTrailingSteps) {
+      playbook.pitfalls.push(
+        `Pruned unverified trailing edit on '${p.target_file}' at step ${p.step_idx} (after last passing verify at step ${p.last_verify_step})`
+      );
+    }
 
     let conf = 0.3;
     if (verificationCmds.length > 0) conf += 0.15;
@@ -1328,6 +1404,16 @@ export class BackwardTraceSlicer {
                   expected: sym,
                 })
               );
+              const sig = extractSymbolSignature(text, f, sym);
+              if (sig) {
+                guards.push(
+                  new GuardProbe({
+                    probe_type: "signature_match",
+                    target: f,
+                    expected: `${sym}:${sig}`,
+                  })
+                );
+              }
               addedForFile += 1;
               if (addedForFile >= 3) break;
             }

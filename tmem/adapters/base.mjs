@@ -178,7 +178,7 @@ export function normalizeRelPath(rawPath, workspaceRoot) {
   }
 }
 
-export function extractErrorSignature(text) {
+export function extractErrorSignature(text, { scanLines = 40 } = {}) {
   if (!text) return null;
   const rawLines = String(text)
     .split(/\r?\n/)
@@ -193,8 +193,7 @@ export function extractErrorSignature(text) {
     return ln;
   });
 
-  const searchLines = cleanedLines.slice(-40).reverse();
-  for (const ln of searchLines) {
+  const matchLine = (ln) => {
     for (const pat of ERROR_PATTERNS) {
       const m = ln.match(pat);
       if (m) {
@@ -203,6 +202,24 @@ export function extractErrorSignature(text) {
           return sig.slice(0, 160);
         }
       }
+    }
+    return null;
+  };
+
+  // Prioritize the last 40 lines (standard traceback tail)
+  const tailStart = Math.max(0, cleanedLines.length - 40);
+  for (let i = cleanedLines.length - 1; i >= tailStart; i--) {
+    const found = matchLine(cleanedLines[i]);
+    if (found) return found;
+  }
+
+  // Optional deeper scan for oversized (>8KB) failing logs where errors sit in the middle
+  const maxScan = Math.max(40, Number(scanLines || 40));
+  if (maxScan > 40 && tailStart > 0) {
+    const midStart = Math.max(0, cleanedLines.length - maxScan);
+    for (let i = tailStart - 1; i >= midStart; i--) {
+      const found = matchLine(cleanedLines[i]);
+      if (found) return found;
     }
   }
   return null;

@@ -7,7 +7,16 @@ export {
   parseInspectArgs,
   parseSlashTmemCommand,
 } from "./commands.mjs";
-export { handleDshHook, registerDefaultCaptureFn } from "./dsh.mjs";
+export {
+  handleDshHook,
+  handleDshSessionEvent,
+  registerDefaultCaptureFn,
+} from "./dsh.mjs";
+export {
+  TMEM_SYSTEM_PROMPT_SECTION,
+  createTmemTools,
+  expandMemoryTarget,
+} from "../dsh_tools.mjs";
 export {
   LOOP_STREAK_THRESHOLD,
   applySessionTraceFeedback,

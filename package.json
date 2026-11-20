@@ -1,6 +1,6 @@
 {
   "name": "dsh-tmem",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Deterministic Execution Trace Memory & Zero-Token Session Digest engine for DeepSeek Harness (@deepseek-ai/dsh) — pure Node.js ESM runtime",
   "type": "module",
   "main": "./tmem/dsh_plugin.mjs",
@@ -29,7 +29,7 @@
     "test": "node --test tests/*.test.mjs",
     "evaluate": "node tmem/cli.mjs evaluate",
     "verify:benchmarks": "node scripts/verify_benchmarks.mjs",
-    "check": "node --check tmem/cli.mjs && node --check tmem/dsh_plugin.mjs"
+    "check": "node --check tmem/cli.mjs && node --check tmem/dsh_plugin.mjs && node --check tmem/episodes.mjs && node --check tmem/inverted_index.mjs && node --check tmem/dsh_tools.mjs && node --check benchmarks/eval_compact_recall.mjs"
   },
   "repository": {
     "type": "git",

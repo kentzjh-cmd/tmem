@@ -26,6 +26,7 @@ export function defaultRuntimeState(convId = "default") {
     last_turn_idx: -1,
     last_captured_step_idx: 0,
     injected_trace_ids: [],
+    injected_compaction_ids: [],
     rewarded_trace_ids: [],
     penalized_trace_ids: [],
     micro_skills_injected: false,

@@ -3,7 +3,7 @@
  */
 
 export const SLASH_TMEM_RE =
-  /^\/(?:tmem|remember|trace)(?:\s+(project|status|list|forget|gc|bench|evaluate|inspect|replay|diff|sync|telemetry))?(?:\s+(.+))?$/is;
+  /^\/(?:tmem|remember|trace)(?:\s+(project|status|list|forget|gc|bench|evaluate|inspect|replay|diff|sync|telemetry|search|episodes|expand))?(?:\s+(.+))?$/is;
 
 export function parseSlashTmemCommand(userInput) {
   const m = String(userInput || "").trim().match(SLASH_TMEM_RE);

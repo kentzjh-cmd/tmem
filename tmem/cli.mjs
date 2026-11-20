@@ -29,6 +29,8 @@ import {
 import { BackwardTraceSlicer } from "./slicer.mjs";
 import { ProjectMemoryStore } from "./store.mjs";
 import { computeTelemetrySummary } from "./telemetry.mjs";
+import { expandMemoryTarget } from "./dsh_tools.mjs";
+import { compileEpisodeFromSpan, formatSearchHits } from "./episodes.mjs";
 
 function readStdinJson() {
   if (process.stdin.isTTY) return {};
@@ -102,6 +104,42 @@ export function executeCapture({
     return { status: "skipped", reason: "no_effective_actions" };
   }
 
+  // Always archive a phase SessionEpisode in `.tmem/episodes/` so even routine/single-file
+  // phases remain searchable via the inverted index (`1统一存放` policy).
+  const store = new ProjectMemoryStore(workspaceRoot);
+  let savedEpisodeId = null;
+  try {
+    const spanData =
+      adapter instanceof DshAdapter && typeof adapter.parseTranscriptSpan === "function"
+        ? adapter.parseTranscriptSpan(tPath, workspaceRoot, { minStepIdx: minStep })
+        : {
+            session,
+            turns: [],
+            diff_snippets: [],
+            decisions: [],
+            step_turn_map: new Map(),
+            seq_from: minStep,
+            seq_to: session.actions.reduce((mx, a) => Math.max(mx, a.step_idx || 0), minStep),
+          };
+    if (customIntent && spanData.session) {
+      spanData.session.user_intents = [...(spanData.session.user_intents || []), customIntent.trim()];
+    }
+    const { episode } = compileEpisodeFromSpan(spanData, {
+      compactionId: `manual_${effSessionId}_${minStep}`,
+      trigger: "manual_capture",
+      workspaceRoot,
+      useGitGroundTruth: true,
+    });
+    if (episode) {
+      if (customIntent) {
+        episode.phase_intent = customIntent.trim().slice(0, 300);
+      }
+      savedEpisodeId = store.saveEpisode(episode);
+    }
+  } catch (_err) {
+    // non-fatal episode archival fallback
+  }
+
   if (pb.is_trivial && !force) {
     if (pb.l1_verification_cmds && pb.l1_verification_cmds.length > 0) {
       recordVerifiedEnvCmd(
@@ -112,6 +150,7 @@ export function executeCapture({
     }
     return {
       status: "skipped_trivial",
+      episode_id: savedEpisodeId,
       reason:
         pb.pitfalls && pb.pitfalls.length > 0
           ? pb.pitfalls[0]
@@ -133,7 +172,6 @@ export function executeCapture({
   }
 
   const rawTrace = slicer.buildRawTrace(session, pb);
-  const store = new ProjectMemoryStore(workspaceRoot);
   const [projId] = store.savePlaybook(pb, {
     targetScope: "project",
     rawTrace,
@@ -167,6 +205,7 @@ export function executeCapture({
     status: "compiled",
     agent: agentName,
     scope: "project",
+    episode_id: savedEpisodeId,
     project_trace_id: projId,
     raw_trace_path: persistedPb.raw_trace_path,
     problem_intent: persistedPb.problem_intent,
@@ -197,6 +236,9 @@ Subcommands:
   forget      Remove an execution trace playbook by trace_id
   evaluate    Run benchmark suite on sample or historical trajectories
   inspect     Progressive disclosure inspection of a trace
+  search      Search compacted episodes & playbooks via inverted index
+  episodes    List compacted session episodes stored in .tmem/episodes/
+  expand      Progressive disclosure expansion of an episode or trace (L0 -> L3)
   replay      Forensic chronological terminal replay of raw execution trace
   diff        View recorded unified git diff patch for a trace
   sync        Synchronize indexes, run GC, and regenerate MEMORIES.md living index
@@ -212,7 +254,17 @@ const VALUE_FLAGS = new Set([
   "intent",
   "query",
   "file",
+  "symbol",
   "error",
+  "role",
+  "session",
+  "limit",
+  "turn",
+  "seq-from",
+  "seq-to",
+  "max-chars",
+  "max-episodes-mb",
+  "max-episode-days",
   "format",
   "data-dir",
   "level",
@@ -223,14 +275,29 @@ function assignValueFlag(flags, key, val) {
   else if (key === "agents") flags.agents = val;
   else if (key === "agent") flags.agent = val;
   else if (key === "transcript") flags.transcript = val;
-  else if (key === "scope") flags.scope = val;
-  else if (key === "intent") flags.intent = val;
+  else if (key === "scope") {
+    flags.scope = val;
+    flags.scopeExplicit = true;
+  } else if (key === "intent") flags.intent = val;
   else if (key === "query") flags.query = val;
   else if (key === "file") flags.file.push(val);
+  else if (key === "symbol") flags.symbol.push(val);
   else if (key === "error") flags.error.push(val);
+  else if (key === "role") flags.role.push(val);
+  else if (key === "session") flags.session = val;
+  else if (key === "limit") flags.limit = Number(val);
+  else if (key === "turn") flags.turn = Number(val);
+  else if (key === "seq-from") flags.seqFrom = Number(val);
+  else if (key === "seq-to") flags.seqTo = Number(val);
+  else if (key === "max-chars") flags.maxChars = Number(val);
+  else if (key === "max-episodes-mb") flags.maxEpisodesMb = Number(val);
+  else if (key === "max-episode-days") flags.maxEpisodeDays = Number(val);
   else if (key === "format") flags.format = val;
   else if (key === "data-dir") flags.dataDir = val;
-  else if (key === "level") flags.level = val;
+  else if (key === "level") {
+    flags.level = val;
+    flags.levelExplicit = true;
+  }
 }
 
 function parseCliArgs(argv) {
@@ -243,18 +310,30 @@ function parseCliArgs(argv) {
     agent: "dsh",
     transcript: null,
     scope: "project",
+    scopeExplicit: false,
     intent: null,
     fullSession: false,
     force: false,
     quiet: false,
     query: "",
     file: [],
+    symbol: [],
     error: [],
+    role: [],
+    session: null,
+    limit: 10,
+    turn: null,
+    seqFrom: null,
+    seqTo: null,
+    maxChars: 6000,
+    maxEpisodesMb: 200,
+    maxEpisodeDays: 30,
     format: "markdown",
     prune: false,
     dataDir: null,
     json: false,
     level: "playbook",
+    levelExplicit: false,
   };
   const positionals = [];
 
@@ -397,7 +476,11 @@ export function main(argv = process.argv.slice(2), io = { log: console.log, err:
   if (subcommand === "gc") {
     const store = new ProjectMemoryStore(flags.workspace);
     const stats = store.runMetabolismGc(Boolean(flags.prune));
-    io.log(JSON.stringify(stats, null, 2));
+    const epStats = store.runEpisodeGc({
+      maxMb: flags.maxEpisodesMb,
+      maxAgeDays: flags.maxEpisodeDays,
+    });
+    io.log(JSON.stringify({ ...stats, episodes: epStats }, null, 2));
     return 0;
   }
 
@@ -406,12 +489,16 @@ export function main(argv = process.argv.slice(2), io = { log: console.log, err:
     const projCount = existsSync(store.project_traces_dir)
       ? readdirSync(store.project_traces_dir).filter((f) => f.endsWith(".json")).length
       : 0;
+    const epCount = existsSync(store.project_episodes_dir)
+      ? readdirSync(store.project_episodes_dir).filter((f) => f.endsWith(".json")).length
+      : 0;
     const telemetry = computeTelemetrySummary(flags.workspace);
     io.log(
       JSON.stringify(
         {
           project_store: store.project_dir,
           project_traces: projCount,
+          project_episodes: epCount,
           telemetry,
         },
         null,
@@ -419,6 +506,58 @@ export function main(argv = process.argv.slice(2), io = { log: console.log, err:
       )
     );
     return 0;
+  }
+
+  if (subcommand === "search") {
+    const store = new ProjectMemoryStore(flags.workspace);
+    const q = (flags.query || rest.join(" ")).trim();
+    const hits = store.searchMemory({
+      query: q,
+      files: flags.file,
+      symbols: flags.symbol,
+      errors: flags.error,
+      roles: flags.role,
+      scope: flags.scopeExplicit ? flags.scope : "all",
+      sessionId: flags.session,
+      limit: flags.limit,
+    });
+    if (flags.json || flags.format === "json") {
+      io.log(JSON.stringify(hits, null, 2));
+    } else {
+      io.log(formatSearchHits(hits, q));
+    }
+    return 0;
+  }
+
+  if (subcommand === "episodes") {
+    const store = new ProjectMemoryStore(flags.workspace);
+    const eps = store.listEpisodes({
+      sessionId: flags.session,
+      limit: flags.limit,
+    });
+    io.log(JSON.stringify(eps, null, 2));
+    return 0;
+  }
+
+  if (subcommand === "expand") {
+    const targetId = (rest[0] || "").trim();
+    if (!targetId) {
+      io.err("Usage: tmem expand <episode_id|trace_id> [--level index|slice|turn|diff|raw]");
+      return 1;
+    }
+    const level = flags.levelExplicit ? flags.level : rest[1] || "slice";
+    const out = expandMemoryTarget(flags.workspace, {
+      id: targetId,
+      level,
+      turn: flags.turn,
+      seq_from: flags.seqFrom,
+      seq_to: flags.seqTo,
+      query: flags.query,
+      file: flags.file[0] || "",
+      max_chars: flags.maxChars,
+    });
+    io.log(out);
+    return out.startsWith("Memory target '") ? 1 : 0;
   }
 
   if (subcommand === "list") {

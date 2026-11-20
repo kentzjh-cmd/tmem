@@ -87,27 +87,33 @@ async function loadInProcessRuntime(tmemRoot) {
   const candidatePairs = [];
   // 1. Sibling modules when loaded directly from tmem/dsh_plugin.mjs
   candidatePairs.push([
+    join(SELF_DIR, "hooks", "index.mjs"),
     join(SELF_DIR, "hooks", "dsh.mjs"),
     join(SELF_DIR, "cli.mjs"),
   ]);
   // 2. Explicit tmemRoot or TMEM_ROOT env
   for (const root of [tmemRoot, process.env.TMEM_ROOT].filter(Boolean)) {
     candidatePairs.push([
+      join(resolve(root), "tmem", "hooks", "index.mjs"),
       join(resolve(root), "tmem", "hooks", "dsh.mjs"),
       join(resolve(root), "tmem", "cli.mjs"),
     ]);
   }
 
-  for (const [dshModPath, cliModPath] of candidatePairs) {
-    if (existsSync(dshModPath) && existsSync(cliModPath)) {
+  for (const [hooksIdxPath, dshModPath, cliModPath] of candidatePairs) {
+    const hookEntry = existsSync(hooksIdxPath) ? hooksIdxPath : dshModPath;
+    if (existsSync(hookEntry) && existsSync(cliModPath)) {
       try {
         const [dshMod, cliMod] = await Promise.all([
-          import(pathToFileURL(dshModPath).href),
+          import(pathToFileURL(hookEntry).href),
           import(pathToFileURL(cliModPath).href),
         ]);
         if (typeof dshMod.handleDshHook === "function") {
           const rt = {
             handleDshHook: dshMod.handleDshHook,
+            handleDshSessionEvent: dshMod.handleDshSessionEvent || null,
+            createTmemTools: dshMod.createTmemTools || null,
+            TMEM_SYSTEM_PROMPT_SECTION: dshMod.TMEM_SYSTEM_PROMPT_SECTION || "",
             executeCapture: cliMod.executeCapture || null,
           };
           _runtimeCache.set(key, rt);
@@ -128,6 +134,9 @@ async function loadInProcessRuntime(tmemRoot) {
     if (typeof dshMod.handleDshHook === "function") {
       const rt = {
         handleDshHook: dshMod.handleDshHook,
+        handleDshSessionEvent: dshMod.handleDshSessionEvent || null,
+        createTmemTools: dshMod.createTmemTools || null,
+        TMEM_SYSTEM_PROMPT_SECTION: dshMod.TMEM_SYSTEM_PROMPT_SECTION || "",
         executeCapture: cliMod.executeCapture || null,
       };
       _runtimeCache.set(key, rt);
@@ -259,8 +268,25 @@ export function apply(ctx, config = {}) {
   ]);
   const SHELL_TOOLS = new Set(["bash", "pwsh", "run_command"]);
   const MAX_COCHANGE_WATCH_STEPS = 3;
+  const MAX_CACHED_SESSIONS = 16;
+  const MAX_EVENTS_PER_SESSION = 2500;
   const seenPreStepInputBySession = new Map();
   const activeCochangeWatch = new Map();
+  const sessionEventsCache = new Map();
+  const pendingCompactions = new Map();
+  const pendingCompactedIdsBySession = new Map();
+  const seenCompactedIdsBySession = new Map();
+
+  // Warm runtime in background so synchronous `session/event` handlers resolve immediately
+  let cachedRuntime = null;
+  const runtimePromise = loadInProcessRuntime(tmemRoot)
+    .then((rt) => {
+      cachedRuntime = rt;
+      return rt;
+    })
+    .catch(() => null);
+
+  const getRuntimeSyncOrAsync = async () => cachedRuntime || (await runtimePromise);
 
   // 1. Register `/tmem` slash command whenever `dsh-commands` service is available
   const registerSlashCommand = (commandService) => {
@@ -270,9 +296,9 @@ export function apply(ctx, config = {}) {
         definitionId: "@tmem/dsh-command-tmem",
         name: "tmem",
         description:
-          "Capture, slice, list, inspect, replay, or manage project execution trace memory (.tmem/)",
+          "Capture, slice, search, expand, list, inspect, replay, or manage project execution trace & compacted episode memory (.tmem/)",
         input: {
-          hint: "[status|list|forget|gc|telemetry|bench|evaluate|inspect|replay|diff|sync] [<intent|trace_id>]",
+          hint: "[status|search|episodes|expand|list|forget|gc|telemetry|bench|evaluate|inspect|replay|diff|sync] [<intent|query|id>]",
         },
         handler: async (invocation) => {
           const workspaceRoot = resolveSessionWorkspace(
@@ -311,12 +337,147 @@ export function apply(ctx, config = {}) {
     ctx.inject(["commands"], (innerCtx) => {
       registerSlashCommand(innerCtx.commands);
     });
+
+    // 1b. Register model-facing progressive recovery tools (`tmem_search`, `tmem_expand`)
+    ctx.inject(["tools"], async (innerCtx) => {
+      const toolsSvc = innerCtx?.tools;
+      if (!toolsSvc || typeof toolsSvc.register !== "function") return;
+      const rt = await getRuntimeSyncOrAsync();
+      if (!rt || typeof rt.createTmemTools !== "function") return;
+      const defs = rt.createTmemTools({
+        resolveWorkspace: (agent) =>
+          resolveSessionWorkspace(ctx, agent, configuredWorkspace),
+        resolveSessionId: (agent) => agent?.session?.id || "default",
+      });
+      for (const def of defs) {
+        try {
+          toolsSvc.register(def);
+        } catch (_err) {
+          // Ignore duplicate registration in hot-reload contexts
+        }
+      }
+    });
+
+    // 1c. Register concise progressive recovery guidance in system prompt
+    ctx.inject(["systemPrompt"], async (innerCtx) => {
+      const sp = innerCtx?.systemPrompt;
+      if (!sp || typeof sp.section !== "function") return;
+      const rt = await getRuntimeSyncOrAsync();
+      const text = rt?.TMEM_SYSTEM_PROMPT_SECTION;
+      if (!text) return;
+      const baseOrder =
+        typeof sp.getSectionOrder === "function"
+          ? sp.getSectionOrder("TOOL_SESSION_QUERY")
+          : 2300;
+      const safeOrder = Number.isFinite(baseOrder) ? baseOrder + 10 : 2310;
+      try {
+        sp.section({
+          name: "tmem:progressive-memory",
+          order: safeOrder,
+          text,
+        });
+      } catch (_err) {
+        // Ignore duplicate registration
+      }
+    });
   }
 
-  // 2. Pre-Step Hook: Inject speculative execution memory (`<tmem_speculative_memory>`)
+  // 1d. Session Event Hook: Automatically archive & inverted-index compacted/pruned spans
+  const handleLiveCompaction = (rt, kind, payload) => {
+    if (!rt || typeof rt.handleDshSessionEvent !== "function") return;
+    try {
+      const out = rt.handleDshSessionEvent(kind, payload);
+      if (kind === "compaction_committed" && out?.compaction_id && payload.session?.id) {
+        const sid = payload.session.id;
+        let q = pendingCompactedIdsBySession.get(sid);
+        if (!q) {
+          q = new Set();
+          pendingCompactedIdsBySession.set(sid, q);
+        }
+        q.add(String(out.compaction_id));
+      }
+    } catch (_err) {
+      // Never destabilize host session event loop
+    }
+  };
+
+  ctx.on("session/event", (session, event) => {
+    if (!session || !event || typeof event !== "object") return;
+    const sid = String(session.id || "default");
+
+    let evMap = sessionEventsCache.get(sid);
+    if (!evMap) {
+      if (sessionEventsCache.size >= MAX_CACHED_SESSIONS) {
+        const oldestKey = sessionEventsCache.keys().next().value;
+        if (oldestKey !== undefined) sessionEventsCache.delete(oldestKey);
+      }
+      evMap = new Map();
+      sessionEventsCache.set(sid, evMap);
+    }
+    if (typeof event.seq === "number" && Number.isInteger(event.seq)) {
+      evMap.set(event.seq, event);
+      if (evMap.size > MAX_EVENTS_PER_SESSION) {
+        const oldestSeq = evMap.keys().next().value;
+        if (oldestSeq !== undefined) evMap.delete(oldestSeq);
+      }
+    }
+
+    const etype = event.type;
+    if (etype === "compaction/summary") {
+      const cid = String(event.data?.compactionId || "");
+      if (cid) {
+        if (pendingCompactions.size > 64) pendingCompactions.clear();
+        pendingCompactions.set(`${sid}\0${cid}`, event);
+      }
+      return;
+    }
+
+    if (etype === "compaction/end") {
+      const cid = String(event.data?.compactionId || "");
+      const key = `${sid}\0${cid}`;
+      const summaryEvent = pendingCompactions.get(key);
+      pendingCompactions.delete(key);
+      if (!summaryEvent || event.data?.error) return;
+      const workspaceRoot = resolveSessionWorkspace(ctx, { session }, configuredWorkspace);
+      const payload = {
+        session,
+        summaryEvent,
+        endEvent: event,
+        workspaceRoot,
+        cachedEvents: evMap,
+      };
+      if (cachedRuntime) {
+        handleLiveCompaction(cachedRuntime, "compaction_committed", payload);
+      } else {
+        void getRuntimeSyncOrAsync().then((rt) =>
+          handleLiveCompaction(rt, "compaction_committed", payload)
+        );
+      }
+      return;
+    }
+
+    if (etype === "compaction/prune") {
+      const workspaceRoot = resolveSessionWorkspace(ctx, { session }, configuredWorkspace);
+      const payload = {
+        session,
+        pruneEvent: event,
+        workspaceRoot,
+        cachedEvents: evMap,
+      };
+      if (cachedRuntime) {
+        handleLiveCompaction(cachedRuntime, "compaction_prune", payload);
+      } else {
+        void getRuntimeSyncOrAsync().then((rt) =>
+          handleLiveCompaction(rt, "compaction_prune", payload)
+        );
+      }
+    }
+  });
+
+  // 2. Pre-Step Hook: Inject compacted-phase L0 index + speculative execution memory
   ctx.on("agent/pre-step", async ({ agent, messages, step }, next) => {
     const decision = await next();
-    if (decision?.action === "abort") return decision;
+    if (decision?.kind === "reject" || decision?.action === "abort") return decision;
 
     const currentMessages = Array.isArray(decision?.messages)
       ? [...decision.messages]
@@ -326,20 +487,62 @@ export function apply(ctx, config = {}) {
 
     let lastUserInput = "";
     let lastUserIndex = -1;
-    for (let i = currentMessages.length - 1; i >= 0; i--) {
+    const checkpointIds = new Set();
+    for (let i = 0; i < currentMessages.length; i++) {
       const m = currentMessages[i];
-      if (m && m.role === "user" && (!m.source || m.source.kind === "user")) {
+      if (!m) continue;
+      if (m.role === "user" && m.source?.kind === "compact-checkpoint" && m.source.compactionId) {
+        checkpointIds.add(String(m.source.compactionId));
+      }
+      if (m.role === "user" && (!m.source || m.source.kind === "user")) {
         lastUserInput = extractTextFromContent(m.content).trim();
         lastUserIndex = i;
-        break;
+      }
+    }
+
+    // Also inspect live session derived surface (for automatic pressure compaction & resume)
+    if (typeof agent?.session?.deriveMessages === "function") {
+      try {
+        for (const m of agent.session.deriveMessages()) {
+          if (
+            m &&
+            m.role === "user" &&
+            m.source?.kind === "compact-checkpoint" &&
+            m.source.compactionId
+          ) {
+            checkpointIds.add(String(m.source.compactionId));
+          }
+        }
+      } catch (_err) {
+        // ignore derivation errors on partial mocks
       }
     }
 
     const workspaceRoot = resolveSessionWorkspace(ctx, agent, configuredWorkspace);
     const sessionId = agent?.session?.id || "default";
 
+    const pendingForSess = pendingCompactedIdsBySession.get(sessionId);
+    if (pendingForSess) {
+      for (const cid of pendingForSess) checkpointIds.add(cid);
+      pendingCompactedIdsBySession.delete(sessionId);
+    }
+
+    let seenSet = seenCompactedIdsBySession.get(sessionId);
+    if (!seenSet) {
+      if (seenCompactedIdsBySession.size > 64) seenCompactedIdsBySession.clear();
+      seenSet = new Set();
+      seenCompactedIdsBySession.set(sessionId, seenSet);
+    }
+    const freshCheckpointIds = Array.from(checkpointIds).filter((cid) => !seenSet.has(cid));
+    for (const cid of freshCheckpointIds) seenSet.add(cid);
+
     const prevSeenInput = seenPreStepInputBySession.get(sessionId);
-    if (typeof step === "number" && step > 0 && prevSeenInput === lastUserInput) {
+    if (
+      typeof step === "number" &&
+      step > 0 &&
+      prevSeenInput === lastUserInput &&
+      freshCheckpointIds.length === 0
+    ) {
       return decision;
     }
     if (seenPreStepInputBySession.size > 64) {
@@ -353,6 +556,7 @@ export function apply(ctx, config = {}) {
         sessionId,
         step,
         lastUserInput,
+        compactedCheckpoints: freshCheckpointIds,
       },
       { workspaceRoot, tmemRoot, nodeBin }
     );
@@ -377,7 +581,7 @@ export function apply(ctx, config = {}) {
       }
       return {
         ...decision,
-        action: "continue",
+        ...(decision?.kind ? {} : { action: "continue" }),
         messages: currentMessages,
       };
     }

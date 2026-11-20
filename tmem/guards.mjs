@@ -9,7 +9,14 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { checkTsSymbolPresent, parsePythonStructure } from "./ast_parser.mjs";
+import {
+  checkSymbolSignatureMatch,
+  checkTsSymbolPresent,
+  extractSymbolSignature,
+  parsePythonStructure,
+} from "./ast_parser.mjs";
+
+export { checkSymbolSignatureMatch, extractSymbolSignature };
 
 function escapeRegExp(s) {
   return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -76,6 +83,19 @@ export function evaluateGuards(playbook, workspaceRoot) {
           const content = readFileSync(targetPath, "utf-8");
           if (!content.includes(g.expected)) {
             failed.push(`missing_substring:${g.target}`);
+          }
+        } catch (_err) {
+          failed.push(`unreadable:${g.target}`);
+        }
+      }
+    } else if (g.probe_type === "signature_match") {
+      if (!existsSync(targetPath)) {
+        failed.push(`missing_file:${g.target}`);
+      } else {
+        try {
+          const content = readFileSync(targetPath, "utf-8");
+          if (!checkSymbolSignatureMatch(content, g.target, g.expected)) {
+            failed.push(`drifted_signature:${g.target}#${g.expected}`);
           }
         } catch (_err) {
           failed.push(`unreadable:${g.target}`);
