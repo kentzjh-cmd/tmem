@@ -112,6 +112,49 @@ function listTraceJsonFiles(dir) {
     .map((f) => path.join(dir, f));
 }
 
+const _initializedDbPaths = new Set();
+
+function ensureProjectSchema(db, dbPath = null) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS playbooks (
+      trace_id TEXT PRIMARY KEY,
+      scope TEXT,
+      status TEXT,
+      confidence REAL,
+      hit_count INTEGER,
+      created_at TEXT,
+      payload_json TEXT
+    );
+    CREATE TABLE IF NOT EXISTS exact_triggers (
+      trace_id TEXT,
+      trigger_type TEXT,
+      trigger_key TEXT,
+      PRIMARY KEY (trace_id, trigger_type, trigger_key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_trigger_lookup
+      ON exact_triggers(trigger_type, trigger_key);
+    CREATE TABLE IF NOT EXISTS trace_links (
+      symbol TEXT,
+      trace_id TEXT,
+      PRIMARY KEY (symbol, trace_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_trace_links_sym
+      ON trace_links(symbol);
+    CREATE VIRTUAL TABLE IF NOT EXISTS playbooks_fts USING fts5(
+      trace_id UNINDEXED,
+      problem_intent,
+      error_signatures,
+      touched_files,
+      touched_symbols,
+      repairs_text
+    );
+  `);
+  ensureInvertedSchema(db);
+  if (dbPath) {
+    _initializedDbPaths.add(path.resolve(dbPath));
+  }
+}
+
 export class ProjectMemoryStore {
   constructor(workspaceRoot) {
     this.workspace_root = path.resolve(workspaceRoot);
@@ -155,60 +198,37 @@ export class ProjectMemoryStore {
   }
 
   _initSqlite(dbPath) {
+    const resolved = path.resolve(dbPath);
+    if (existsSync(resolved) && _initializedDbPaths.has(resolved)) {
+      return;
+    }
     mkdirSync(path.dirname(dbPath), { recursive: true });
     withDatabase(dbPath, (db) => {
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS playbooks (
-          trace_id TEXT PRIMARY KEY,
-          scope TEXT,
-          status TEXT,
-          confidence REAL,
-          hit_count INTEGER,
-          created_at TEXT,
-          payload_json TEXT
-        );
-        CREATE TABLE IF NOT EXISTS exact_triggers (
-          trace_id TEXT,
-          trigger_type TEXT,
-          trigger_key TEXT,
-          PRIMARY KEY (trace_id, trigger_type, trigger_key)
-        );
-        CREATE INDEX IF NOT EXISTS idx_trigger_lookup
-          ON exact_triggers(trigger_type, trigger_key);
-        CREATE TABLE IF NOT EXISTS trace_links (
-          symbol TEXT,
-          trace_id TEXT,
-          PRIMARY KEY (symbol, trace_id)
-        );
-        CREATE INDEX IF NOT EXISTS idx_trace_links_sym
-          ON trace_links(symbol);
-        CREATE VIRTUAL TABLE IF NOT EXISTS playbooks_fts USING fts5(
-          trace_id UNINDEXED,
-          problem_intent,
-          error_signatures,
-          touched_files,
-          touched_symbols,
-          repairs_text
-        );
-      `);
-      ensureInvertedSchema(db);
+      ensureProjectSchema(db, resolved);
     });
   }
 
-  syncProjectIndexIfNeeded() {
+  _withSyncedProjectDb(fn, { createIfMissing = false } = {}) {
     const hasTraces = existsSync(this.project_traces_dir);
     const hasEpisodes = existsSync(this.project_episodes_dir);
-    if (!hasTraces && !hasEpisodes) return;
+    if (!hasTraces && !hasEpisodes) {
+      if (!createIfMissing && !existsSync(this.project_db_path)) {
+        return null;
+      }
+    }
     mkdirSync(this.project_cache_dir, { recursive: true });
-    this._initSqlite(this.project_db_path);
+    const resolved = path.resolve(this.project_db_path);
+    const needsSchema = !existsSync(resolved) || !_initializedDbPaths.has(resolved);
 
     const jsonFiles = hasTraces ? listTraceJsonFiles(this.project_traces_dir) : [];
     const diskIds = new Set(jsonFiles.map((jf) => path.basename(jf, ".json")));
     const epFiles = hasEpisodes ? listTraceJsonFiles(this.project_episodes_dir) : [];
     const epDiskIds = new Set(epFiles.map((ef) => path.basename(ef, ".json")));
 
-    withDatabase(this.project_db_path, (db) => {
-      ensureInvertedSchema(db);
+    return withDatabase(this.project_db_path, (db) => {
+      if (needsSchema) {
+        ensureProjectSchema(db, resolved);
+      }
       const rows = db.prepare("SELECT trace_id FROM playbooks").all();
       const dbIds = new Set(rows.map((r) => r.trace_id));
 
@@ -267,7 +287,13 @@ export class ProjectMemoryStore {
           }
         }
       }
+
+      return fn(db);
     });
+  }
+
+  syncProjectIndexIfNeeded() {
+    this._withSyncedProjectDb(() => {});
   }
 
   static _tokenJaccard(textA, textB) {
@@ -1159,19 +1185,26 @@ export class ProjectMemoryStore {
     try {
       const ep = SessionEpisode.fromDict(JSON.parse(readFileSync(targetFile, "utf-8")));
       if (touchLru) {
-        ep.last_accessed_at = new Date().toISOString();
-        try {
-          writeFileSync(targetFile, JSON.stringify(ep.toDict(), null, 2), "utf-8");
-          if (existsSync(this.project_db_path)) {
-            withDatabase(this.project_db_path, (db) => {
-              ensureInvertedSchema(db);
-              db.prepare(
-                "UPDATE episodes SET last_accessed_at = ? WHERE episode_id = ?"
-              ).run(ep.last_accessed_at, ep.episode_id);
-            });
+        const lastMs = Date.parse(ep.last_accessed_at || "");
+        const nowMs = Date.now();
+        if (!Number.isFinite(lastMs) || nowMs - lastMs >= 60_000) {
+          ep.last_accessed_at = new Date(nowMs).toISOString();
+          try {
+            writeFileSync(targetFile, JSON.stringify(ep.toDict(), null, 2), "utf-8");
+            if (existsSync(this.project_db_path)) {
+              const resolvedDb = path.resolve(this.project_db_path);
+              withDatabase(this.project_db_path, (db) => {
+                if (!_initializedDbPaths.has(resolvedDb)) {
+                  ensureInvertedSchema(db);
+                }
+                db.prepare(
+                  "UPDATE episodes SET last_accessed_at = ? WHERE episode_id = ?"
+                ).run(ep.last_accessed_at, ep.episode_id);
+              });
+            }
+          } catch (_err) {
+            // ignore LRU write failure
           }
-        } catch (_err) {
-          // ignore LRU write failure
         }
       }
       return ep;
@@ -1183,11 +1216,8 @@ export class ProjectMemoryStore {
   findEpisodesByCompactionId(compactionId, sessionId = null) {
     const cid = String(compactionId || "").trim();
     if (!cid) return [];
-    this.syncProjectIndexIfNeeded();
-    if (!existsSync(this.project_db_path)) return [];
     try {
-      const epIds = withDatabase(this.project_db_path, (db) => {
-        ensureInvertedSchema(db);
+      const epIds = this._withSyncedProjectDb((db) => {
         const rows = sessionId
           ? db
               .prepare(
@@ -1201,6 +1231,7 @@ export class ProjectMemoryStore {
               .all(cid);
         return rows.map((r) => r.episode_id).filter(Boolean);
       });
+      if (!epIds) return [];
       return epIds.map((id) => this.loadEpisode(id)).filter(Boolean);
     } catch (_err) {
       return [];
@@ -1215,11 +1246,8 @@ export class ProjectMemoryStore {
   getSessionTimeline(sessionId, { limit = 20 } = {}) {
     const sid = String(sessionId || "").trim();
     if (!sid) return [];
-    this.syncProjectIndexIfNeeded();
-    if (!existsSync(this.project_db_path)) return [];
     try {
-      return withDatabase(this.project_db_path, (db) => {
-        ensureInvertedSchema(db);
+      const res = this._withSyncedProjectDb((db) => {
         const rows = db
           .prepare(
             `SELECT episode_id, session_id, compaction_id, trigger, seq_from, seq_to,
@@ -1252,16 +1280,14 @@ export class ProjectMemoryStore {
           };
         });
       });
+      return res || [];
     } catch (_err) {
       return [];
     }
   }
 
   listEpisodes({ sessionId = null, limit = 50 } = {}) {
-    this.syncProjectIndexIfNeeded();
-    if (!existsSync(this.project_db_path)) return [];
-    return withDatabase(this.project_db_path, (db) => {
-      ensureInvertedSchema(db);
+    const res = this._withSyncedProjectDb((db) => {
       const rows = sessionId
         ? db
             .prepare(
@@ -1293,6 +1319,7 @@ export class ProjectMemoryStore {
         byte_size: Number(r.byte_size || 0),
       }));
     });
+    return res || [];
   }
 
   /**
@@ -1309,9 +1336,7 @@ export class ProjectMemoryStore {
     sessionId = null,
     limit = 5,
   } = {}) {
-    this.syncProjectIndexIfNeeded();
-    if (!existsSync(this.project_db_path)) return [];
-    return withDatabase(this.project_db_path, (db) =>
+    const res = this._withSyncedProjectDb((db) =>
       queryInvertedIndex(db, {
         query,
         files,
@@ -1323,6 +1348,7 @@ export class ProjectMemoryStore {
         limit,
       })
     );
+    return res || [];
   }
 
   /**

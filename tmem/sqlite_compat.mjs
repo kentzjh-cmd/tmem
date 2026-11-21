@@ -4,12 +4,13 @@
  * connection closing and transactional commit/rollback.
  */
 
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { existsSync, mkdirSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 
 let _sqliteModulePromise = null;
 let _openHook = null;
 let _closeHook = null;
+const _walConfiguredPaths = new Set();
 
 function installSqliteWarningFilter() {
   const origEmit = process.emit;
@@ -59,15 +60,28 @@ function isBusySqliteError(err) {
 }
 
 export function openDatabase(dbPath) {
+  const isMemory = dbPath === ":memory:";
+  const resolved = isMemory ? ":memory:" : resolve(dbPath);
+  if (!isMemory && !existsSync(resolved)) {
+    _walConfiguredPaths.delete(resolved);
+  }
   mkdirSync(dirname(dbPath), { recursive: true });
   const db = new DatabaseSync(dbPath);
   try {
     db.exec("PRAGMA busy_timeout = 3000;");
-    if (dbPath !== ":memory:") {
+    if (!isMemory) {
+      if (!_walConfiguredPaths.has(resolved)) {
+        try {
+          db.exec("PRAGMA journal_mode = WAL;");
+          _walConfiguredPaths.add(resolved);
+        } catch (_walErr) {
+          // Ignore if database is read-only or WAL is unsupported
+        }
+      }
       try {
-        db.exec("PRAGMA journal_mode = WAL;");
-      } catch (_walErr) {
-        // Ignore if database is read-only or WAL is unsupported
+        db.exec("PRAGMA synchronous = NORMAL;");
+      } catch (_syncErr) {
+        // Ignore if database is read-only
       }
     }
   } catch (err) {
@@ -91,16 +105,21 @@ export function closeDatabase(db) {
   }
 }
 
-export function withDatabase(dbPath, fn) {
+export function withDatabase(dbPath, fn, { readOnly = false } = {}) {
   const maxAttempts = 3;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const db = openDatabase(dbPath);
     let inTx = false;
     try {
-      db.exec("BEGIN");
-      inTx = true;
+      if (!readOnly) {
+        db.exec("BEGIN");
+        inTx = true;
+      }
       const result = fn(db);
-      db.exec("COMMIT");
+      if (inTx) {
+        db.exec("COMMIT");
+        inTx = false;
+      }
       return result;
     } catch (err) {
       if (inTx) {

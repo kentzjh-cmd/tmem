@@ -198,10 +198,100 @@ function isDshTranscriptFile(name) {
   return name.endsWith(".jsonl") || name.endsWith(".jsonl.zstd");
 }
 
+const ZSTD_MAGIC = 0xfd2fb528;
+const ZSTD_SKIPPABLE_MASK = 0xfffffff0;
+const ZSTD_SKIPPABLE_MAGIC = 0x184d2a50;
+
+/**
+ * Find the byte end offset of a single Zstandard frame starting at `offset`
+ * (RFC 8878), or -1 if the frame header/blocks are truncated or invalid.
+ */
+function findZstdFrameEnd(buf, offset) {
+  if (offset + 4 > buf.length) return -1;
+  const magic = buf.readUInt32LE(offset);
+  if ((magic & ZSTD_SKIPPABLE_MASK) === ZSTD_SKIPPABLE_MAGIC) {
+    if (offset + 8 > buf.length) return -1;
+    const skippableSize = buf.readUInt32LE(offset + 4);
+    const end = offset + 8 + skippableSize;
+    return end <= buf.length ? end : -1;
+  }
+  if (magic !== ZSTD_MAGIC) return -1;
+
+  let pos = offset + 4;
+  if (pos >= buf.length) return -1;
+  const fhd = buf[pos++];
+  const fcsFlag = (fhd >> 6) & 0x03;
+  const singleSegment = (fhd >> 5) & 0x01;
+  const contentChecksum = (fhd >> 2) & 0x01;
+  const dictIdFlag = fhd & 0x03;
+
+  const windowDescBytes = singleSegment ? 0 : 1;
+  const dictIdBytes = dictIdFlag === 0 ? 0 : dictIdFlag === 1 ? 1 : dictIdFlag === 2 ? 2 : 4;
+  const fcsBytes =
+    fcsFlag === 0
+      ? singleSegment
+        ? 1
+        : 0
+      : fcsFlag === 1
+        ? 2
+        : fcsFlag === 2
+          ? 4
+          : 8;
+
+  pos += windowDescBytes + dictIdBytes + fcsBytes;
+  if (pos > buf.length) return -1;
+
+  let lastBlock = 0;
+  while (lastBlock === 0) {
+    if (pos + 3 > buf.length) return -1;
+    const header = buf[pos] | (buf[pos + 1] << 8) | (buf[pos + 2] << 16);
+    pos += 3;
+    lastBlock = header & 0x01;
+    const blockType = (header >> 1) & 0x03;
+    const blockSize = header >>> 3;
+    if (blockType === 3) return -1;
+    const payloadBytes = blockType === 1 ? 1 : blockSize;
+    pos += payloadBytes;
+    if (pos > buf.length) return -1;
+  }
+
+  if (contentChecksum) {
+    pos += 4;
+    if (pos > buf.length) return -1;
+  }
+  return pos;
+}
+
+/**
+ * Decompress a single-frame or concatenated multi-frame Zstandard buffer.
+ */
+export function decompressZstdMultiFrame(buf) {
+  if (!buf || buf.length === 0) return Buffer.alloc(0);
+  if (typeof zlib.zstdDecompressSync !== "function") return null;
+
+  const chunks = [];
+  let offset = 0;
+  while (offset < buf.length) {
+    const magic = offset + 4 <= buf.length ? buf.readUInt32LE(offset) : 0;
+    const frameEnd = findZstdFrameEnd(buf, offset);
+    if (frameEnd < 0) {
+      if (chunks.length > 0) break;
+      return null;
+    }
+    if ((magic & ZSTD_SKIPPABLE_MASK) !== ZSTD_SKIPPABLE_MAGIC) {
+      chunks.push(zlib.zstdDecompressSync(buf.subarray(offset, frameEnd)));
+    }
+    offset = frameEnd;
+  }
+  return Buffer.concat(chunks);
+}
+
 function readTranscriptText(transcriptPath) {
   if (transcriptPath.endsWith(".zstd")) {
-    if (typeof zlib.zstdDecompressSync === "function") {
-      return zlib.zstdDecompressSync(readFileSync(transcriptPath)).toString("utf-8");
+    const rawBuf = readFileSync(transcriptPath);
+    const decoded = decompressZstdMultiFrame(rawBuf);
+    if (decoded !== null) {
+      return decoded.toString("utf-8");
     }
     return execFileSync("zstd", ["-dc", transcriptPath], { encoding: "utf-8" });
   }

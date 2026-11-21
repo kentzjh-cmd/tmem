@@ -548,7 +548,17 @@ test("DshAdapter discovers and parses .jsonl.zstd transcripts", (t) => {
   const ws = createGitWorkspace(root);
   const plainPath = createDshV4Session(ws, dshHome, "sess_zstd_real");
   const zstdPath = `${plainPath}.zstd`;
-  writeFileSync(zstdPath, zlib.zstdCompressSync(readFileSync(plainPath)));
+  const lines = readFileSync(plainPath, "utf-8").split(/\r?\n/).filter(Boolean);
+  // Write concatenated multi-frame zstd (header in frame 1, each event in its own frame)
+  const skippableFrame = Buffer.alloc(12);
+  skippableFrame.writeUInt32LE(0x184d2a50, 0);
+  skippableFrame.writeUInt32LE(4, 4);
+  skippableFrame.writeUInt32LE(0xdeadbeef, 8);
+  const multiFrame = Buffer.concat([
+    ...lines.map((ln) => zlib.zstdCompressSync(Buffer.from(ln + "\n", "utf-8"))),
+    skippableFrame,
+  ]);
+  writeFileSync(zstdPath, multiFrame);
   rmSync(plainPath);
 
   const prevDshHome = process.env.DSH_HOME;
