@@ -50,11 +50,26 @@ export function setConnectionTrackingHooks(onOpen, onClose) {
   _closeHook = typeof onClose === "function" ? onClose : null;
 }
 
+function isBusySqliteError(err) {
+  const msg = String(err?.message || err || "");
+  return (
+    err?.errcode === 5 ||
+    err?.code === "ERR_SQLITE_ERROR" && /busy|locked/i.test(msg)
+  );
+}
+
 export function openDatabase(dbPath) {
   mkdirSync(dirname(dbPath), { recursive: true });
   const db = new DatabaseSync(dbPath);
   try {
     db.exec("PRAGMA busy_timeout = 3000;");
+    if (dbPath !== ":memory:") {
+      try {
+        db.exec("PRAGMA journal_mode = WAL;");
+      } catch (_walErr) {
+        // Ignore if database is read-only or WAL is unsupported
+      }
+    }
   } catch (err) {
     try {
       db.close();
@@ -77,21 +92,31 @@ export function closeDatabase(db) {
 }
 
 export function withDatabase(dbPath, fn) {
-  const db = openDatabase(dbPath);
-  try {
-    db.exec("BEGIN");
-    const result = fn(db);
-    db.exec("COMMIT");
-    return result;
-  } catch (err) {
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const db = openDatabase(dbPath);
+    let inTx = false;
     try {
-      db.exec("ROLLBACK");
-    } catch (_rollbackErr) {
-      // Ignore rollback errors if transaction wasn't active
+      db.exec("BEGIN");
+      inTx = true;
+      const result = fn(db);
+      db.exec("COMMIT");
+      return result;
+    } catch (err) {
+      if (inTx) {
+        try {
+          db.exec("ROLLBACK");
+        } catch (_rollbackErr) {
+          // Ignore rollback errors if transaction wasn't active
+        }
+      }
+      if (attempt < maxAttempts && isBusySqliteError(err)) {
+        continue;
+      }
+      throw err;
+    } finally {
+      closeDatabase(db);
     }
-    throw err;
-  } finally {
-    closeDatabase(db);
   }
 }
 

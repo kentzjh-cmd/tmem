@@ -75,8 +75,23 @@ export class CoChangePair {
 function isTrackableCochangeFile(pathStr) {
   const p = String(pathStr || "").trim();
   if (!p || IGNORED_PREFIXES.some((pfx) => p.startsWith(pfx))) return false;
-  if (IGNORED_FILENAMES.has(path.basename(p)) || isDocFile(p)) return false;
+  if (IGNORED_FILENAMES.has(path.basename(p))) return false;
   return true;
+}
+
+function resolveHistoricalPath(ws, rawPath, renameMap) {
+  let cur = rawPath;
+  const seen = new Set();
+  while (renameMap.has(cur) && !seen.has(cur)) {
+    seen.add(cur);
+    cur = renameMap.get(cur);
+  }
+  if (existsSync(path.join(ws, cur))) return cur;
+  if (cur.endsWith(".py")) {
+    const mjsPath = `${cur.slice(0, -3)}.mjs`;
+    if (existsSync(path.join(ws, mjsPath))) return mjsPath;
+  }
+  return null;
 }
 
 function loadGitTransactions(workspaceRoot, maxCommits = 100, maxFilesPerTx = 10) {
@@ -95,7 +110,7 @@ function loadGitTransactions(workspaceRoot, maxCommits = 100, maxFilesPerTx = 10
   try {
     stdout = execFileSync(
       "git",
-      ["log", `-n${maxCommits}`, "--name-only", "--pretty=format:---COMMIT:%h"],
+      ["log", `-n${maxCommits}`, "-M", "--name-status", "--pretty=format:---COMMIT:%h"],
       {
         cwd: ws,
         encoding: "utf-8",
@@ -108,13 +123,44 @@ function loadGitTransactions(workspaceRoot, maxCommits = 100, maxFilesPerTx = 10
     return { transactions: [], allFileFreq: new Map(), seenHashes: new Set() };
   }
 
-  const transactions = [];
-  const allFileFreq = new Map();
+  const rawCommits = [];
   const seenHashes = new Set();
+  const renameMap = new Map();
   let currentFiles = [];
 
-  const flushCommit = () => {
-    const uniq = Array.from(new Set(currentFiles)).sort();
+  for (const rawLine of stdout.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (line.startsWith("---COMMIT:")) {
+      if (currentFiles.length > 0) {
+        rawCommits.push(currentFiles);
+      }
+      currentFiles = [];
+      const h = line.slice("---COMMIT:".length).trim();
+      if (h) seenHashes.add(h);
+    } else if (line) {
+      const parts = line.split("\t");
+      const status = parts[0] || "";
+      if (status.startsWith("R") && parts.length >= 3) {
+        renameMap.set(parts[1].trim(), parts[2].trim());
+        currentFiles.push(parts[2].trim());
+      } else if (!status.startsWith("D")) {
+        const filePath = (parts[parts.length - 1] || "").trim();
+        if (filePath) currentFiles.push(filePath);
+      }
+    }
+  }
+  if (currentFiles.length > 0) {
+    rawCommits.push(currentFiles);
+  }
+
+  const transactions = [];
+  const allFileFreq = new Map();
+
+  for (const commitFiles of rawCommits) {
+    const mapped = commitFiles
+      .map((f) => resolveHistoricalPath(ws, f, renameMap))
+      .filter((f) => f && isTrackableCochangeFile(f));
+    const uniq = Array.from(new Set(mapped)).sort();
     if (uniq.length >= 1 && uniq.length <= maxFilesPerTx) {
       for (const f of uniq) {
         allFileFreq.set(f, (allFileFreq.get(f) || 0) + 1);
@@ -123,25 +169,7 @@ function loadGitTransactions(workspaceRoot, maxCommits = 100, maxFilesPerTx = 10
     if (uniq.length >= 2 && uniq.length <= maxFilesPerTx) {
       transactions.push(uniq);
     }
-  };
-
-  for (const rawLine of stdout.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (line.startsWith("---COMMIT:")) {
-      flushCommit();
-      currentFiles = [];
-      const h = line.slice("---COMMIT:".length).trim();
-      if (h) seenHashes.add(h);
-    } else if (
-      line &&
-      isTrackableCochangeFile(line) &&
-      existsSync(path.join(ws, line))
-    ) {
-      currentFiles.push(line);
-    }
   }
-
-  flushCommit();
 
   const result = { transactions, allFileFreq, seenHashes };
   if (headSig) {

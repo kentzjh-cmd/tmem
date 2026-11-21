@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import * as zlib from "node:zlib";
 import { getAdapter, DshAdapter } from "../tmem/adapters/index.mjs";
 import { extractSymbolsFromText } from "../tmem/adapters/base.mjs";
 import { executeCapture } from "../tmem/cli.mjs";
@@ -361,6 +362,15 @@ test("Live @deepseek-ai/dsh Cordis runtime and pure-Node CLI E2E", async (t) => 
   assert.ok(dumpOut.includes("tmem-dsh-plugin.mjs"));
   assert.ok(dumpOut.includes(pathToFileURL(path.join(ws, ".dsh", "plugins", "tmem-dsh-plugin.mjs")).href));
 
+  // Verify real dsh --dump-config WITHOUT --patch auto-loads DSH_HOME/cordis.patch.yml
+  const autoDumpOut = execFileSync(
+    "dsh",
+    ["--profile", "headless", "--dump-config"],
+    { cwd: ws, encoding: "utf-8" }
+  );
+  assert.ok(autoDumpOut.includes("id: tmem"));
+  assert.ok(autoDumpOut.includes("dsh_plugin.mjs"));
+
   // Load real @deepseek-ai/cordis + @deepseek-ai/dsh-commands + generated plugin in-process
   const req = createRequire(pathToFileURL(dshEntry).href);
   const { Context } = req("@deepseek-ai/cordis");
@@ -523,4 +533,39 @@ test("Pure-Node plugin source contracts, license, and zero Python dependency", (
   assert.ok(!pluginCode.includes("spawnSync"));
   assert.ok(!pluginCode.includes("python3"));
   assert.ok(!pluginCode.includes("PYTHONPATH"));
+});
+
+test("DshAdapter discovers and parses .jsonl.zstd transcripts", (t) => {
+  if (typeof zlib.zstdCompressSync !== "function") {
+    t.skip("zlib.zstdCompressSync not available in this Node runtime");
+    return;
+  }
+  const root = mkdtempSync(path.join(os.tmpdir(), "tmem_dsh_zstd_"));
+  const dshHome = path.join(root, "dsh_home");
+  mkdirSync(dshHome, { recursive: true });
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+
+  const ws = createGitWorkspace(root);
+  const plainPath = createDshV4Session(ws, dshHome, "sess_zstd_real");
+  const zstdPath = `${plainPath}.zstd`;
+  writeFileSync(zstdPath, zlib.zstdCompressSync(readFileSync(plainPath)));
+  rmSync(plainPath);
+
+  const prevDshHome = process.env.DSH_HOME;
+  process.env.DSH_HOME = dshHome;
+  t.after(() => {
+    if (prevDshHome === undefined) delete process.env.DSH_HOME;
+    else process.env.DSH_HOME = prevDshHome;
+  });
+
+  const adapter = new DshAdapter();
+  const discovered = adapter.discoverLatestTranscript(ws, "sess_zstd_real");
+  assert.equal(discovered, zstdPath);
+  const discoveredAny = adapter.discoverLatestTranscript(ws);
+  assert.equal(discoveredAny, zstdPath);
+
+  const sess = adapter.parseTranscript(zstdPath, ws);
+  assert.equal(sess.session_id, "sess_zstd_real");
+  assert.ok(sess.actions.length >= 4);
+  assert.ok(sess.user_intents.some((u) => u.includes("calculate_unit_tax")));
 });

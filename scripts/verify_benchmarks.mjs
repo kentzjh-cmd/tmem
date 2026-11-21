@@ -126,6 +126,9 @@ export function checkRegressionGates(
   if (corpus.avg_slice_latency_ms >= 50.0) {
     errors.push(`[Plugin-50] avg_slice_latency_ms >= 50ms: ${corpus.avg_slice_latency_ms}`);
   }
+  if (corpus.memories_md_sync_ms >= 200.0) {
+    errors.push(`[Plugin-50] memories_md_sync_ms >= 200ms: ${corpus.memories_md_sync_ms}`);
+  }
   if (ret50.recall_at_1_pct < 100.0 || ret50.mrr < 1.0) {
     errors.push(`[Plugin-50] retrieval regressed: ${JSON.stringify(ret50)}`);
   }

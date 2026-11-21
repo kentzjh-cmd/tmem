@@ -2,9 +2,11 @@
  * Native DeepSeek Harness (@deepseek-ai/dsh) adapter for session.v4.jsonl transcripts and Cordis hooks.
  */
 
+import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import * as zlib from "node:zlib";
 import { ActionKind, ActionNode } from "../models.mjs";
 import {
   AgentAdapter,
@@ -192,6 +194,20 @@ export function parseApplyPatchTargets(patchText) {
   ]);
 }
 
+function isDshTranscriptFile(name) {
+  return name.endsWith(".jsonl") || name.endsWith(".jsonl.zstd");
+}
+
+function readTranscriptText(transcriptPath) {
+  if (transcriptPath.endsWith(".zstd")) {
+    if (typeof zlib.zstdDecompressSync === "function") {
+      return zlib.zstdDecompressSync(readFileSync(transcriptPath)).toString("utf-8");
+    }
+    return execFileSync("zstd", ["-dc", transcriptPath], { encoding: "utf-8" });
+  }
+  return readFileSync(transcriptPath, "utf-8");
+}
+
 function collectJsonlFiles(dir, out = [], seen = new Set()) {
   if (!existsSync(dir)) return out;
   let entries;
@@ -204,7 +220,7 @@ function collectJsonlFiles(dir, out = [], seen = new Set()) {
     const full = path.join(dir, ent.name);
     if (ent.isDirectory()) {
       collectJsonlFiles(full, out, seen);
-    } else if (ent.isFile() && ent.name.endsWith(".jsonl")) {
+    } else if (ent.isFile() && isDshTranscriptFile(ent.name)) {
       const resolved = path.resolve(full);
       if (!seen.has(resolved)) {
         seen.add(resolved);
@@ -254,7 +270,7 @@ export class DshAdapter extends AgentAdapter {
     }
 
     const events = [];
-    const rawContent = readFileSync(transcriptPath, "utf-8");
+    const rawContent = readTranscriptText(transcriptPath);
     for (const rawLine of rawContent.split(/\r?\n/)) {
       const line = rawLine.trim();
       if (!line) continue;
@@ -433,7 +449,14 @@ export class DshAdapter extends AgentAdapter {
         const sessDir = path.join(root, sessionId);
         try {
           if (existsSync(sessDir) && statSync(sessDir).isDirectory()) {
-            for (const fname of ["session.v4.jsonl", "session.v3.jsonl", "session.jsonl"]) {
+            for (const fname of [
+              "session.v4.jsonl.zstd",
+              "session.v4.jsonl",
+              "session.v3.jsonl.zstd",
+              "session.v3.jsonl",
+              "session.jsonl.zstd",
+              "session.jsonl",
+            ]) {
               const cand = path.join(sessDir, fname);
               if (existsSync(cand)) return cand;
             }
@@ -457,7 +480,10 @@ export class DshAdapter extends AgentAdapter {
       if (sb.mtimeMs !== sa.mtimeMs) return sb.mtimeMs - sa.mtimeMs;
       const prio = (p) => {
         const base = path.basename(p);
-        return base === "session.v4.jsonl" ? 2 : base === "session.v3.jsonl" ? 1 : 0;
+        if (base.startsWith("session.v4.jsonl")) return base.endsWith(".zstd") ? 5 : 4;
+        if (base.startsWith("session.v3.jsonl")) return base.endsWith(".zstd") ? 3 : 2;
+        if (base.startsWith("session.jsonl")) return base.endsWith(".zstd") ? 1 : 0;
+        return 0;
       };
       return prio(b) - prio(a);
     });
