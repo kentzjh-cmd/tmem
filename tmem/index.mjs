@@ -2,7 +2,7 @@
  * tmem: Invisible Agent Execution Trace Compiler & Repository-Scoped Memory Engine (Node.js ESM).
  */
 
-export const VERSION = "0.4.0";
+export const VERSION = "0.4.1";
 
 let debugEnabled = process.env.TMEM_DEBUG === "1";
 
