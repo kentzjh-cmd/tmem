@@ -86,6 +86,27 @@ test("N12: without any CLI on PATH the standalone copy reports no package root",
   }
 });
 
+test("N12: resolveTmemRootFromCli also resolves npm .cmd wrapper scripts on PATH", async () => {
+  const { tmp, copy } = makeStandaloneCopy();
+  const binDir = path.join(tmp, "win-bin");
+  fs.mkdirSync(binDir, { recursive: true });
+  const cmdFile = path.join(binDir, "tmem.cmd");
+  fs.writeFileSync(
+    cmdFile,
+    `@ECHO off\r\n"node" "${path.join(REPO_ROOT, "tmem", "cli.mjs")}" %*\r\n`,
+    "utf-8"
+  );
+  const previous = process.env.PATH;
+  process.env.PATH = binDir;
+  try {
+    const mod = await import(pathToFileURL(copy).href);
+    assert.equal(mod.resolveTmemRootFromCli(), REPO_ROOT);
+  } finally {
+    process.env.PATH = previous;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test("the in-repo plugin still exposes the DSH entry points", async () => {
   const mod = await import(pathToFileURL(PLUGIN_SRC).href);
   assert.equal(mod.name, "tmem");

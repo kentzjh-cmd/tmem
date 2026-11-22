@@ -253,4 +253,20 @@ test("N2: the recorded signature is the anchor that triggered the injection", (t
     true,
     `the recorded signature must be the triggering anchor, not the playbook's first signature (got ${injected.error_signature})`
   );
+
+  // Subsequent passing verification resolves the pending L2 hint from anchor_recall
+  handleDshHook("post_tool_use", {
+    workspaceRoot: ws,
+    sessionId: "sess_sig",
+    toolCall: { name: "bash", args: { command: "python3 -m pytest -q" } },
+    resultText: "1 passed\n[exit code: 0]",
+    isError: false,
+    exitCode: 0,
+  });
+  const telAfter = computeTelemetrySummary(ws);
+  assert.equal(
+    telAfter.l2_resolved_green,
+    1,
+    "passing verification after anchor_recall error injection must resolve the pending L2 hint"
+  );
 });

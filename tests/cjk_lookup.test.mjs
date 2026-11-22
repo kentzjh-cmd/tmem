@@ -54,6 +54,13 @@ test("CJK natural-language query reaches a stored playbook", (t) => {
     hits.some((hit) => hit.playbook.trace_id === "tr_cjk_lookup_001"),
     "the matching playbook must be the one that holds the rate table knowledge",
   );
+
+  // Short 2-character CJK query (1 bigram) must also match instead of requiring need=2
+  const shortHits = store.cascadingLookup({ queryText: "汇率" });
+  assert.ok(
+    shortHits.some((hit) => hit.playbook.trace_id === "tr_cjk_lookup_001"),
+    "a 2-character CJK query (single bigram) must also reach the stored playbook",
+  );
 });
 
 test("cjkBigrams extracts character bigrams from CJK runs only", () => {

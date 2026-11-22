@@ -542,6 +542,19 @@ export function handleDshHook(event, payload = {}, captureFn = null) {
               anchor_errors: anchorErrors,
               trace_error_signatures: ev.playbook.error_signatures || [],
             });
+            if (anchorHit) {
+              const tid = ev.playbook.trace_id;
+              const alreadyPending = state.pending_l2_hints.some(
+                (h) => h.trace_id === tid && h.error_signature === anchorHit
+              );
+              if (!alreadyPending) {
+                state.pending_l2_hints.push({
+                  trace_id: tid,
+                  error_signature: anchorHit,
+                  failed_command: "",
+                });
+              }
+            }
           }
         }
       }

@@ -2,10 +2,10 @@
 import * as zlib from "node:zlib";
 import { readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { DshAdapter } from "/archive/tmem/tmem/adapters/dsh.mjs";
+import { DshAdapter } from "../../tmem/adapters/dsh.mjs";
 
 const adapter = new DshAdapter();
-const OUT = "/tmp/tmem-zstd-ab";
+const OUT = process.env.TMEM_ZSTD_AB_OUT || "/tmp/tmem-zstd-ab";
 
 // 复刻 DSH 的拼接帧容器：每批 append 一个独立 zstd frame
 function dshStyleContainer(lines, batchSize = 8) {
@@ -24,6 +24,7 @@ const stat = (p) => {
 
 // ---- 1) 真实 DSH 多帧文件 ----
 const realZstd =
+  process.argv[2] ||
   "/home/kent/.dsh/sessions/--tmp-tmem-validation-F1-ws2-1hFjWP--/session-0c9e346c-db72-426f-99e1-4d35e3f10f94/session.v4.jsonl.zstd";
 const realBuf = readFileSync(realZstd);
 

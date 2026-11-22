@@ -9,13 +9,23 @@
 
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path, { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 export const name = "tmem";
 
 const SELF_DIR = dirname(fileURLToPath(import.meta.url));
+
+function checkCandidatePackageRoot(real) {
+  if (!real) return null;
+  if (real.endsWith(`${path.sep}cli.mjs`) || real.endsWith("/cli.mjs")) {
+    return resolve(real, "..", "..");
+  }
+  if (existsSync(join(real, "cli.mjs"))) return resolve(real, "..");
+  if (existsSync(join(real, "tmem", "cli.mjs"))) return resolve(real);
+  return null;
+}
 
 /**
  * Locate the installed tmem package root through the `tmem` CLI on PATH.
@@ -35,15 +45,34 @@ const SELF_DIR = dirname(fileURLToPath(import.meta.url));
 export function resolveTmemRootFromCli() {
   const dirs = (process.env.PATH || "").split(path.delimiter).filter(Boolean);
   for (const dir of dirs) {
-    let real;
-    try {
-      real = realpathSync(join(dir, "tmem"));
-    } catch (_err) {
-      continue;
+    for (const binName of ["tmem", "tmem.cmd"]) {
+      const candidateBin = join(dir, binName);
+      let real;
+      try {
+        real = realpathSync(candidateBin);
+      } catch (_err) {
+        continue;
+      }
+      const directRoot = checkCandidatePackageRoot(real);
+      if (directRoot) return directRoot;
+
+      if (binName.endsWith(".cmd")) {
+        try {
+          const cmdBody = readFileSync(real, "utf-8");
+          const m = cmdBody.match(/["']?([^"'\r\n]*?cli\.mjs)["']?/i);
+          if (m && m[1]) {
+            const cleaned = m[1].replace(/%~dp0\\?/gi, `${dirname(real)}${path.sep}`);
+            const resolvedScript = resolve(dirname(real), cleaned);
+            if (existsSync(resolvedScript)) {
+              const cmdRoot = checkCandidatePackageRoot(realpathSync(resolvedScript));
+              if (cmdRoot) return cmdRoot;
+            }
+          }
+        } catch (_err) {
+          // ignore unreadable wrapper
+        }
+      }
     }
-    if (real.endsWith(`${path.sep}cli.mjs`)) return resolve(real, "..", "..");
-    if (existsSync(join(real, "cli.mjs"))) return resolve(real, "..");
-    if (existsSync(join(real, "tmem", "cli.mjs"))) return resolve(real);
   }
   return null;
 }

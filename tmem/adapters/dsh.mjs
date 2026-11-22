@@ -568,11 +568,18 @@ export class DshAdapter extends AgentAdapter {
     // /home/kent/e2e/ledger-svc -> "--home-kent-e2e-ledger-svc--". Prefer the
     // transcripts of THIS workspace: picking the globally newest transcript can
     // hand another workspace's session to this workspace's capture.
-    const encodedWs = `--${ws.replace(/^\/+|\/+$/g, "").replace(/[\\/]/g, "-")}--`;
+    const rawWsSlug = ws.replace(/^[A-Za-z]:/, "").replace(/^[/\\]+|[/\\]+$/g, "");
+    const encodedExact = `--${rawWsSlug.replace(/[/\\]/g, "-")}--`;
+    const encodedSanitized = `--${rawWsSlug.replace(/[^A-Za-z0-9-]+/g, "-").replace(/-+/g, "-")}--`;
     const ownWorkspace = [];
     const foreign = [];
     for (const cand of candidates) {
-      (cand.includes(encodedWs) ? ownWorkspace : foreign).push(cand);
+      const normCand = cand.replace(/\\/g, "/");
+      const isOwn =
+        normCand.includes(encodedExact) ||
+        normCand.includes(encodedSanitized) ||
+        normCand.startsWith(ws.replace(/\\/g, "/") + "/");
+      (isOwn ? ownWorkspace : foreign).push(cand);
     }
     const pool = ownWorkspace.length > 0 ? ownWorkspace : candidates;
 

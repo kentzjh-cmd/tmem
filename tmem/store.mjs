@@ -794,7 +794,10 @@ export class ProjectMemoryStore {
         // re-index of existing stores is required.
         const cjkGrams = cjkBigrams(queryText);
         if (cjkGrams.length > 0) {
-          const need = Math.max(2, Math.ceil(cjkGrams.length * 0.15));
+          const need = Math.min(
+            cjkGrams.length,
+            Math.max(2, Math.ceil(cjkGrams.length * 0.15))
+          );
           const rows = db.prepare("SELECT trace_id, payload_json FROM playbooks").all();
           for (const row of rows) {
             const payload = String(row.payload_json || "").toLowerCase();
