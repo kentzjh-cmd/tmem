@@ -514,7 +514,36 @@ export function handleDshHook(event, payload = {}, captureFn = null) {
         state.injected_trace_ids = Array.from(alreadyInjected);
         state.recent_errors = [];
         const memBlock = formatInjectedContext(freshMatches);
-        if (memBlock) preBlocks.push(memBlock);
+        if (memBlock) {
+          preBlocks.push(memBlock);
+          // An anchor-driven injection is just as much an injection as the
+          // error-signature path below. Without this event the telemetry would
+          // report zero injections while the memory block was actually delivered.
+          for (const ev of freshMatches) {
+            // The signature that TRIGGERED the injection is the anchor, not
+            // whichever signature the playbook happens to list first: a
+            // ValueError-triggered injection must not be recorded as a
+            // KeyError injection.
+            const pbSigs = (ev.playbook.error_signatures || []).map((s) =>
+              String(s || "").toLowerCase()
+            );
+            const anchorHit =
+              (anchorErrors || []).find((a) =>
+                pbSigs.includes(String(a || "").toLowerCase())
+              ) ||
+              (anchorErrors || [])[0] ||
+              null;
+            recordTelemetryEvent(workspaceRoot, "l2_injected", {
+              session_id: sessionId,
+              trace_id: ev.playbook.trace_id,
+              error_signature: anchorHit,
+              source: "anchor_recall",
+              anchor_files: anchorFiles,
+              anchor_errors: anchorErrors,
+              trace_error_signatures: ev.playbook.error_signatures || [],
+            });
+          }
+        }
       }
     }
 
@@ -648,6 +677,7 @@ export function handleDshHook(event, payload = {}, captureFn = null) {
                 error_signature: sig,
                 failed_command: cmdLine,
                 repair_action: repAct,
+                source: "error_signature",
               });
             }
           }

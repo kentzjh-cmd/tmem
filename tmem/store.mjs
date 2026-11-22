@@ -104,6 +104,39 @@ function escapeRegExp(s) {
   return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+const CJK_RUN_RE = /[一-鿿]+/g;
+
+/**
+ * Character bigrams of every CJK run inside `text`.
+ *
+ * Used for query-side matching of Chinese natural-language questions: the
+ * FTS index stores a whole CJK run as a single token, so substrings can
+ * never match. Bigrams over the raw text are language agnostic and work
+ * against existing stores without re-indexing.
+ */
+export function cjkBigrams(text) {
+  const grams = [];
+  const seen = new Set();
+  for (const match of String(text || "").matchAll(CJK_RUN_RE)) {
+    const run = match[0];
+    if (run.length === 1) {
+      if (!seen.has(run)) {
+        seen.add(run);
+        grams.push(run);
+      }
+      continue;
+    }
+    for (let i = 0; i + 1 < run.length; i += 1) {
+      const gram = run.slice(i, i + 2);
+      if (!seen.has(gram)) {
+        seen.add(gram);
+        grams.push(gram);
+      }
+    }
+  }
+  return grams;
+}
+
 function listTraceJsonFiles(dir) {
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
@@ -745,6 +778,33 @@ export class ProjectMemoryStore {
             const coverage = hits / candTokens.length;
             if (hits >= minHits && coverage >= 0.25) {
               scores.set(tid, (scores.get(tid) || 0) + hits * 2.0);
+            }
+          }
+        }
+
+        // --- CJK natural-language queries ---------------------------------
+        // SQLite FTS5 (unicode61) treats a whole CJK run as ONE token, so a
+        // Chinese question can never match the indexed sentence: the query
+        // token "汇率表定义在哪个文件" is a single token, while the index holds
+        // "headless 结算取汇率时，缓存里没有这个币对就会抛 KeyError" as one
+        // token too. The FTS path therefore yields nothing for CJK queries.
+        //
+        // Fallback: score the stored playbooks by character-bigram coverage.
+        // Bigrams are language agnostic and work on the raw payload, so no
+        // re-index of existing stores is required.
+        const cjkGrams = cjkBigrams(queryText);
+        if (cjkGrams.length > 0) {
+          const need = Math.max(2, Math.ceil(cjkGrams.length * 0.15));
+          const rows = db.prepare("SELECT trace_id, payload_json FROM playbooks").all();
+          for (const row of rows) {
+            const payload = String(row.payload_json || "").toLowerCase();
+            if (!payload) continue;
+            let hits = 0;
+            for (const gram of cjkGrams) {
+              if (payload.includes(gram)) hits += 1;
+            }
+            if (hits >= need) {
+              scores.set(row.trace_id, (scores.get(row.trace_id) || 0) + hits * 1.5);
             }
           }
         }

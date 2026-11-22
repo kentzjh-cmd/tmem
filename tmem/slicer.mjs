@@ -243,6 +243,10 @@ export function getGitGroundTruth(workspaceRoot, targetFiles = null) {
 
   const statusRes = runGitSafe(["status", "--porcelain"], ws);
   const statusOut = statusRes.ok ? statusRes.stdout : "";
+  // A dirty worktree means the porcelain entries are *uncommitted* changes. They may
+  // belong to an earlier session that never committed, so callers must not treat the
+  // whole dirty set as this session's edits.
+  const worktreeDirty = Boolean(statusOut.trim());
 
   if (statusRes.ok && statusOut.trim()) {
     for (const line of statusOut.split(/\r?\n/)) {
@@ -328,7 +332,7 @@ export function getGitGroundTruth(workspaceRoot, targetFiles = null) {
     }
   }
 
-  return { commitHash, modifiedFiles, fileSymbols, commitSubject };
+  return { commitHash, modifiedFiles, fileSymbols, commitSubject, worktreeDirty };
 }
 
 export function getGitDiffPatch(workspaceRoot, targetFiles = null) {
@@ -693,12 +697,19 @@ export class BackwardTraceSlicer {
       modifiedFiles: gitFiles,
       fileSymbols: gitSymbols,
       commitSubject,
+      worktreeDirty,
     } = useGitGroundTruth
       ? getGitGroundTruth(
           session.workspace_root,
           sessionMutatedFiles.size > 0 ? sessionMutatedFiles : null
         )
-      : { commitHash: null, modifiedFiles: new Set(), fileSymbols: {}, commitSubject: null };
+      : {
+          commitHash: null,
+          modifiedFiles: new Set(),
+          fileSymbols: {},
+          commitSubject: null,
+          worktreeDirty: false,
+        };
 
     const ws = path.resolve(session.workspace_root);
     let effectiveFiles = new Set();
@@ -720,8 +731,21 @@ export class BackwardTraceSlicer {
       if (effectiveFiles.size === 0) {
         effectiveFiles = new Set(sessionMutatedFiles);
       }
-    } else {
+    } else if (gitFiles.size > 0 && !worktreeDirty) {
+      // Clean worktree: git ground truth comes from the session's own last commit,
+      // so it is already session-scoped.
       effectiveFiles = new Set(gitFiles);
+    } else {
+      // The worktree is dirty but this span carries no recognized change action.
+      // Falling back to the whole dirty set would attribute a previous session's
+      // uncommitted edits to this session (cross-session leakage), so restrict
+      // attribution to files this span actually referenced.
+      effectiveFiles = new Set();
+      for (const a of rawActions) {
+        if (a.target_file && gitFiles.has(a.target_file)) {
+          effectiveFiles.add(a.target_file);
+        }
+      }
     }
 
     const candidateReadFiles = new Set();

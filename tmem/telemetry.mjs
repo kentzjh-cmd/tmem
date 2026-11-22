@@ -61,11 +61,14 @@ export function computeTelemetrySummary(workspaceRoot) {
   let l1AdoptedEdit = 0;
   let l1InspectedOnly = 0;
   let l1Ignored = 0;
+  const l2InjectionSources = {};
 
   for (const ev of events) {
     const etype = ev.event;
     if (etype === "l2_injected") {
       l2Injections += 1;
+      const src = String(ev.source || "unknown");
+      l2InjectionSources[src] = (l2InjectionSources[src] || 0) + 1;
     } else if (etype === "l2_outcome") {
       if (ev.resolved) l2ResolvedGreen += 1;
       else l2Unresolved += 1;
@@ -88,6 +91,7 @@ export function computeTelemetrySummary(workspaceRoot) {
   return {
     total_events: events.length,
     l2_injections: l2Injections,
+    l2_injection_sources: l2InjectionSources,
     l2_resolved_green: l2ResolvedGreen,
     l2_unresolved: l2Unresolved,
     l2_resolution_rate:

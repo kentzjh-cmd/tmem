@@ -9,13 +9,44 @@
 
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import path, { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 export const name = "tmem";
 
 const SELF_DIR = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * Locate the installed tmem package root through the `tmem` CLI on PATH.
+ *
+ * A standalone copy of this plugin — the file `tmem init` writes into
+ * `<workspace>/.dsh/plugins/` — has no sibling `hooks/` and no `cli.mjs`, so
+ * the in-process runtime cannot be resolved from the module's own location.
+ * The installed package is still reachable: resolving the CLI's realpath
+ * yields either `<root>/tmem/cli.mjs` (npm symlink) or `<root>/tmem`
+ * (directory), from which `<root>` follows. Without this, the standalone copy
+ * silently degrades to the CLI fallback: the hook keeps working, but the
+ * model-facing tools (`tmem_search`, `tmem_expand`) and the tmem system
+ * prompt section are never registered.
+ *
+ * @returns The package root (the directory that contains `tmem/`), or null.
+ */
+export function resolveTmemRootFromCli() {
+  const dirs = (process.env.PATH || "").split(path.delimiter).filter(Boolean);
+  for (const dir of dirs) {
+    let real;
+    try {
+      real = realpathSync(join(dir, "tmem"));
+    } catch (_err) {
+      continue;
+    }
+    if (real.endsWith(`${path.sep}cli.mjs`)) return resolve(real, "..", "..");
+    if (existsSync(join(real, "cli.mjs"))) return resolve(real, "..");
+    if (existsSync(join(real, "tmem", "cli.mjs"))) return resolve(real);
+  }
+  return null;
+}
 
 function resolveDefaultTmemRoot(fallbackDir) {
   if (existsSync(join(SELF_DIR, "hooks", "dsh.mjs"))) {
@@ -29,6 +60,8 @@ function resolveDefaultTmemRoot(fallbackDir) {
   if (existsSync(join(twoUp, "tmem", "cli.mjs"))) {
     return twoUp;
   }
+  const fromCli = resolveTmemRootFromCli();
+  if (fromCli) return fromCli;
   return resolve(fallbackDir || process.cwd());
 }
 
@@ -97,6 +130,17 @@ async function loadInProcessRuntime(tmemRoot) {
       join(resolve(root), "tmem", "hooks", "index.mjs"),
       join(resolve(root), "tmem", "hooks", "dsh.mjs"),
       join(resolve(root), "tmem", "cli.mjs"),
+    ]);
+  }
+  // 2b. Installed package reached through the `tmem` CLI on PATH. This is what
+  // lets the standalone copy written by `tmem init` resolve the real package
+  // instead of degrading to the CLI fallback (which registers no tools).
+  const cliRoot = resolveTmemRootFromCli();
+  if (cliRoot) {
+    candidatePairs.push([
+      join(cliRoot, "tmem", "hooks", "index.mjs"),
+      join(cliRoot, "tmem", "hooks", "dsh.mjs"),
+      join(cliRoot, "tmem", "cli.mjs"),
     ]);
   }
 

@@ -564,7 +564,19 @@ export class DshAdapter extends AgentAdapter {
     }
     if (candidates.length === 0) return null;
 
-    candidates.sort((a, b) => {
+    // DSH encodes the workspace path into the session directory name, e.g.
+    // /home/kent/e2e/ledger-svc -> "--home-kent-e2e-ledger-svc--". Prefer the
+    // transcripts of THIS workspace: picking the globally newest transcript can
+    // hand another workspace's session to this workspace's capture.
+    const encodedWs = `--${ws.replace(/^\/+|\/+$/g, "").replace(/[\\/]/g, "-")}--`;
+    const ownWorkspace = [];
+    const foreign = [];
+    for (const cand of candidates) {
+      (cand.includes(encodedWs) ? ownWorkspace : foreign).push(cand);
+    }
+    const pool = ownWorkspace.length > 0 ? ownWorkspace : candidates;
+
+    pool.sort((a, b) => {
       const sa = statSync(a);
       const sb = statSync(b);
       if (sb.mtimeMs !== sa.mtimeMs) return sb.mtimeMs - sa.mtimeMs;
@@ -577,7 +589,7 @@ export class DshAdapter extends AgentAdapter {
       };
       return prio(b) - prio(a);
     });
-    return candidates[0];
+    return pool[0];
   }
 }
 
