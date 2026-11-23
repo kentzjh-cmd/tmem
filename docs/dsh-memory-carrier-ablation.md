@@ -316,6 +316,21 @@ T3 的题目设计**必须满足**：答案不在任何提示词中、不在 fix
 
 > 配额是硬约束：执行前需确认模型 API 可用量，必要时按"先 pilot 后全量"分批推进。
 
+### 8.1 本阶段（Phase-1）的实际预算与范围
+
+本课题分两阶段落地，**Phase-1 已于 2026-11-23 冻结预注册并开始执行**：
+
+| 项 | Phase-1 实际 | 说明 |
+| :--- | :--- | :--- |
+| 臂 | A1 / A2 / B1 / B2 / C（5 臂） | §2 的全部五臂 |
+| 场景 | 知识探针（对应 T3 的"知识检索问答"） | 答案只存在于记忆载体中，逐臂逐字同题 |
+| 变体 | `free`（允许查阅记忆）+ `zero`（禁止读取） | `free` 为主判据，`zero` 单独衡量"注入即得" |
+| 重复 | 每臂每变体 3 次 | §2.2 的最低要求 |
+| 会话数 | 5 × 2 × 3 = 30（另加 2 场播种会话 + 5 场挂载自检） | 约 1.2 小时模型时间 |
+| 执行门槛 | CA-5（前置）/ CA-1 / CA-1b / CA-4 / CA-E1 | **CA-2 / CA-3 / CA-6–CA-9 本阶段不执行**，理由见 §6 的 oracle |
+
+**为什么 Phase-1 只做知识探针**：CA-2（复发率）与 CA-3（L1 采纳精确率）需要 T1/T2 场景（跨位置复现错误、耦合改动）与额外的标注口径，CA-6–CA-9 需要可复现的压缩触发机制（`compaction_committed` + 非空 `shadowedSeqs` 校验）。把这三类指标与"载体效率"混在一轮里跑，会让"可测性不足"和"效应不存在"两种失败无法区分。因此 Phase-1 只交付**成本主判据 + 效果可得性**，压缩专项与复发率专项留待 Phase-2（前置条件：可复现的压缩触发机制落地）。
+
 ---
 
 ## 9. 产出物
@@ -325,6 +340,27 @@ T3 的题目设计**必须满足**：答案不在任何提示词中、不在 fix
 3. `oracle/ground_truth.yml` 的 `carrier_facts` 段 —— 事实集合与载体等价性清单；
 4. 原始 transcript 与每臂工作区快照；
 5. **压缩专项**：T4 每臂的行为编码表（§3.4.2）、Cohen's κ、典型 transcript 片段、失败模式排序。
+
+### 9.1 Phase-1 的实际装置（已实现）
+
+| 脚本 | 作用 |
+| :--- | :--- |
+| `_harness/ablation/oracle_carrier_ablation.json` | **预注册**：提示词、关键点、阈值、臂定义、作废规则，执行前冻结 |
+| `_harness/ablation/build_arms.py` | 构建 5 臂 × 3 重复工作区、隔离 DSH_HOME、A2 机制消融补丁、PATH shim |
+| `_harness/ablation/render_prose_carrier.py` | 从 tmem 载体的 episode 记录**机械渲染**散文载体，并校验载体等价性（CA-5） |
+| `_harness/ablation/md_carrier_plugin.mjs` | B1 臂的散文注入器（**不含任何 tmem 代码、不注册任何工具**） |
+| `_harness/ablation/md_carrier_plugin.test.mjs` | 注入器的零成本烟雾测试（6 项） |
+| `_harness/ablation/mount_check.py` | 5 臂挂载自检：极短任务验证"该装的装了、不该装的没装" |
+| `_harness/ablation/run_ablation.py` | 逐（臂 × 重复 × 变体）跑探针会话 |
+| `_harness/ablation/score_carrier_ablation.py` | 机器判定：知识获取 token、命中率、载体混淆作废、门槛判定 |
+
+**关键设计决策（Phase-1）**：
+
+1. **单一事实源、双载体**：散文载体由 tmem 载体的 episode 记录机械渲染而来（`render_prose_carrier.py`），因此"事实集合等价"由构造保证、并可被 grep 独立复核——这是 CA-5 前置门能自动判定的前提。
+2. **A2 用机制消融而不是配置意图**：A2 臂挂载一份**打过补丁的 tmem 包副本**（PATH 上的 `tmem` 指向它），补丁只关掉"自动注入"这一行（`TMEM_ABLATE_NO_INJECT=1`），捕获、遥测、检索工具全部不变；补丁以 diff 形式留档。
+3. **对照臂真正无 tmem**：对照臂使用**独立的 DSH_HOME**（home patch 无 tmem 条目），且 PATH 前置 `blockbin` 把全局 `tmem` CLI 彻底挡住（协议陷阱 #2）。
+4. **载体混淆自动作废**：评分脚本机械判定——对照臂一旦出现 `tmem_search`/`tmem_expand` 调用或 `<tmem_speculative_memory>` 注入块，该样本直接作废并留痕，不允许人工挑选。
+5. **提示词载体中立**：AGENTS.md 在所有臂都被改写成**同一段载体中立指引**（安装器会给 tmem 臂追加一段 tmem 专属协议，若保留会给 A 臂额外优势）。提示词措辞也改为"本项目可用的项目记忆"，五臂逐字相同。
 
 ---
 
@@ -345,6 +381,9 @@ T3 的题目设计**必须满足**：答案不在任何提示词中、不在 fix
 - [x] **首个量化锚点已获得**（2026-11-22，Round 2 的 H6′）：注入式结构化载体 1 742 token vs 散文式 MD 臂翻文件 77 710 token（≈44.6×）；零读取条件下命中率 1.000 / 0.333 / 0.000（见 §3.1.0）
 - [x] **方法学教训已固化**：对照臂必须逐场断言（工具清单 + 注入块 + 载体目录），不能靠配置意图——Round 2 曾因被测 agent 自行 `tmem init` 而失效（见报告 §3.11 / N11）
 - [ ] **前置依赖：Round 3**——N12（工作区安装的插件半挂载）已修复，主数据集需用修复后的插件重生成（`bash _harness/run_round3.sh`，配额恢复后执行）
+- [x] **Phase-1 预注册已冻结**（2026-11-23）：提示词、关键点、CA-1/CA-1b/CA-4/CA-5/CA-E1 阈值、作废规则写入 `_harness/ablation/oracle_carrier_ablation.json`，**在本次课题的任何一次模型调用之前**冻结
+- [x] **Phase-1 装置已实现**（2026-11-23）：`build_arms.py` / `render_prose_carrier.py` / `md_carrier_plugin.mjs` / `run_ablation.py` / `score_carrier_ablation.py` / `mount_check.py`（见 §9.1）
+- [x] **散文注入器零成本烟雾测试通过**（6/6，`node md_carrier_plugin.test.mjs`）
 - [ ] 探针题目与事实集合标注（`carrier_facts`，含压缩专项的"存活事实"清单）
 - [ ] 压缩触发机制与可复现阈值（T4）
 - [ ] 行为编码表试标 + Cohen's κ 校准
