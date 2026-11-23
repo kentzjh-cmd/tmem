@@ -28,6 +28,17 @@
 
 **Round 2（修复后复验，已完成）**：预注册门槛 **6 / 9 通过**（G1 / G6 / G7 未过，原因分别为"纯 Q&A 会话无可捕获动作"、"跨语言检索边界"、"探针关键点不具记忆专有性"，均为已知边界而非插件失败），其中 **G3 精度 0.796 → 0.846**（S2/S3/S4 三场均为 1.000）、**注入遥测 0 → 12**。**披露式追加测量 H6′ 的两个门槛全部通过**。详见 §3.12。
 
+**Round 3（用修复后的插件重生成主数据集，2026-11-23，已完成）**：预注册门槛 **7 / 9 通过**，比 Round 2 多一个通过，且**变化可归因**：
+
+- **G6 知识检索由 FAIL 转 PASS**（主判据 lookup 0.625 → **0.75**，越过 0.70 门槛）——归因明确指向上游提交 `8238202`（CJK 检索的 gram 阈值修正为 `min(gram 数, max(2, 15%))`，**2 字中文查询不再落空**），不是"重跑一次运气好"；
+- **G3 归因精度 0.846 → 0.908**；
+- G1 与 G7 **仍按预注册口径判负**（阈值与判定逻辑一字未改）；
+- **G9 首次判 FAIL、复算 PASS**：唯一脏文件是研究者自己在会话运行窗口内编辑的研究文档（非会话造成），提交后同脚本同阈值复算为空——两次结果都已披露；
+- **B 臂（加固装置）5 场全部 CLEAN**，home 层全局 patch 还原并与参考文件逐字一致；
+- **未完成**：H6′ 记忆专有探针在 23:10 被 429 配额触顶打断，**其门槛暂不出结论**（§3.13），续跑器将在 00:00 配额重置后自动补齐并复算。**§3.12 的 Round 2 H6′ 结果仍是当前唯一有效的 H6′ 证据。**
+
+详见 §3.13。
+
 **一句话结论**：tmem 在外部真实项目上**能稳定产出正确的工程记忆**（捕获、归因、错误签名、共变结构全部达标），**能在跨会话时把历史修复主动注入到新位置并被 agent 采纳**（H7 达成，且这是无插件臂无法复现的能力）；**"记忆被模型消费"这一跳的插件边际贡献，在预注册口径下未能测出**（探针关键点本就来自提示词与初始代码，不要求记忆），**Round 2 用另立的记忆专有探针把它测了出来**：禁止读取时 A 臂 1.000 / 无插件臂 0.333 / 空记忆臂 0.000，获取成本 **1 742 token vs 翻文件 77 710 token（≈44.6×）**。插件已被证明独占的能力是**自动注入**与**自动捕获**（见 §3.6 的事后更正与 §3.12）。
 
 **本次研究新发现并修复 5 个真实缺陷**：N1 中文自然语言 `tmem lookup` 完全失效（P1，修复前 0/8 命中，修复后 7/8）；N2 注入遥测盲区、N3 归因跨会话泄漏、N4 跨工作区 transcript 误取（均已修复并加回归测试）；**N12 工作区安装的插件"半挂载"**（自动注入有效，但 `tmem_search`/`tmem_expand` 永不注册，且工作区安装会覆盖全局完整安装——按官方文档安装的典型场景即受影响），已修复并有红/绿对照回归测试（全量测试 53 → **62 全绿**）。另记录 2 项**装置级缺陷**（N11 被测 agent 自行 `tmem init`、N13 装置脚本重复还原全局 patch）与 3 项已知边界（N8/N9/N10）。
@@ -526,6 +537,50 @@ EXP_ROOT=/home/kent/e2e/r3 bash /home/kent/e2e/_harness/run_round3.sh
 
 脚本首步是配额自检：若模型 API 仍返回 429，脚本会**立即中止并保留全部现状**（实测行为：`[round3] 模型 API 配额耗尽（429）——中止，等配额恢复后再跑`）。Round 3 完成后，本报告的 §3.1–§3.12 数字将整体以 Round 3 数据替换，Round 2 数据作为"修复前基线"保留。
 
+### 3.13 Round 3 最终结果（用修复后的插件重生成的主数据集）
+
+Round 3 于 2026-11-23 22:47 启动、23:16 结束，用**修复后的插件**（N12 修复 + 上游 `8238202` 的 CJK/anchor_recall/路径加固）重生成整份主数据集。装置、时间与 Round 2 完全一致，阈值与判定口径**一字未改**。
+
+#### 门槛判定（Round 3，7/9 通过）
+
+| 门槛 | Round 2 | **Round 3** | 变化与归因 |
+| :--- | :--- | :--- | :--- |
+| **G1** 捕获率 | FAIL 0.833 | **FAIL 0.833** | 同因：唯一漏掉的是纯 Q&A 场 S5（`skipped / no_effective_actions`） |
+| **G2** 多帧覆盖 | PASS 1.0 | **PASS 1.0** | — |
+| **G3** 归因正确性 | PASS recall 1.0 / precision 0.846 | **PASS recall 1.0 / precision 0.908** | 归因精确率提升（脏工作区收窄后，跨会话污染减少） |
+| **G4** 错误签名 | PASS 1.0 | **PASS 1.0** | — |
+| **G5** 共变结构 | PASS 1.0/1.0 | **PASS 1.0/1.0** | — |
+| **G6** 知识检索 | **FAIL** lookup 0.625 / search 0.750 | **PASS lookup 0.75 / search 0.625** | **本轮唯一的门槛级变化**：上游 `8238202` 把 CJK 检索的 gram 阈值修正为 `min(gram 数, max(2, 15%))`，**2 字中文查询不再落空**，主判据 lookup 从 0.625 升到 0.75 越过 0.70 门槛 |
+| **G7** 记忆消费 | FAIL | **FAIL** | 仍按预注册口径判负（G7 题目本就不要求记忆，见 §3.6 更正） |
+| **G8** 跨位置修复迁移 | PASS | **PASS** | `l2_injected` 遥测 11 次、L1 共变提示 6 条、修复在新位置被采纳 |
+| **G9** 环境隔离 | PASS | **PASS**（见下方披露） | 复算时唯一脏文件是研究者自己在运行窗口内编辑的文档，提交后复算为空 |
+
+> **G9 的一次自污染事件（披露）**：Round 3 的会话运行窗口内，我正在为载体消融课题撰写文档，`docs/dsh-memory-carrier-ablation.md` 处于 modified 状态，G9 的"仓库 tracked 无改动"检查因此**首次判为 FAIL**（脏文件清单里只有这一个文档，且不是任何会话造成的）。把该文档提交后**用同一脚本、同一阈值复算**，G9 变为 PASS（`repo_tracked_dirty=[]`、`repo_untracked=0`）。两次结果都记录在此：首次 FAIL / 复算 PASS，**阈值与判定逻辑未改**。
+
+#### B 臂（加固装置）：5 场全部 CLEAN
+
+| 场次 | 工具清单 | 注入块 | 判定 |
+| :--- | :--- | :--- | :--- |
+| B1_baseline_control | `[]` | 0 | CLEAN ✓ |
+| B5_recall_control_with_session | `[]` | 0 | CLEAN ✓ |
+| B2b_fix_control | `[]` | 0 | CLEAN ✓ |
+| H6_probe_b_zero | `[]` | 0 | CLEAN ✓ |
+| H6_probe_b_free | `[]` | 0 | CLEAN ✓ |
+
+装置收尾：`global cordis.patch.yml restored` + `verify: identical to reference ✓`（home 层 patch 与参考文件逐字一致）。运行期间 watcher 只记录装置自身的两次改动，**零意外写入**。
+
+#### 本轮未完成的部分（配额触顶，非方法失败）
+
+Round 3 进行到第 7 步（H6′ 记忆专有探针）时，模型 API 报 `429 已达到 Token Plan 用量上限`（23:10 起）。**A/C 臂的 4 场 H6′ 探针全部失败**（exit=1、无 transcript），因此 Round 3 的 H6′ 两个门槛当前是**无效数据下的 FAIL（全部 0.000），不构成结论**。
+
+处置：已部署 `_harness/resume_when_quota.sh`（每 10 分钟做一次最小配额探测；**配额于每日 00:00 重置**，探测器将在重置后数分钟内自动接上，重跑这 4 场 H6′ 探针并复算 Round 3 与消融课题的判定）。**本报告在 H6′ 数据补齐前，不对 Round 3 的 H6′ 门槛给出结论**；§3.12 的 Round 2 H6′ 结果（两门槛全 PASS）仍然是**当前唯一有效的 H6′ 证据**。
+
+#### Round 2 → Round 3 的净变化（结论层面）
+
+1. **N12 修复的正面证据**：Round 3 的 A 臂会话由**工作区副本**挂载（`tmem init` 写出的独立文件），修复后 `tmem_search`/`tmem_expand` **正常注册**（见 §3.12 的三向对照与本轮 A 臂的挂载审计 `mount=YES`），"注入照常但工具永不注册"的半挂载状态不再出现。
+2. **上游加固的正面证据**：G6 由 FAIL 转 PASS，归因清晰可指认（CJK 2 字查询的 gram 阈值修正），不是"重跑一次运气好"。
+3. **预注册门槛的结论没有被改动**：G1 与 G7 两次都以同一口径判负；G7 的"未测出边际贡献"仍由 §3.12 的 H6′ 承担。
+
 ---
 
 ## 4. 本次研究新发现的缺陷
@@ -619,6 +674,8 @@ tmem 的价值不应表述为"帮 agent 记住东西"——模型自己会写 `A
 6. **修复在 Round 2 复验中已取得可测量的效果**：会话级归因精度 **0.796 → 0.846**（同口径；S2/S3/S4 三场的 precision 均为 1.000，跨会话泄漏归零）；注入遥测 `l2_injections` **0 → 12**（Round 1 的盲区闭合）；G3/G4/G5/G8 均 PASS。
 7. **Round 2 已跑完**：预注册门槛 **6/9 通过**（G1/G6/G7 未过，原因分别是纯 Q&A 会话无可捕获动作、跨语言检索边界、关键点不具记忆专有性，均为已知边界而非插件失败）；**披露式追加测量 H6′ 的两个门槛全部通过**。
 8. **一项方法学结论值得单独记下**：本轮对照臂曾两次失效——一次是装置脚本在并发/中断下重复还原全局 patch（N13），一次是**被测 agent 自行执行 `tmem init` 把插件装回对照臂**（N11）。因此"无插件对照"必须逐场断言（工具清单 + 注入块），不能靠配置意图；Round 2 最终数据来自加固装置且 watcher 记录到运行期间零意外写入。
+9. **Round 3 用修复后的插件重生成主数据集：预注册门槛 7/9 通过**（Round 2 为 6/9）。唯一的门槛级变化是 **G6 由 FAIL 转 PASS**（lookup 0.625 → 0.75），归因指认到上游提交 `8238202` 的 CJK 2 字查询 gram 阈值修正；**G3 归因精度 0.846 → 0.908**；G1 与 G7 仍按原口径判负；B 臂 5 场全部 CLEAN。Round 3 的 H6′ 探针因 23:10 的 429 配额触顶被打断，**其门槛暂不出结论**（§3.13），续跑器在 00:00 配额重置后自动补齐。
+10. **课题化的第二阶段已经起跑**：载体消融课题（tmem 结构化记忆 vs 散文式 MD 记忆 vs 无记忆）已冻结预注册（提示词、关键点、阈值、作废规则）、建成 5 臂装置并通过挂载自检；首轮 7 场有效样本显示 tmem 自动注入臂命中率 1.000、按需检索臂（关闭自动注入的机制消融）命中率 0.667，剩余样本待配额恢复后补齐（[`docs/dsh-memory-carrier-ablation-report.md`](./dsh-memory-carrier-ablation-report.md)）。
 
 ---
 
@@ -686,6 +743,29 @@ python3 /home/kent/e2e/_harness/analyze_arm_contamination.py \
   /home/kent/e2e/r2/ledger-svc-control-c
 ```
 
+**Round 3（用修复后的插件重生成主数据集；一条命令完成整轮，含配额自检）**：
+
+```bash
+# 配额恢复后一键重跑整轮：配额自检 → 复位三工作区 → 以当前源码重装插件
+#   → A 臂 + S6b 受控重演 + C 臂 → 加固 B 臂 → H6′ 探针 → S7 → 机械判定 → 对照臂复核
+EXP_ROOT=/home/kent/e2e/r3 bash /home/kent/e2e/_harness/run_round3.sh
+# 产物：raw-r3/ + metrics-r3.json/.md + metrics-h6-r3.json/.md
+
+# 单独复算 Round 3 的判定（注意：必须显式给出 EXP_ROOT 与 E2E_RAW，
+# 否则评分脚本会回落到 Round 2 的 raw-r2 —— 复算时踩过这个坑）
+cd /home/kent/e2e/_harness
+EXP_ROOT=/home/kent/e2e/r3 E2E_RAW=/home/kent/e2e/_harness/raw-r3 \
+E2E_METRICS_JSON=metrics-r3.json E2E_METRICS_MD=metrics-r3.md \
+E2E_H6_JSON=metrics-h6-r3.json E2E_H6_MD=metrics-h6-r3.md \
+  bash run_scoring.sh
+
+# 配额触顶时的自动续跑（每 10 分钟探测一次；配额于每日 00:00 重置）
+setsid nohup bash /home/kent/e2e/_harness/resume_when_quota.sh \
+  > /home/kent/e2e/_harness/resume.log 2>&1 &
+```
+
+**载体消融课题（tmem 注入 vs 散文式 MD vs 无记忆）**：见 [`docs/dsh-memory-carrier-ablation-report.md`](./dsh-memory-carrier-ablation-report.md) §7 的完整清单（预注册 oracle、装置自检、建臂、执行与判定共 6 条命令）。
+
 ### 7.2 证据清单
 
 | 路径 | 内容 |
@@ -705,6 +785,13 @@ python3 /home/kent/e2e/_harness/analyze_arm_contamination.py \
 | `/home/kent/e2e/_harness/raw-r2-postfix/` | N12 修复后的 A 臂探针重跑（模型调用因 429 中断，仅留挂载层证据） |
 | `/home/kent/e2e/_harness/raw/<scene>/` | **Round 1** 每场 stdout / stderr / capture.json / scene.json |
 | `/home/kent/e2e/_harness/raw-r2/<scene>/` | **Round 2** 每场原始输出 |
+| `/home/kent/e2e/_harness/run_round3.sh` / `resume_when_quota.sh` | **Round 3** 一键重跑脚本；配额触顶时的自动续跑器 |
+| `/home/kent/e2e/_harness/raw-r3/<scene>/` | **Round 3** 每场原始输出 |
+| `/home/kent/e2e/_harness/metrics-r3.json` / `metrics-r3.md` | **Round 3** 判定结果（7/9） |
+| `/home/kent/e2e/_harness/metrics-h6-r3.json` / `metrics-h6-r3.md` | Round 3 的 H6′ 判定（探针被 429 打断，**当前无效**） |
+| `/home/kent/e2e/_harness/ablation/` | **载体消融课题装置**：预注册 oracle、建臂、散文渲染器、注入器及其烟雾测试、挂载自检、执行器、判定器 |
+| `/home/kent/e2e/abl/` | 消融课题的实验现场：seed 播种工作区、5 臂 × 3 重复、隔离 DSH_HOME、A2 补丁副本、原始会话 |
+| `/home/kent/e2e/_harness/metrics-carrier-ablation.json` | 消融课题的机器可读判定 |
 | `/home/kent/e2e/_harness/metrics.json` / `metrics-r1-revised.json` | Round 1 判定结果（原口径 / 新口径回算） |
 | `/home/kent/e2e/_harness/metrics-r2.json` / `metrics-r2.md` | **Round 2** 判定结果 |
 | `/home/kent/e2e/ledger-svc/.tmem/` | Round 1 记忆库（14 traces / 20 episodes / 14 raw） |
