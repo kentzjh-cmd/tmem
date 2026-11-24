@@ -1,0 +1,41 @@
+# Isolation image for the carrier-ablation study (phase-1b).
+#
+# WHY A CONTAINER
+# ---------------
+# The phase-1 run was contaminated: three control-arm sessions walked out of
+# their workspace and read another experiment's memory store. Permissions on the
+# host do NOT stop that -- the agent runs as the same uid as the harness, so it
+# can chmod anything it owns. The only structural fix available without root is
+# to give every session its own mount namespace whose only visible paths are
+# the ones the protocol allows.
+#
+# The image therefore contains:
+#   * a shell + the usual CLI tools (an agent that may run commands should find
+#     a normal environment, otherwise the arms would differ in more than the
+#     carrier),
+#   * python3 + pytest (the fixture is a python project),
+#   * a non-root user (uid 1000) so files written into the mounted workspace
+#     stay owned by the harness user.
+#
+# Node and the tmem / dsh packages are NOT baked in: they are bind-mounted from
+# the host at their original absolute paths, so every in-container path stays
+# byte-identical to the path recorded in the patch files.
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    TZ=Asia/Shanghai \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        git \
+        less \
+        procps \
+        python3 \
+        python3-pytest \
+        tzdata \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /work
+CMD ["/bin/bash"]

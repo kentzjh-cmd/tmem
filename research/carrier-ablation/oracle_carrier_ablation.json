@@ -1,0 +1,208 @@
+{
+  "study": "carrier-ablation",
+  "title": "记忆载体消融与量化：tmem 结构化记忆 vs 散文式 MD 记忆 vs 无记忆",
+  "protocol_doc": "docs/dsh-memory-carrier-ablation.md",
+  "status": "PRE-REGISTERED — thresholds and prompts frozen before any session of this study was executed",
+  "frozen_at": "2026-11-23T22:53:27+08:00",
+  "frozen_by": "independent E2E validation (DSH orchestration)",
+  "amended_at": "2026-11-23T23:00:00+08:00",
+  "amendment_note": "v1.1 —— 修订发生在本课题第一次模型调用之前（此时只跑过 2 场播种会话与 5 场挂载自检）。修订理由逐条列在 amendments 中；被替换的 v1.0 条目原文保留，便于审计。",
+
+  "amendments": [
+    {
+      "id": "A1-keypoints",
+      "v1_0": "Q1=[money.py, settlement.py]（有序）；Q2=[collect-only]；Q3=[a33c3c8]",
+      "v1_1": "Q1=[money.py, import_rows.py, settlement.py]（有序）；Q2=[collect-only]；Q3=[ensure_usable_price]",
+      "reason": "关键点必须指向**本次播种实际产生的载体内容**。本课题的播种会话（与 Round 2 的播种不同）产出的修复链是 money.py → import_rows.py → settlement.py，且该次会话没有在记忆里留下 commit 引用（Round 2 的 a33c3c8 不存在），因此第三问改为『修好后新增的统一价格校验入口函数叫什么』，其答案 ensure_usable_price 同样只存在于记忆中。",
+      "exclusivity_check": "对原始 fixture（git HEAD）全库 grep：ensure_usable_price 命中 0、collect-only 命中 0；三个文件名的『修复顺序』在原始代码中不存在（修复未应用）。"
+    },
+    {
+      "id": "A2-CA-E1-variant",
+      "v1_0": "CA-E1 在 free 变体上判定",
+      "v1_1": "CA-E1 改在 zero 变体上判定；free 变体的命中率只作描述性统计",
+      "reason": "free 变体允许 agent 读代码，而代码本身就含部分答案线索 → 会把『载体差异』与『代码可读性』混在一起。zero 变体禁止读文件与跑命令，是唯一记忆专有的测量口径；Round 2 的 H6′ 也是同时报告两个变体并据此分离。",
+      "impact": "只改判定所用变体，不改阈值数值（0.30 / 严格大于 等），也不新增事后门槛。"
+    },
+    {
+      "id": "A3-workspace-baseline",
+      "v1_0": "（未规定）",
+      "v1_1": "所有臂的工作区一律复位到**原始 fixture**（`git checkout -- .`），并删除播种会话中 agent 自写的笔记（MEMORY.md 等）",
+      "reason": "协议陷阱 #1：agent 自记笔记会遮蔽载体差异（本次播种中 agent 自写的 MEMORY.md 确实含 Q1 的关键点）。同时把代码复位可保证『读代码外得答案』这条路径在所有臂上等价（要么都泄漏、要么都不泄漏）。"
+    }
+  ],
+
+  "discipline": [
+    "本文件在本次课题的任何一次模型调用之前写定；执行后不得修改阈值。",
+    "若事后需要修订，必须新建一个版本号并同时保留旧阈值与旧结果。",
+    "所有重复样本都进入统计，不允许剔除离群值（除非该样本被装置判为作废，作废理由必须机器可读）。"
+  ],
+
+  "factors": {
+    "carrier": ["tmem_structured", "prose_md"],
+    "access": ["auto_injection", "on_demand"],
+    "memory_presence": ["present", "absent"]
+  },
+
+  "arms": {
+    "A1": {
+      "carrier": "tmem_structured",
+      "access": "auto_injection",
+      "mount": "workspace patch (tmem init) — 官方工作区安装方式",
+      "dsh_home": "homes/plain (home patch 无 tmem 条目)",
+      "path": "正常 PATH（可调用 tmem CLI）",
+      "expect_injection": true
+    },
+    "A2": {
+      "carrier": "tmem_structured",
+      "access": "on_demand",
+      "mount": "workspace patch (tmem init) + PATH 指向打过补丁的 tmem 包副本",
+      "mechanism_ablation": {
+        "file": "tmem-a2/tmem/hooks/dsh.mjs",
+        "patch": "if (preBlocks.length > 0 && process.env.TMEM_ABLATE_NO_INJECT !== \"1\")",
+        "env": "TMEM_ABLATE_NO_INJECT=1",
+        "intent": "只关闭『自动注入』这一条机制；捕获、遥测、检索工具全部保持不变"
+      },
+      "expect_injection": false
+    },
+    "B1": {
+      "carrier": "prose_md",
+      "access": "auto_injection",
+      "mount": "workspace patch (md-carrier 插件) — 注入 MEMORY.md 全文，无检索能力",
+      "dsh_home": "homes/md",
+      "path": "blockbin 置前（tmem CLI 不可用）",
+      "expect_injection": true
+    },
+    "B2": {
+      "carrier": "prose_md",
+      "access": "on_demand",
+      "mount": "无插件；MEMORY.md 只是工作区里的一个文件",
+      "dsh_home": "homes/plain",
+      "path": "blockbin 置前（tmem CLI 不可用）",
+      "expect_injection": false
+    },
+    "C": {
+      "carrier": "none",
+      "access": "none",
+      "mount": "无插件、无 MEMORY.md、无 .tmem",
+      "dsh_home": "homes/plain",
+      "path": "blockbin 置前（tmem CLI 不可用）",
+      "expect_injection": false
+    }
+  },
+
+  "reps_per_arm": 3,
+  "variants": ["free", "zero"],
+  "primary_variant": "free",
+
+  "prompts": {
+    "free": "你可以查阅本项目可用的项目记忆来回答问题，但不要运行任何命令。请回答三个问题：1) 修复『导入表格价格是 nan 导致 ValueError: cannot convert NaN to integer』这个坑时，你依次修改了哪几个文件、按什么顺序？2) 修完之后你用什么命令做的验证？3) 修好后项目里新增的那个『统一校验价格是否可用』的入口函数叫什么名字？",
+    "zero": "不要读任何文件，也不要运行任何命令。只根据你当前上下文里已有的信息回答三个问题：1) 修复『导入表格价格是 nan 导致 ValueError: cannot convert NaN to integer』这个坑时，你依次修改了哪几个文件、按什么顺序？2) 修完之后你用什么命令做的验证？3) 修好后项目里新增的那个『统一校验价格是否可用』的入口函数叫什么名字？"
+  },
+
+  "keypoints": [
+    {
+      "id": "Q1_file_order",
+      "groups": [["money.py"], ["import_rows.py"], ["settlement.py"]],
+      "ordered": true,
+      "why": "修复顺序只存在于 episode 的 L2 causal repair 链里；原始 fixture 里三个文件都存在，但『本次修复改了哪几个、按什么顺序』只有记忆里有"
+    },
+    {
+      "id": "Q2_verify_cmd",
+      "groups": [["collect-only"]],
+      "ordered": false,
+      "why": "带 --collect-only 的验证命令只在 episode 的 verification_cmds 里；原始 fixture 全库 grep 命中 0"
+    },
+    {
+      "id": "Q3_new_guard",
+      "groups": [["ensure_usable_price"]],
+      "ordered": false,
+      "why": "新增的统一价格校验入口函数名只存在于修复过程的记忆里；原始 fixture 全库 grep 命中 0"
+    }
+  ],
+
+  "metrics": {
+    "knowledge_tokens": "注入块 token + 工具调用输出 token（与 Round 2 的 score_h6.py 同一口径）",
+    "hit_rate": "3 个关键点问题中答对的比例；答对 = 该题全部关键点出现（Q1 还要求顺序正确）",
+    "aggregation": "每臂每变体 3 次重复取均值；同时报每次原值"
+  },
+
+  "descriptive_metrics": {
+    "note": "以下为描述性统计量，不构成门槛判定；用于解释 CA-1 的口径差异",
+    "injection_only_ratio": "mean(A1_free.injected_tokens) / mean(B2_free.knowledge_tokens) —— 只比较『注入式获取』与『翻文件获取』，不含 tmem 臂自身的额外读取",
+    "free_variant_total_ratio": "mean(A1_free.knowledge_tokens) / mean(B2_free.knowledge_tokens) —— CA-1 的同一比值，按协议口径把读取也计入知识获取成本"
+  },
+
+  "gates": {
+    "CA-5": {
+      "name": "载体等价性（前置门）",
+      "rule": "散文载体必须由 tmem 载体的同一批 episode 记录机械渲染而来，且每个关键点在两个载体中都可检出",
+      "threshold": "所有关键点 in_tmem_carrier AND in_md_carrier",
+      "on_fail": "全部结果作废",
+      "executed": true
+    },
+    "CA-1": {
+      "name": "成本优势（主判据）",
+      "rule": "A1（tmem 自动注入）的知识获取 token 均值 ≤ B2（散文 MD 按需读取）的 0.30 倍",
+      "threshold": "mean(A1_free.knowledge_tokens) <= 0.30 * mean(B2_free.knowledge_tokens)",
+      "executed": true
+    },
+    "CA-1b": {
+      "name": "成本优势（注入式 vs 散文全量注入）",
+      "rule": "A1 的知识获取 token 均值 ≤ B1 的 0.30 倍（同为自动注入，只比载体）",
+      "threshold": "mean(A1_free.knowledge_tokens) <= 0.30 * mean(B1_free.knowledge_tokens)",
+      "executed": true
+    },
+    "CA-4": {
+      "name": "获取方式效应可分离",
+      "rule": "同载体下，自动注入臂的知识获取 token 更低且命中率不劣",
+      "threshold": "A1_free.knowledge_tokens <= A2_free.knowledge_tokens AND B1_free.knowledge_tokens <= B2_free.knowledge_tokens AND A1_free.hit_rate >= A2_free.hit_rate AND B1_free.hit_rate >= B2_free.hit_rate",
+      "executed": true
+    },
+    "CA-E1": {
+      "name": "效果优势（记忆专有事实）",
+      "rule": "A1 的命中率显著高于 C（无记忆），且不劣于 B2；在 zero 变体（禁止读文件与跑命令）上判定——这是唯一不存在『读代码外得答案』的变体",
+      "threshold": "mean(A1_zero.hit_rate) > mean(C_zero.hit_rate) AND mean(A1_zero.hit_rate) >= mean(B2_zero.hit_rate)",
+      "executed": true,
+      "amended_by": "A2-CA-E1-variant"
+    },
+    "CA-2": {
+      "name": "同签名复发率",
+      "rule": "需要 T1 场景（本课题第二阶段）",
+      "threshold": "未预注册具体阈值",
+      "executed": false,
+      "reason": "本阶段只执行知识探针（成本与可得性）；复发率需要跨位置复现错误的专门场景与错误签名序列判定"
+    },
+    "CA-3": {
+      "name": "L1 共变提示采纳精确率",
+      "rule": "需要 T2 场景（耦合改动）",
+      "threshold": "未预注册具体阈值",
+      "executed": false,
+      "reason": "同 CA-2，需专门场景与 L1 提示采纳标注"
+    },
+    "CA-6": {
+      "name": "压缩后回收",
+      "rule": "需要 C1–C4 压缩臂",
+      "threshold": "未预注册具体阈值",
+      "executed": false,
+      "reason": "需要可复现的压缩触发机制与 compaction_committed 事件校验；本阶段不执行"
+    },
+    "CA-7": { "executed": false, "reason": "同 CA-6" },
+    "CA-8": { "executed": false, "reason": "同 CA-6" },
+    "CA-9": { "executed": false, "reason": "同 CA-6" }
+  },
+
+  "invalidity_rules": [
+    "某样本的 transcript 缺失或为空 → 该样本作废，理由记入 metrics 的 invalid 字段",
+    "对照臂（B1/B2/C）的会话中出现 tmem_search/tmem_expand 工具调用 → 该样本作废（载体混淆）",
+    "B1/B2/C 的会话中出现 <tmem_speculative_memory> 注入块 → 该样本作废（载体混淆）",
+    "A1/A2 的会话中未出现任何 tmem 注入/工具证据 → 该样本作废（挂载未生效）",
+    "以上作废判定必须在打分脚本中自动完成并留痕，不允许人工挑选"
+  ],
+
+  "known_confounds": [
+    "A 臂 agent 通过插件的系统提示段知道 tmem 工具存在；散文臂 agent 通过 AGENTS.md 的载体中立指引知道 MEMORY.md 存在——两者对称地知道『有载体可用』。",
+    "A2 臂使用打过补丁的 tmem 包副本（仅关闭自动注入），与 A1 臂不是逐字节相同的被测系统；差异只有一行且已作为 diff 留档。",
+    "本课题的提示词与 Round 2 的 H6′ 措辞略有不同（改为载体中立措辞），因此跨轮次的命中率不可直接比较，轮次内比较有效。",
+    "散文载体由 episode 记录机械渲染，其表达密度低于 tmem 的结构化字段；这本身就是『载体』的一部分差异，不是缺陷。"
+  ]
+}

@@ -361,6 +361,22 @@ T3 的题目设计**必须满足**：答案不在任何提示词中、不在 fix
 3. **对照臂真正无 tmem**：对照臂使用**独立的 DSH_HOME**（home patch 无 tmem 条目），且 PATH 前置 `blockbin` 把全局 `tmem` CLI 彻底挡住（协议陷阱 #2）。
 4. **载体混淆自动作废**：评分脚本机械判定——对照臂一旦出现 `tmem_search`/`tmem_expand` 调用或 `<tmem_speculative_memory>` 注入块，该样本直接作废并留痕，不允许人工挑选。
 5. **提示词载体中立**：AGENTS.md 在所有臂都被改写成**同一段载体中立指引**（安装器会给 tmem 臂追加一段 tmem 专属协议，若保留会给 A 臂额外优势）。提示词措辞也改为"本项目可用的项目记忆"，五臂逐字相同。
+6. **知识获取 token 的构成被拆开报告（描述性，不参与门槛）**：`free` 变体里 agent 可能去读源码，那部分属于**解题成本**而不是知识获取成本。判定器按 `callId` 精确把每个工具结果归属到三类——`carrier`（读记忆载体 / 调 tmem 检索）、`code`（读源码与测试）、`other`（其余工具输出，如命令回显），并作为描述性统计输出。该拆分**不改变任何门槛**；门槛仍用协议定义的"注入块 + 全部工具输出"口径。
+
+---
+
+## 9.2 Phase-1b 的实际装置（容器隔离版）
+
+Phase-1b 在 Phase-1 的五臂、两个变体、同一套提示词与关键点之上，**只替换执行与隔离装置**（见 §12）。新增/替换的脚本：
+
+| 脚本 | 作用 |
+| :--- | :--- |
+| `_harness/ablation/oracle_carrier_ablation_v1.2.json` | **预注册 v1.2**：在 phase-1b 第一次模型调用之前写定四条装置修订（隔离 / 注入节奏 / 工作区卫生 / 越界作废规则），**阈值与提示词与 v1.1 逐字相同**（脚本断言过） |
+| `_harness/ablation/Dockerfile.abl` | 隔离镜像 `tmem-abl:iso`：ubuntu:22.04 + git/python3/pytest/ca-certificates，非 root 运行 |
+| `_harness/ablation/run_phase1b.py` | Phase-1b 编排器：建臂（工作区卫生 + 关键点扫描）、每会话独立 DSH_HOME、逐场容器化执行、429 重试、`--resume` |
+| `_harness/ablation/score_carrier_ablation.py` | 判定器（v1.2）：新增**越界读取自动作废**（A7）、`--oracle` / `--out-json` / `--out-md` 参数 |
+
+执行根目录 `/home/kent/abl2`（不在 `/home/kent/e2e` 之下，便于用挂载白名单整体遮蔽），证据与机器判定落在 `/home/kent/e2e/_harness/abl-out/`。
 
 ---
 
@@ -384,14 +400,92 @@ T3 的题目设计**必须满足**：答案不在任何提示词中、不在 fix
 - [x] **Phase-1 预注册已冻结**（2026-11-23）：提示词、关键点、CA-1/CA-1b/CA-4/CA-5/CA-E1 阈值、作废规则写入 `_harness/ablation/oracle_carrier_ablation.json`，**在本次课题的任何一次模型调用之前**冻结
 - [x] **Phase-1 装置已实现**（2026-11-23）：`build_arms.py` / `render_prose_carrier.py` / `md_carrier_plugin.mjs` / `run_ablation.py` / `score_carrier_ablation.py` / `mount_check.py`（见 §9.1）
 - [x] **散文注入器零成本烟雾测试通过**（6/6，`node md_carrier_plugin.test.mjs`）
+- [x] **Phase-1 执行完毕（30 场零作废）→ 事后审计发现三处装置缺陷**（D1 越界读取 / D2 注入节奏不等价 / D3 `.pyc` 残留），Phase-1 数据标记为 QUARANTINED，保留披露但不用于门槛判定（见 §12.1）
+- [x] **oracle v1.2 冻结**（2026-11-24 07:14:52，Phase-1b 第一次模型调用之前）：四条装置修订（A4 容器隔离 / A5 注入节奏对齐 / A6 工作区卫生 / A7 越界读取自动作废），**阈值与提示词逐字未变**（构建时断言）
+- [x] **Phase-1b 装置已实现并自检通过**（2026-11-24 07:34）：容器内探针 5/5（敏感路径不可见）、五臂挂载自检 5/5、注入器回归测试 9/9（含 D2 缺陷用例）
 - [ ] 探针题目与事实集合标注（`carrier_facts`，含压缩专项的"存活事实"清单）
 - [ ] 压缩触发机制与可复现阈值（T4）
 - [ ] 行为编码表试标 + Cohen's κ 校准
-- [ ] 载体等价性核对清单（CA-5 前置门）
-- [ ] pilot（每臂 1 次，验证可测性与噪声水平）
-- [ ] 全量执行（每臂 ≥ 3 次重复）
-- [ ] 判定与报告
+- [x] 载体等价性核对清单（CA-5 前置门）—— 4 个 episode → 6 283 字节散文，3 个关键点在两载体中全部可检出
+- [x] pilot（每臂 1 次，验证可测性与噪声水平）—— 随 Phase-1b 的 30 场一起完成
+- [x] **Phase-1b 全量执行完毕**（2026-11-24 20:0x–20:3x）：30 场全部跑过，**29 场有效**（1 场按冻结的 A7 规则机械作废），门槛 **2 / 5 通过**（CA-5 / CA-E1 通过；CA-1 / CA-1b / CA-4 未通过）
+- [x] 判定与报告（`docs/dsh-memory-carrier-ablation-report.md` §4–§6；机器判定 `/home/kent/e2e/_harness/abl-out/metrics-carrier-ablation-v1.2.json`）
 
 > **本课题由用户于 2026-11-22 明确要求立项**：后期测试中必须以研究课题的形式进行，**消融与量化明确到可证伪、可复算、可机器判定的程度**；其中点名要求包含"tmem 记忆注入 vs 散文式 MD 记忆 vs 无记忆"的对照，以及"token 减少"这类可量化指标。
 >
 > **Round 3 的依赖关系**：本课题的三臂都以"插件按官方方式安装"为前提，而该前提在 N12 修复前是**半挂载**的（模型拿不到 `tmem_search`/`tmem_expand`）。因此本课题的执行**必须以 Round 3 之后的数据为基线**，否则"按需检索"这一获取方式因子无法被正确操纵。
+
+---
+
+## 12. Phase-1b：装置修订与隔离重跑（oracle v1.2）
+
+### 12.1 为什么会有 Phase-1b
+
+Phase-1（2026-11-23 23:03–23:16）跑完 30 场、零作废，但**事后审计发现三处装置缺陷**。它们都不是"结果不好看"，而是会让门槛测到别的东西：
+
+| 缺陷 | 证据 | 后果 |
+| :--- | :--- | :--- |
+| **D1 同 UID 隔离不成立** | C 臂 3 场 `free` 会话越界读取 `/home/kent/e2e/ledger-svc/.tmem`（Round 2 记忆库）、`arms_manifest.json`、`metrics-carrier-ablation.md` | C 臂不再是"无记忆"基线；同一条通道对 A/B 臂同样开放 |
+| **D2 注入节奏不等价** | B1 三场 `free` 分别注入 **6 / 7 / 4** 份散文（39 779 / 46 409 / 26 519 字节），而 tmem 每次只注入 **1** 份（1 387 token） | CA-1b 名义上比"载体"，实际混入了"注入次数" |
+| **D3 工作区残留编译产物** | `src/ledger/__pycache__/*.pyc` 中可 grep 到 `ensure_usable_price`（Q3 的答案） | 控制臂理论上能从编译产物读出答案 |
+
+D1 的根因值得单独记住：**同一 UID 下 chmod 挡不住越权读取**（属主随时可以 `chmod` 回去），所以"隔离"必须是**挂载层面的不可见**，而不是"权限层面的不可读"。
+
+**处置**：Phase-1 的 30 场数据全部保留、全部披露，但在 oracle v1.2 的 `phases` 段被标记为 **QUARANTINED**，不用于门槛判定；门槛判定以 Phase-1b 数据为准。
+
+### 12.2 v1.2 的四条修订（阈值一字未改）
+
+修订在 **Phase-1b 的第一次模型调用之前**写定（2026-11-24 07:14:52+08:00），且只涉及装置与作废规则：
+
+| 修订 | 内容 | 为什么 |
+| :--- | :--- | :--- |
+| **A4 结构性隔离** | 每个 (臂, 重复, 变体) 会话跑在独立容器 `tmem-abl:iso` 中，容器文件系统只有白名单：`/work`（本臂工作区）、`/dsh-home`（本会话独占 DSH_HOME，目录名带 4 字节随机后缀）、`/home/kent/.nvm`（node + dsh）、`/archive/tmem`（去掉 docs 的净化副本）、本臂 PATH shim 目录；`/home/kent/e2e`、`/home/kent/.dsh`、`/archive/tmem/docs` 与其它臂**在容器内不存在** | D1：只有挂载层面的不可见才是结构性隔离 |
+| **A5 注入节奏对齐** | 散文注入器改为与 tmem 相同的节奏：**每个不同的用户轮注入一次**（会话级守卫，按 session id 记账）；"消息列表已含"降为第二道守卫 | D2：CA-1b 要比载体，必须先让两侧的注入节奏等价 |
+| **A6 工作区卫生** | 复位改为 `git checkout -- .` + `git clean -fdx -e .tmem`（清掉未跟踪的编译产物），并对每个工作区做**机器可读的关键点扫描**（控制臂命中数必须为 0） | D3：`.pyc` 里藏着答案 |
+| **A7 越界读取自动作废** | 会话中任何指向白名单之外的路径的读取/列目录尝试 → 该样本作废，理由机器可读（`out_of_arm_read:<path>`） | 把"逐场可证"从人工审计变成装置属性 |
+
+**阈值未变的机器证据**：`prompts` / `keypoints` / `metrics` / `gates` 四个字段在 v1.1 与 v1.2 之间逐字相同（构建脚本内断言，打印 `identical to v1.1: True`）。CA-1 与 CA-1b 仍是 0.30，CA-4 与 CA-E1 的比较式一字未动。
+
+### 12.2b 执行事故与修复（Phase-1b 第一次尝试）
+
+Phase-1b 的第一次尝试在 07:35 启动、跑完 2 场后**因磁盘写满而中断**。根因是装置 bug，与研究问题无关，但必须留痕：
+
+- `make_home()` 用 `shutil.copytree(prof, home/"profiles")` 复制 `~/.dsh/profiles`（**默认 `symlinks=False`**）。`web` profile 的 `node_modules` 里是指向数百 MB 的 onnx/sherpa 库的软链，复制时**被解引用成实体文件** → 每个会话 home 变成 **2.4 GB**，18 个 home 就吃掉 **39 GB**，根分区（109 GB）从 60% 打到 96%。
+- 修复：只复制 `profiles/headless`（14 KB，且是 `--profile headless` 唯一会加载的 profile）并**保留软链**（`symlinks=True`），同时把 headless profile 依赖的 `/archive/pentest_work_flow` 以**只读 bind mount** 挂进容器（不占磁盘、路径与宿主一致）。
+- 处置：清理了 16 个残留 home 与 Phase-1 home 里的 profile 副本（**保留全部 transcript 证据**），并把中断前的 2 场**作废重跑**，以保证 30 场的装置完全一致。
+
+> 这条也印证了 §12.1 的结论：这类"装置"问题只有在**逐场留痕**（每场独立 home、每次执行有日志）的前提下才会暴露；Phase-1 的共享 home 恰好掩盖了它。
+
+### 12.3 Phase-1b 的隔离状态（可复核）
+容器内探针输出留档于 `/home/kent/e2e/_harness/abl-out/isolation_probe.txt`：
+
+```
+PWD=/work
+HOME=/dsh-home DSH_HOME=/dsh-home
+e2e=ls: cannot access '/home/kent/e2e': No such file or directory
+realhome=ls: cannot access '/home/kent/.dsh': No such file or directory
+docs=ls: cannot access '/archive/tmem/docs': No such file or directory
+oracle=ls: cannot access '/home/kent/e2e/_harness/ablation': No such file or directory
+agent_visible=ls: cannot access '/home/kent/abl2/arms': No such file or directory
+siblings=a2bin blockbin plugins tmem-a2
+```
+
+即：会话**在文件系统层面**看不到本课题的判定文件、Round 2/3 工作区、真实用户家目录、其它臂的工作区，以及 tmem 仓库里含关键点的 `docs/`。每场会话的 `docker run` 完整参数（含挂载白名单，API key 已脱敏）写在 `raw/<臂>/rep<n>/<变体>/scene.json` 的 `docker_argv` 字段。
+
+### 12.4 Phase-1b 的执行结果（门槛判定）
+
+30 场全部跑过，**29 场有效**；机器判定落在 `/home/kent/e2e/_harness/abl-out/metrics-carrier-ablation-v1.2.json`。
+
+| 门槛 | 判定 | 实测 |
+| :--- | :---: | :--- |
+| CA-5 载体等价性 | ✅ PASS | 4 个 episode → 6 283 字节散文；3 个关键点在两载体中全部可检出 |
+| CA-1 tmem 注入 vs 散文翻文件 | ❌ FAIL | A1 18 016.7 vs B2 5 073.0 → **3.55×**（需 ≤ 0.30×） |
+| CA-1b tmem 注入 vs 散文全量注入 | ❌ FAIL | A1 18 016.7 vs B1 7 112.3 → **2.53×** |
+| CA-4 获取方式效应可分离 | ❌ FAIL | 命中率满足（1.000 ≥ 1.000），成本两项不满足 |
+| CA-E1 效果优势（zero 变体） | ✅ PASS | A1_zero 1.000 > C_zero 0.000，≥ B2_zero 0.000 |
+
+**与 Phase-1 逐项一致**（CA-5 PASS / CA-1 FAIL / CA-1b FAIL / CA-4 FAIL / CA-E1 PASS）——两阶段的门槛方向完全相同；装置修订改变的是**数值**（B1 注入量 12 066 → 2 181，CA-1b 比值 1.22 → 2.53）与**可信度**（对照臂第一次真正无记忆、第一次有逐场机器断言）。
+
+**描述性**：注入/翻文件比值 **0.2736**（Phase-1 独立复现 0.2738）——注入 tmem 切片 ≈ 翻散文文件成本的 27%；但**总**知识获取成本 tmem 臂是散文臂的 3.55×（agent 会继续 `tmem_expand` 展开细节）。
+
+**作废明细**：`C rep3 free` 第一次 900 秒超时；重跑跑完但该场枚举了容器内的 `/home/kent`、`/home/kent/abl2`、`/archive`（共 9 次），按**冻结的 A7 规则**判为越界 → 作废。容器内这些路径已被净化（课题判定文件、Round 2 记忆库、其它臂工作区均不存在），**未泄漏任何事实**；我们没有为此追加事后豁免，也没有再跑第三次（避免按结果挑样本）。C 臂 `free` 因此 n=2，而 CA-E1 只判 `zero` 变体（C_zero n=3 全有效），**门槛结论不受影响**。
