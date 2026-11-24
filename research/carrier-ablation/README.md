@@ -20,6 +20,7 @@
 | `Dockerfile.abl` | 隔离镜像 `tmem-abl:iso`（ubuntu:22.04 + git/python3/pytest，uid 1000 非 root） | Phase-1b |
 | `run_phase1b.py` | Phase-1b 执行器：每会话独立容器 + 独立 DSH_HOME + 工作区卫生 + 关键点扫描 + 429 重试 | Phase-1b |
 | `score_carrier_ablation.py` | 机器判定器（v1.2：含**越界读取自动作废** A7、`--oracle` / `--out-json` / `--out-md`） | v1.2 |
+| `verify_report_numbers.py` | **报告数值一致性校验器**：把报告里印出的每个数字从机器判定里重新推导一遍，并断言逐字出现；顺带检查 v1.2 相对 v1.1 无阈值漂移 | v1.2 |
 
 ## 路径说明（重要）
 
@@ -64,5 +65,6 @@
 ## 零成本自检
 
 ```bash
-node research/carrier-ablation/md_carrier_plugin.test.mjs     # 期望 9/9
+node research/carrier-ablation/md_carrier_plugin.test.mjs       # 期望 11/11
+python3 research/carrier-ablation/verify_report_numbers.py      # 期望 PASS（报告数值 vs 机器判定）
 ```

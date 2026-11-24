@@ -351,6 +351,12 @@ python3 /home/kent/e2e/_harness/ablation/score_carrier_ablation.py --exp-root /h
 
 **本报告已跑过这条复核**：30 场逐题命中位与已发布结果**逐一致**，四个门槛判定（CA-1 / CA-1b / CA-4 / CA-E1）**完全一致**。
 
+报告里的每个数字还由 `research/carrier-ablation/verify_report_numbers.py` 自动校验：它把报告中印出的逐臂均值、门槛比值、描述性比值、有效样本数与越界次数**从机器判定里重新推导一遍**并断言逐字出现，同时断言 v1.2 相对 v1.1 在 `prompts`/`keypoints`/`metrics`/`gates` 上**无阈值漂移**。改动报告后请重跑：
+
+```bash
+python3 research/carrier-ablation/verify_report_numbers.py     # 期望 PASS；篡改任一数字会 FAIL
+```
+
 ### 7.2 Phase-1（已隔离存，仅供对照）
 
 ```bash
