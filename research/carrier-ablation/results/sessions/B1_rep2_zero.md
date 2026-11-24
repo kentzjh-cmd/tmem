@@ -1,0 +1,39 @@
+# B1 reprep2 zero —— 会话输出（命中率的评分输入）
+
+根据当前上下文中的记录回答（未读取任何文件、未执行任何命令）：
+
+## 1) 修改的文件与顺序
+
+按修复顺序改动的是三个源文件：
+
+1. **`src/ledger/money.py`** — 先在共享模块里加价格守卫（新增统一校验入口）
+2. **`src/ledger/import_rows.py`** — 导入边界修根因：`parse_price()` 改走统一校验；`parse_rows()` / `rows_to_tuples()` 把行描述传进去，缺失价格能报出具体是哪一行
+3. **`src/ledger/settlement.py`** — 结算边界做兜底：`settle_invoice()` / `settle_line()` 先校验单价再换算；`settle_invoice_checked()` 的异常类型由 `ValueError` 改为项目自己的 `ValidationError`
+
+配套还动了 `tests/test_import_rows.py`、`tests/test_settlement.py`（补测试）以及 `MEMORY.md`（记录排查结论与新基线）。`src/ledger/invoicing.py` 属于"排查涉及文件"（确认相关路径），不在改动顺序里。
+
+## 2) 验证命令
+
+主验证命令：
+
+```
+PYTHONPATH=src python3 -m pytest -q 2>&1 && PYTHONPATH=src python3 -m pytest "$f" -q 2>&1
+```
+
+其中 `"$f"` 为单文件回归定向运行。另有收集用例的核对命令：
+
+```
+PYTHONPATH=src python3 -m pytest --collect-only -q 2>&1
+PYTHONPATH=src python3 -m pytest tests/test_import_rows.py --collect-only -q 2>&1
+PYTHONPATH=src python3 -m pytest tests/test_settlement.py --collect-only -q 2>&1
+```
+
+## 3) 新增的「统一校验价格是否可用」入口函数
+
+**`ensure_usable_price()`**，定义在 `src/ledger/money.py`。
+
+导入侧 `parse_price()` 改为走 `ensure_usable_price()`，而 `parse_price_checked()` 也改为委托给它（不再自建判断逻辑），从而让"空单元格 → `nan` → `ValueError: cannot convert NaN to integer`"这条链路在导入边界就以 `ValidationError`（`missing price for hosting` / `missing price for line`）被明确拒绝。
+
+---
+
+补充一句上下文提醒：记录里还提到导出端本就会把空的数值单元格写成字面文本 `nan`（`import_rows.py` 的 docstring 早已写明），也就是"缺失价格以 `nan` 形式出现"本身是导出约定，真正的缺陷是导入侧没有把它识别为"缺失"。

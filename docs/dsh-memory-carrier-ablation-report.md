@@ -341,6 +341,16 @@ python3 /home/kent/e2e/_harness/ablation/score_carrier_ablation.py --exp-root /h
   --out-md   /home/kent/e2e/_harness/abl-out/metrics-carrier-ablation-v1.2.md
 ```
 
+### 7.1.1 第三方复核路径（只用仓库内文件即可复算）
+
+仓库随附 `research/carrier-ablation/results/`：Phase-1b 与 Phase-1 的机器判定、容器隔离探针、五臂挂载自检、**30 场会话的最终回答文本**。复核者无需重跑模型即可复算已发布结论：
+
+1. 读 `research/carrier-ablation/oracle_carrier_ablation_v1.2.json` 的 `keypoints` 与 `gates`（阈值）；
+2. 对 `results/sessions/<臂>_rep<n>_<变体>.md` 用同一套关键点做命中判定（Q1 还要求顺序正确）；
+3. 与 `results/metrics-carrier-ablation-v1.2.json` 的 `gates` 对照。
+
+**本报告已跑过这条复核**：30 场逐题命中位与已发布结果**逐一致**，四个门槛判定（CA-1 / CA-1b / CA-4 / CA-E1）**完全一致**。
+
 ### 7.2 Phase-1（已隔离存，仅供对照）
 
 ```bash

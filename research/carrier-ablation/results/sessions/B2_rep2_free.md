@@ -1,0 +1,55 @@
+# B2 reprep2 free —— 会话输出（命中率的评分输入）
+
+我查阅了工作区里的散文式记忆载体 `MEMORY.md`（`.tmem/` 结构化库在本工作区不存在，已忽略），没有运行任何命令。以下是答案：
+
+---
+
+## 1) 修改的文件与顺序
+
+记忆条目「headless 导入的表格里价格单元格为空时会被写成 nan…」记录的**改动文件（按修复顺序）**：
+
+```
+src/ledger/money.py  →  src/ledger/import_rows.py  →  src/ledger/settlement.py
+```
+
+对应的「涉及文件」全集还包括：`MEMORY.md`、`src/ledger/invoicing.py`、`tests/test_import_rows.py`（新增）、`tests/test_settlement.py`（补测）。
+
+分工是：
+
+- **`money.py`**：先落一个共享的价格守卫（这是修复的起点，决策要点记为「starting with a shared guard in `money.py`」）。
+- **`import_rows.py`**（导入边界/根因侧，`src/ledger/import_rows.py:13`）：`parse_price()` 改走统一守卫；`parse_rows()` / `rows_to_tuples()` 传入行描述；`parse_price_checked()` 改为委托。
+- **`settlement.py`**（结算边界/兜底侧，`src/ledger/settlement.py:25,65,91`）：`settle_invoice()` / `settle_line()` 先校验单价再换算；`settle_invoice_checked()` 由 `ValueError` 改为 `ValidationError`。
+- 最后把排查结论与新基线写回 `MEMORY.md`。
+
+根因结论：**导出端把空的数值单元格写成字面文本 `nan`**（`import_rows.py` 的 docstring 早已写明该约定），导入端 `parse_price()` 直接 `float(raw)` 未做校验，于是 NaN 一路流到结算才炸成 `ValueError: cannot convert NaN to integer`。
+
+## 2) 验证命令
+
+```
+PYTHONPATH=src python3 -m pytest -q 2>&1 && PYTHONPATH=src python3 -m pytest "$f" -q 2>&1
+```
+
+其中 `"$f"` 是逐个重跑失败用例/文件（记忆里另外记录了收集层面的自检）：
+
+```
+PYTHONPATH=src python3 -m pytest --collect-only -q 2>&1
+PYTHONPATH=src python3 -m pytest tests/test_import_rows.py --collect-only -q 2>&1
+PYTHONPATH=src python3 -m pytest tests/test_settlement.py --collect-only -q 2>&1
+```
+
+## 3) 新增的「统一校验价格是否可用」入口函数
+
+**`ensure_usable_price()`** —— 位于 `src/ledger/money.py` 的共享守卫，`parse_price()` 与 `parse_price_checked()` 都委托到它；结算侧 `settle_invoice_checked()` 最终抛出的则是项目自己的 `ledger.errors.ValidationError`（`missing price for <line>`）。
+
+---
+
+### ⚠️ 一个需要你注意的状态差异
+
+记忆记录的是那次修复的**计划与顺序**，但**当前工作区仍停留在修复前的状态**：
+
+- `src/ledger/money.py` 里**没有** `ensure_usable_price`（全仓库该名字只出现在 `MEMORY.md:37`）；
+- `import_rows.py:49` 的 `parse_price_checked()` 与 `settlement.py:90` 的 `settle_invoice_checked()` 仍抛 `ValueError`；
+-记忆里列出的新增测试文件 `tests/test_import_rows.py` 不存在；
+- 而 `tests/test_settlement.py:38` 已经**期望** `ValidationError`（用例里构造 `float("nan")` 单价）——也就是说这条用例在当前树上应该是失败的，与记忆中「3 failed, 18 passed」的失败基线吻合。
+
+所以：上面三个问题的答案取自项目记忆，但那份修复**尚未落到当前代码里**。如果你希望我把这次修复真正实施到工作区（含 `ensure_usable_price`、两个 `*_checked` 改抛 `ValidationError`、补 `tests/test_import_rows.py`），告诉我一声就行。

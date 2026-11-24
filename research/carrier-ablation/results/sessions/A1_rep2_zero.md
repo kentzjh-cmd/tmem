@@ -1,0 +1,31 @@
+# A1 reprep2 zero —— 会话输出（命中率的评分输入）
+
+以下回答全部来自我当前上下文里的既有记录（记忆里那条执行轨迹 `tr_01aed48efa`，即上次修 NaN 价格坑的那次会话），没有读文件、没跑命令。
+
+## 1) 修改的文件与顺序
+
+根因不是单点，而是逐段定位后按数据流方向修的，**因果修复顺序**是：
+
+1. `src/ledger/money.py` —— `ensure_usable_price`（新增统一校验入口）、`format_money`
+2. `src/ledger/import_rows.py` —— `parse_price`、`parse_price_checked`、`parse_rows`（导入侧空价格单元格不再写成 `nan`）
+3. `src/ledger/settlement.py` —— `settle_invoice`（结算侧改为走校验后的价格，缺失价格时抛项目自己的校验异常）
+
+配套还写了：新增/更新的测试文件 `tests/test_import_rows.py`、`tests/test_settlement.py`，以及把排查结论写进 `MEMORY.md`（项目记忆）。整轮记录是"读了 8 个文件、改了 6 个文件"，与"3 个源码 + 2 个测试 + 1 个记忆文件"对得上。
+
+## 2) 验证命令
+
+```bash
+PYTHONPATH=src python3 -m pytest --collect-only -q 2>&1 \
+  && PYTHONPATH=src python3 -m pytest tests/test_import_rows.py --collect-only -q 2>&1 \
+  && PYTHONPATH=src python3 -m pytest tests/test_settlement.py --collect-only -q 2>&1
+```
+
+过程中还用过一轮 `PYTHONPATH=src python3 -m pytest -q`（全量）加针对单个文件 `-q` 的跑法，途中"修复了 1 个 error"后才到上面这条最终验收命令。注意：`--collect-only` 只验证用例能正常收集，不执行断言——真正跑断言的是中途那条 `pytest -q` / 单文件 `pytest "$f" -q`。
+
+## 3) 新增的统一校验入口函数
+
+**`ensure_usable_price`**，定义在 `src/ledger/money.py`，签名 `ensure_usable_price(value, description)`。它就是那个"价格是否可用"的统一入口：空单元格/`nan` 之类不可用价格在这里被拦下并抛出项目自己的校验异常，而不是拖到结算阶段才炸成 `ValueError: cannot convert NaN to integer`。
+
+---
+
+一个诚实提示：这条轨迹记录里 L0 的具体路径/签名被标注为 "drifted"（已漂移），系统把它降级成结构/因果层面的不变量来匹配。上面第 1、2 题里的文件路径、函数名与命令来自降级后保留下来的因果链，可信度较高；第 3 题的函数名 `ensure_usable_price` 来自同一条记录的符号级条目，也是最可能的名字。

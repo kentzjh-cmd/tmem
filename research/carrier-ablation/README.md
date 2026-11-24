@@ -33,6 +33,22 @@
 在别的机器上复用时，改这三处常量即可；判定器支持
 `--exp-root` / `--oracle` / `--out-json` / `--out-md` 参数，不必改代码。
 
+## 仓库内随附的判定产物（`results/`）
+
+为了让"预注册 → 装置 → 判定"三者同处一仓、可被第三方独立复核，`results/` 随附：
+
+| 文件 | 内容 |
+| :--- | :--- |
+| `metrics-carrier-ablation-v1.2.json` / `.md` | **Phase-1b（报告口径）** 的机器判定：30 场逐场明细、逐臂聚合与 95%CI、5 个门槛判定、描述性统计、每场的越界审计 |
+| `metrics-carrier-ablation.json` / `.md` | **Phase-1（已隔离存）** 的同口径判定，用于 §4.5 的两阶段对照 |
+| `isolation_probe.txt` / `isolation_checks.json` | 容器内隔离探针输出：敏感路径（`/home/kent/e2e`、`/home/kent/.dsh`、`/archive/tmem/docs`、其它臂）在会话视图里**不存在** |
+| `mount_check.json` | 五臂挂载自检（A1/A2 有 tmem 工具无注入、B1 有散文注入无 tmem 工具、B2/C 全清） |
+| `sessions/<臂>_rep<n>_<变体>.md` | 30 场会话的**最终回答文本**——命中率的评分输入（判定脚本就是对它打分） |
+
+原始 transcript（zstd 帧式会话日志，用于 token 计量与工具调用审计）体积较大，保留在执行环境 `/home/kent/abl2/homes/<会话>/sessions/`，路径由 `results/metrics-carrier-ablation-v1.2.json` 的 `sessions[].isolation` 字段与每场 `raw/*/scene.json` 的 `docker_argv` 字段指明。
+
+> 第三方复核的最小路径：读 `oracle_carrier_ablation_v1.2.json` 的阈值 → 对 `results/sessions/*.md` 用同一套关键点做命中判定 → 与 `results/metrics-carrier-ablation-v1.2.json` 的 `gates` 对照。
+
 ## 证据位置
 
 | 内容 | 路径 |

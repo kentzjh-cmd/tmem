@@ -1,0 +1,7 @@
+{
+  "e2e_absent": true,
+  "real_home_absent": true,
+  "docs_absent": true,
+  "api_key_present": true,
+  "node_present": true
+}

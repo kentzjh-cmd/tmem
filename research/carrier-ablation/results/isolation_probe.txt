@@ -1,0 +1,12 @@
+PWD=/work
+HOME=/dsh-home DSH_HOME=/dsh-home
+e2e=ls: cannot access '/home/kent/e2e': No such file or directory
+realhome=ls: cannot access '/home/kent/.dsh': No such file or directory
+docs=ls: cannot access '/archive/tmem/docs': No such file or directory
+oracle=ls: cannot access '/home/kent/e2e/_harness/ablation': No such file or directory
+apikey_set=yes
+agent_visible=ls: cannot access '/home/kent/abl2/arms': No such file or directory
+siblings=a2bin blockbin plugins tmem-a2 
+node=v24.19.0
+git=git version 2.34.1
+pytest=pytest 6.2.5

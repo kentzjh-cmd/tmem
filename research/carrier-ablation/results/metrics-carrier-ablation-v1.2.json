@@ -1,0 +1,3536 @@
+{
+  "study": "carrier-ablation",
+  "oracle_file": "/home/kent/e2e/_harness/ablation/oracle_carrier_ablation_v1.2.json",
+  "oracle_frozen_at": "2026-11-23T22:53:27+08:00",
+  "oracle_amended_at": "2026-11-24T07:14:52.009109+08:00",
+  "exp_root": "/home/kent/abl2",
+  "arms": {
+    "A1": {
+      "carrier": "tmem_structured",
+      "access": "auto_injection",
+      "mount": "workspace patch (tmem init) — 官方工作区安装方式",
+      "dsh_home": "homes/plain (home patch 无 tmem 条目)",
+      "path": "正常 PATH（可调用 tmem CLI）",
+      "expect_injection": true
+    },
+    "A2": {
+      "carrier": "tmem_structured",
+      "access": "on_demand",
+      "mount": "workspace patch (tmem init) + PATH 指向打过补丁的 tmem 包副本",
+      "mechanism_ablation": {
+        "file": "tmem-a2/tmem/hooks/dsh.mjs",
+        "patch": "if (preBlocks.length > 0 && process.env.TMEM_ABLATE_NO_INJECT !== \"1\")",
+        "env": "TMEM_ABLATE_NO_INJECT=1",
+        "intent": "只关闭『自动注入』这一条机制；捕获、遥测、检索工具全部保持不变"
+      },
+      "expect_injection": false
+    },
+    "B1": {
+      "carrier": "prose_md",
+      "access": "auto_injection",
+      "mount": "workspace patch (md-carrier 插件) — 注入 MEMORY.md 全文，无检索能力",
+      "dsh_home": "homes/md",
+      "path": "blockbin 置前（tmem CLI 不可用）",
+      "expect_injection": true
+    },
+    "B2": {
+      "carrier": "prose_md",
+      "access": "on_demand",
+      "mount": "无插件；MEMORY.md 只是工作区里的一个文件",
+      "dsh_home": "homes/plain",
+      "path": "blockbin 置前（tmem CLI 不可用）",
+      "expect_injection": false
+    },
+    "C": {
+      "carrier": "none",
+      "access": "none",
+      "mount": "无插件、无 MEMORY.md、无 .tmem",
+      "dsh_home": "homes/plain",
+      "path": "blockbin 置前（tmem CLI 不可用）",
+      "expect_injection": false
+    }
+  },
+  "sessions": [
+    {
+      "arm": "A1",
+      "rep": 1,
+      "variant": "free",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 30.5,
+      "knowledge_tokens": 21145,
+      "injected_tokens": 1388,
+      "read_output_tokens": 19757,
+      "read_output_tokens_by_category": {
+        "carrier": 19577,
+        "code": 0,
+        "other": 174
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": true,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [
+        "tmem_search",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand"
+      ],
+      "hit_rate": 0.667,
+      "hits": 2,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [
+            454,
+            186,
+            784
+          ],
+          "missing_groups": [],
+          "note": "all keypoints present but in the wrong order"
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            2096
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            474
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      },
+      "isolation": {
+        "mechanism": "docker:tmem-abl:iso (mount allow-list)",
+        "container_workspace": "/work",
+        "out_of_arm_count": 0,
+        "out_of_arm": [],
+        "paths_touched": []
+      }
+    },
+    {
+      "arm": "A1",
+      "rep": 1,
+      "variant": "zero",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 14.5,
+      "knowledge_tokens": 1389,
+      "injected_tokens": 1389,
+      "read_output_tokens": 0,
+      "read_output_tokens_by_category": {
+        "carrier": 0,
+        "code": 0,
+        "other": 0
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": true,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            216,
+            323,
+            450
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            723
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            229
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      },
+      "isolation": {
+        "mechanism": "docker:tmem-abl:iso (mount allow-list)",
+        "container_workspace": "/work",
+        "out_of_arm_count": 0,
+        "out_of_arm": [],
+        "paths_touched": []
+      }
+    },
+    {
+      "arm": "A1",
+      "rep": 2,
+      "variant": "free",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 22.0,
+      "knowledge_tokens": 14840,
+      "injected_tokens": 1388,
+      "read_output_tokens": 13452,
+      "read_output_tokens_by_category": {
+        "carrier": 12257,
+        "code": 921,
+        "other": 271
+      },
+      "read_calls": 2,
+      "read_paths": [
+        "src/ledger/money.py",
+        "src/ledger/import_rows.py"
+      ],
+      "tmem_block_injected": true,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [
+        "tmem_search",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand"
+      ],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            256,
+            403,
+            610
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            2143
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            276
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      },
+      "isolation": {
+        "mechanism": "docker:tmem-abl:iso (mount allow-list)",
+        "container_workspace": "/work",
+        "out_of_arm_count": 0,
+        "out_of_arm": [],
+        "paths_touched": []
+      }
+    },
+    {
+      "arm": "A1",
+      "rep": 2,
+      "variant": "zero",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 17.1,
+      "knowledge_tokens": 1389,
+      "injected_tokens": 1389,
+      "read_output_tokens": 0,
+      "read_output_tokens_by_category": {
+        "carrier": 0,
+        "code": 0,
+        "other": 0
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": true,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            147,
+            222,
+            326
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            604
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            161
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      },
+      "isolation": {
+        "mechanism": "docker:tmem-abl:iso (mount allow-list)",
+        "container_workspace": "/work",
+        "out_of_arm_count": 0,
+        "out_of_arm": [],
+        "paths_touched": []
+      }
+    },
+    {
+      "arm": "A1",
+      "rep": 3,
+      "variant": "free",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 25.2,
+      "knowledge_tokens": 18065,
+      "injected_tokens": 1388,
+      "read_output_tokens": 16677,
+      "read_output_tokens_by_category": {
+        "carrier": 16673,
+        "code": 0,
+        "other": 3
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": true,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_search",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand"
+      ],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            224,
+            399,
+            775
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            2057
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            286
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      },
+      "isolation": {
+        "mechanism": "docker:tmem-abl:iso (mount allow-list)",
+        "container_workspace": "/work",
+        "out_of_arm_count": 0,
+        "out_of_arm": [],
+        "paths_touched": []
+      }
+    },
+    {
+      "arm": "A1",
+      "rep": 3,
+      "variant": "zero",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 15.9,
+      "knowledge_tokens": 1385,
+      "injected_tokens": 1385,
+      "read_output_tokens": 0,
+      "read_output_tokens_by_category": {
+        "carrier": 0,
+        "code": 0,
+        "other": 0
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": true,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            114,
+            182,
+            257
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            1000
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            131
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      },
+      "isolation": {
+        "mechanism": "docker:tmem-abl:iso (mount allow-list)",
+        "container_workspace": "/work",
+        "out_of_arm_count": 0,
+        "out_of_arm": [],
+        "paths_touched": []
+      }
+    },
+    {
+      "arm": "A2",
+      "rep": 1,
+      "variant": "free",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 27.7,
+      "knowledge_tokens": 14845,
+      "injected_tokens": 0,
+      "read_output_tokens": 14845,
+      "read_output_tokens_by_category": {
+        "carrier": 14666,
+        "code": 0,
+        "other": 174
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [
+        "tmem_search",
+        "tmem_search",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand"
+      ],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            234,
+            372,
+            689
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            1967
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            254
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      },
+      "isolation": {
+        "mechanism": "docker:tmem-abl:iso (mount allow-list)",
+        "container_workspace": "/work",
+        "out_of_arm_count": 0,
+        "out_of_arm": [],
+        "paths_touched": []
+      }
+    },
+    {
+      "arm": "A2",
+      "rep": 1,
+      "variant": "zero",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 51.7,
+      "knowledge_tokens": 12997,
+      "injected_tokens": 0,
+      "read_output_tokens": 12997,
+      "read_output_tokens_by_category": {
+        "carrier": 12882,
+        "code": 0,
+        "other": 115
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [
+        "tmem_search",
+        "tmem_search",
+        "tmem_search",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand"
+      ],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            343,
+            460,
+            632
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            1470
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            363
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      },
+      "isolation": {
+        "mechanism": "docker:tmem-abl:iso (mount allow-list)",
+        "container_workspace": "/work",
+        "out_of_arm_count": 0,
+        "out_of_arm": [],
+        "paths_touched": []
+      }
+    },
+    {
+      "arm": "A2",
+      "rep": 2,
+      "variant": "free",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 42.7,
+      "knowledge_tokens": 11762,
+      "injected_tokens": 0,
+      "read_output_tokens": 11762,
+      "read_output_tokens_by_category": {
+        "carrier": 9924,
+        "code": 921,
+        "other": 914
+      },
+      "read_calls": 2,
+      "read_paths": [
+        "/work/src/ledger/money.py",
+        "/work/src/ledger/import_rows.py"
+      ],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [
+        "tmem_search",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand"
+      ],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            174,
+            185,
+            202
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            1884
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            307
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      },
+      "isolation": {
+        "mechanism": "docker:tmem-abl:iso (mount allow-list)",
+        "container_workspace": "/work",
+        "out_of_arm_count": 0,
+        "out_of_arm": [],
+        "paths_touched": [
+          "/work",
+          "/work/src/ledger/import_rows.py",
+          "/work/src/ledger/money.py"
+        ]
+      }
+    },
+    {
+      "arm": "A2",
+      "rep": 2,
+      "variant": "zero",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 35.2,
+      "knowledge_tokens": 16423,
+      "injected_tokens": 0,
+      "read_output_tokens": 16423,
+      "read_output_tokens_by_category": {
+        "carrier": 16421,
+        "code": 0,
+        "other": 0
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [
+        "tmem_search",
+        "tmem_search",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand"
+      ],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            125,
+            262,
+            535
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            1948
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            200
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      },
+      "isolation": {
+        "mechanism": "docker:tmem-abl:iso (mount allow-list)",
+        "container_workspace": "/work",
+        "out_of_arm_count": 0,
+        "out_of_arm": [],
+        "paths_touched": []
+      }
+    },
+    {
+      "arm": "A2",
+      "rep": 3,
+      "variant": "free",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 28.6,
+      "knowledge_tokens": 16144,
+      "injected_tokens": 0,
+      "read_output_tokens": 16144,
+      "read_output_tokens_by_category": {
+        "carrier": 14895,
+        "code": 921,
+        "other": 323
+      },
+      "read_calls": 2,
+      "read_paths": [
+        "/work/src/ledger/money.py",
+        "/work/src/ledger/import_rows.py"
+      ],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [
+        "tmem_search",
+        "tmem_search",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand"
+      ],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            350,
+            479,
+            679
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            1973
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            372
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      },
+      "isolation": {
+        "mechanism": "docker:tmem-abl:iso (mount allow-list)",
+        "container_workspace": "/work",
+        "out_of_arm_count": 0,
+        "out_of_arm": [],
+        "paths_touched": [
+          "/work/src/ledger/import_rows.py",
+          "/work/src/ledger/money.py"
+        ]
+      }
+    },
+    {
+      "arm": "A2",
+      "rep": 3,
+      "variant": "zero",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 54.2,
+      "knowledge_tokens": 22920,
+      "injected_tokens": 0,
+      "read_output_tokens": 22920,
+      "read_output_tokens_by_category": {
+        "carrier": 22804,
+        "code": 0,
+        "other": 115
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [
+        "tmem_search",
+        "tmem_search",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand"
+      ],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            277,
+            463,
+            851
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            2010
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            293
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      },
+      "isolation": {
+        "mechanism": "docker:tmem-abl:iso (mount allow-list)",
+        "container_workspace": "/work",
+        "out_of_arm_count": 0,
+        "out_of_arm": [],
+        "paths_touched": []
+      }
+    },
+    {
+      "arm": "B1",
+      "rep": 1,
+      "variant": "free",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 25.4,
+      "knowledge_tokens": 5666,
+      "injected_tokens": 2182,
+      "read_output_tokens": 3484,
+      "read_output_tokens_by_category": {
+        "carrier": 2168,
+        "code": 921,
+        "other": 391
+      },
+      "read_calls": 3,
+      "read_paths": [
+        "/work/MEMORY.md",
+        "/work/src/ledger/money.py",
+        "/work/src/ledger/import_rows.py"
+      ],
+      "tmem_block_injected": false,
+      "md_carrier_injected": true,
+      "tmem_tool_calls": [],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            141,
+            165,
+            195
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            928
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            321
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      },
+      "isolation": {
+        "mechanism": "docker:tmem-abl:iso (mount allow-list)",
+        "container_workspace": "/work",
+        "out_of_arm_count": 0,
+        "out_of_arm": [],
+        "paths_touched": [
+          "/work/MEMORY.md",
+          "/work/src/ledger/import_rows.py",
+          "/work/src/ledger/money.py"
+        ]
+      }
+    },
+    {
+      "arm": "B1",
+      "rep": 1,
+      "variant": "zero",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 32.8,
+      "knowledge_tokens": 2176,
+      "injected_tokens": 2176,
+      "read_output_tokens": 0,
+      "read_output_tokens_by_category": {
+        "carrier": 0,
+        "code": 0,
+        "other": 0
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": false,
+      "md_carrier_injected": true,
+      "tmem_tool_calls": [],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            122,
+            146,
+            176
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            1358
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            311
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      },
+      "isolation": {
+        "mechanism": "docker:tmem-abl:iso (mount allow-list)",
+        "container_workspace": "/work",
+        "out_of_arm_count": 0,
+        "out_of_arm": [],
+        "paths_touched": []
+      }
+    },
+    {
+      "arm": "B1",
+      "rep": 2,
+      "variant": "free",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 30.1,
+      "knowledge_tokens": 7393,
+      "injected_tokens": 2183,
+      "read_output_tokens": 5210,
+      "read_output_tokens_by_category": {
+        "carrier": 2168,
+        "code": 2555,
+        "other": 484
+      },
+      "read_calls": 5,
+      "read_paths": [
+        "/work/MEMORY.md",
+        "/work/src/ledger/money.py",
+        "/work/src/ledger/import_rows.py",
+        "/work/src/ledger/settlement.py",
+        "/work/src/ledger/errors.py"
+      ],
+      "tmem_block_injected": false,
+      "md_carrier_injected": true,
+      "tmem_tool_calls": [],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            214,
+            238,
+            268
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            1357
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            526
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      },
+      "isolation": {
+        "mechanism": "docker:tmem-abl:iso (mount allow-list)",
+        "container_workspace": "/work",
+        "out_of_arm_count": 0,
+        "out_of_arm": [],
+        "paths_touched": [
+          "/work",
+          "/work/MEMORY.md",
+          "/work/src/ledger/errors.py",
+          "/work/src/ledger/import_rows.py",
+          "/work/src/ledger/money.py",
+          "/work/src/ledger/settlement.py"
+        ]
+      }
+    },
+    {
+      "arm": "B1",
+      "rep": 2,
+      "variant": "zero",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 10.2,
+      "knowledge_tokens": 2180,
+      "injected_tokens": 2180,
+      "read_output_tokens": 0,
+      "read_output_tokens_by_category": {
+        "carrier": 0,
+        "code": 0,
+        "other": 0
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": false,
+      "md_carrier_injected": true,
+      "tmem_tool_calls": [],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            83,
+            137,
+            263
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            750
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            969
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      },
+      "isolation": {
+        "mechanism": "docker:tmem-abl:iso (mount allow-list)",
+        "container_workspace": "/work",
+        "out_of_arm_count": 0,
+        "out_of_arm": [],
+        "paths_touched": []
+      }
+    },
+    {
+      "arm": "B1",
+      "rep": 3,
+      "variant": "free",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 30.4,
+      "knowledge_tokens": 8278,
+      "injected_tokens": 2179,
+      "read_output_tokens": 6099,
+      "read_output_tokens_by_category": {
+        "carrier": 2168,
+        "code": 3398,
+        "other": 527
+      },
+      "read_calls": 7,
+      "read_paths": [
+        "/work/MEMORY.md",
+        "/work/src/ledger/money.py",
+        "/work/src/ledger/import_rows.py",
+        "/work/src/ledger/settlement.py",
+        "/work/src/ledger/errors.py",
+        "/work/tests/test_settlement.py",
+        "/work/tests/test_import_rows.py"
+      ],
+      "tmem_block_injected": false,
+      "md_carrier_injected": true,
+      "tmem_tool_calls": [],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            209,
+            268,
+            408
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            844
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            1063
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      },
+      "isolation": {
+        "mechanism": "docker:tmem-abl:iso (mount allow-list)",
+        "container_workspace": "/work",
+        "out_of_arm_count": 0,
+        "out_of_arm": [],
+        "paths_touched": [
+          "/work",
+          "/work/MEMORY.md",
+          "/work/src/ledger/errors.py",
+          "/work/src/ledger/import_rows.py",
+          "/work/src/ledger/money.py",
+          "/work/src/ledger/settlement.py",
+          "/work/tests/test_import_rows.py",
+          "/work/tests/test_settlement.py"
+        ]
+      }
+    },
+    {
+      "arm": "B1",
+      "rep": 3,
+      "variant": "zero",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 10.0,
+      "knowledge_tokens": 2178,
+      "injected_tokens": 2178,
+      "read_output_tokens": 0,
+      "read_output_tokens_by_category": {
+        "carrier": 0,
+        "code": 0,
+        "other": 0
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": false,
+      "md_carrier_injected": true,
+      "tmem_tool_calls": [],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            105,
+            199,
+            376
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            792
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            139
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      },
+      "isolation": {
+        "mechanism": "docker:tmem-abl:iso (mount allow-list)",
+        "container_workspace": "/work",
+        "out_of_arm_count": 0,
+        "out_of_arm": [],
+        "paths_touched": []
+      }
+    },
+    {
+      "arm": "B2",
+      "rep": 1,
+      "variant": "free",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 26.1,
+      "knowledge_tokens": 6381,
+      "injected_tokens": 0,
+      "read_output_tokens": 6381,
+      "read_output_tokens_by_category": {
+        "carrier": 2168,
+        "code": 3627,
+        "other": 580
+      },
+      "read_calls": 8,
+      "read_paths": [
+        "MEMORY.md",
+        "/work/src/ledger/money.py",
+        "/work/src/ledger/import_rows.py",
+        "/work/src/ledger/settlement.py",
+        "/work/tests/test_settlement.py",
+        "/work/tests/test_import_rows.py",
+        "/work/README.md",
+        "/work/src/ledger/errors.py"
+      ],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            133,
+            157,
+            187
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            1126
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            381
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      },
+      "isolation": {
+        "mechanism": "docker:tmem-abl:iso (mount allow-list)",
+        "container_workspace": "/work",
+        "out_of_arm_count": 0,
+        "out_of_arm": [],
+        "paths_touched": [
+          "/work",
+          "/work/README.md",
+          "/work/src/ledger/errors.py",
+          "/work/src/ledger/import_rows.py",
+          "/work/src/ledger/money.py",
+          "/work/src/ledger/settlement.py",
+          "/work/tests/test_import_rows.py",
+          "/work/tests/test_settlement.py"
+        ]
+      }
+    },
+    {
+      "arm": "B2",
+      "rep": 1,
+      "variant": "zero",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 16.3,
+      "knowledge_tokens": 7,
+      "injected_tokens": 0,
+      "read_output_tokens": 7,
+      "read_output_tokens_by_category": {
+        "carrier": 0,
+        "code": 0,
+        "other": 7
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [],
+      "hit_rate": 0.0,
+      "hits": 0,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "money.py"
+            ],
+            [
+              "import_rows.py"
+            ],
+            [
+              "settlement.py"
+            ]
+          ],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "collect-only"
+            ]
+          ],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "ensure_usable_price"
+            ]
+          ],
+          "note": ""
+        }
+      },
+      "isolation": {
+        "mechanism": "docker:tmem-abl:iso (mount allow-list)",
+        "container_workspace": "/work",
+        "out_of_arm_count": 0,
+        "out_of_arm": [],
+        "paths_touched": []
+      }
+    },
+    {
+      "arm": "B2",
+      "rep": 2,
+      "variant": "free",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 22.9,
+      "knowledge_tokens": 5054,
+      "injected_tokens": 0,
+      "read_output_tokens": 5054,
+      "read_output_tokens_by_category": {
+        "carrier": 2168,
+        "code": 2555,
+        "other": 326
+      },
+      "read_calls": 5,
+      "read_paths": [
+        "MEMORY.md",
+        "src/ledger/money.py",
+        "src/ledger/import_rows.py",
+        "src/ledger/settlement.py",
+        "src/ledger/errors.py"
+      ],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            168,
+            192,
+            222
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            1189
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            1408
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      },
+      "isolation": {
+        "mechanism": "docker:tmem-abl:iso (mount allow-list)",
+        "container_workspace": "/work",
+        "out_of_arm_count": 0,
+        "out_of_arm": [],
+        "paths_touched": []
+      }
+    },
+    {
+      "arm": "B2",
+      "rep": 2,
+      "variant": "zero",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 12.7,
+      "knowledge_tokens": 13,
+      "injected_tokens": 0,
+      "read_output_tokens": 13,
+      "read_output_tokens_by_category": {
+        "carrier": 0,
+        "code": 0,
+        "other": 12
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [],
+      "hit_rate": 0.0,
+      "hits": 0,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "money.py"
+            ],
+            [
+              "import_rows.py"
+            ],
+            [
+              "settlement.py"
+            ]
+          ],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "collect-only"
+            ]
+          ],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "ensure_usable_price"
+            ]
+          ],
+          "note": ""
+        }
+      },
+      "isolation": {
+        "mechanism": "docker:tmem-abl:iso (mount allow-list)",
+        "container_workspace": "/work",
+        "out_of_arm_count": 0,
+        "out_of_arm": [],
+        "paths_touched": []
+      }
+    },
+    {
+      "arm": "B2",
+      "rep": 3,
+      "variant": "free",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 35.0,
+      "knowledge_tokens": 3784,
+      "injected_tokens": 0,
+      "read_output_tokens": 3784,
+      "read_output_tokens_by_category": {
+        "carrier": 2168,
+        "code": 1102,
+        "other": 511
+      },
+      "read_calls": 4,
+      "read_paths": [
+        "/work/MEMORY.md",
+        "/work/src/ledger/money.py",
+        "/work/src/ledger/import_rows.py",
+        "/work/src/ledger/errors.py"
+      ],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            158,
+            182,
+            212
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            1048
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            1269
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      },
+      "isolation": {
+        "mechanism": "docker:tmem-abl:iso (mount allow-list)",
+        "container_workspace": "/work",
+        "out_of_arm_count": 0,
+        "out_of_arm": [],
+        "paths_touched": [
+          "/work",
+          "/work/MEMORY.md",
+          "/work/src/ledger/errors.py",
+          "/work/src/ledger/import_rows.py",
+          "/work/src/ledger/money.py"
+        ]
+      }
+    },
+    {
+      "arm": "B2",
+      "rep": 3,
+      "variant": "zero",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 11.9,
+      "knowledge_tokens": 0,
+      "injected_tokens": 0,
+      "read_output_tokens": 0,
+      "read_output_tokens_by_category": {
+        "carrier": 0,
+        "code": 0,
+        "other": 0
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [],
+      "hit_rate": 0.0,
+      "hits": 0,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "money.py"
+            ],
+            [
+              "import_rows.py"
+            ],
+            [
+              "settlement.py"
+            ]
+          ],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "collect-only"
+            ]
+          ],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "ensure_usable_price"
+            ]
+          ],
+          "note": ""
+        }
+      },
+      "isolation": {
+        "mechanism": "docker:tmem-abl:iso (mount allow-list)",
+        "container_workspace": "/work",
+        "out_of_arm_count": 0,
+        "out_of_arm": [],
+        "paths_touched": []
+      }
+    },
+    {
+      "arm": "C",
+      "rep": 1,
+      "variant": "free",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 49.1,
+      "knowledge_tokens": 7100,
+      "injected_tokens": 0,
+      "read_output_tokens": 7100,
+      "read_output_tokens_by_category": {
+        "carrier": 0,
+        "code": 6190,
+        "other": 901
+      },
+      "read_calls": 13,
+      "read_paths": [
+        "/work/AGENTS.md",
+        "/work/README.md",
+        "/work/src/ledger/import_rows.py",
+        "/work/src/ledger/money.py",
+        "/work/src/ledger/invoicing.py",
+        "/work/src/ledger/settlement.py",
+        "/work/tests/test_settlement.py",
+        "/work/tests/test_invoicing.py",
+        "/work/src/ledger/errors.py",
+        "/work/src/ledger/api.py",
+        "/work/src/ledger/__init__.py",
+        "/work/src/ledger/cli.py"
+      ],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [],
+      "hit_rate": 0.0,
+      "hits": 0,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [
+            449,
+            614
+          ],
+          "missing_groups": [
+            [
+              "money.py"
+            ]
+          ],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "collect-only"
+            ]
+          ],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "ensure_usable_price"
+            ]
+          ],
+          "note": ""
+        }
+      },
+      "isolation": {
+        "mechanism": "docker:tmem-abl:iso (mount allow-list)",
+        "container_workspace": "/work",
+        "out_of_arm_count": 0,
+        "out_of_arm": [],
+        "paths_touched": [
+          "/root",
+          "/tmp",
+          "/work",
+          "/work/AGENTS.md",
+          "/work/README.md",
+          "/work/pyproject.toml",
+          "/work/src/ledger/__init__.py",
+          "/work/src/ledger/api.py",
+          "/work/src/ledger/cli.py",
+          "/work/src/ledger/errors.py",
+          "/work/src/ledger/import_rows.py",
+          "/work/src/ledger/invoicing.py",
+          "/work/src/ledger/money.py",
+          "/work/src/ledger/settlement.py",
+          "/work/tests/test_invoicing.py",
+          "/work/tests/test_settlement.py"
+        ]
+      }
+    },
+    {
+      "arm": "C",
+      "rep": 1,
+      "variant": "zero",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 15.4,
+      "knowledge_tokens": 17,
+      "injected_tokens": 0,
+      "read_output_tokens": 17,
+      "read_output_tokens_by_category": {
+        "carrier": 0,
+        "code": 0,
+        "other": 16
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [],
+      "hit_rate": 0.0,
+      "hits": 0,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "money.py"
+            ],
+            [
+              "import_rows.py"
+            ],
+            [
+              "settlement.py"
+            ]
+          ],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "collect-only"
+            ]
+          ],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "ensure_usable_price"
+            ]
+          ],
+          "note": ""
+        }
+      },
+      "isolation": {
+        "mechanism": "docker:tmem-abl:iso (mount allow-list)",
+        "container_workspace": "/work",
+        "out_of_arm_count": 0,
+        "out_of_arm": [],
+        "paths_touched": []
+      }
+    },
+    {
+      "arm": "C",
+      "rep": 2,
+      "variant": "free",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 69.2,
+      "knowledge_tokens": 10450,
+      "injected_tokens": 0,
+      "read_output_tokens": 10450,
+      "read_output_tokens_by_category": {
+        "carrier": 0,
+        "code": 6874,
+        "other": 3565
+      },
+      "read_calls": 14,
+      "read_paths": [
+        "/work/AGENTS.md",
+        "/work/src/ledger/import_rows.py",
+        "/work/src/ledger/settlement.py",
+        "/work/src/ledger/money.py",
+        "/work/src/ledger/invoicing.py",
+        "/work/tests/test_settlement.py",
+        "/work/src/ledger/errors.py",
+        "/work/README.md",
+        "/work/pyproject.toml",
+        "/work/src/ledger/api.py",
+        "/work/src/ledger/cli.py",
+        "/work/tests/test_invoicing.py"
+      ],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [],
+      "hit_rate": 0.0,
+      "hits": 0,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [
+            2501,
+            536,
+            696
+          ],
+          "missing_groups": [],
+          "note": "all keypoints present but in the wrong order"
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "collect-only"
+            ]
+          ],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "ensure_usable_price"
+            ]
+          ],
+          "note": ""
+        }
+      },
+      "isolation": {
+        "mechanism": "docker:tmem-abl:iso (mount allow-list)",
+        "container_workspace": "/work",
+        "out_of_arm_count": 0,
+        "out_of_arm": [],
+        "paths_touched": [
+          "/",
+          "/opt",
+          "/root",
+          "/tmp",
+          "/work",
+          "/work/.gitignore",
+          "/work/.tmem",
+          "/work/AGENTS.md",
+          "/work/README.md",
+          "/work/pyproject.toml",
+          "/work/src",
+          "/work/src/ledger/api.py",
+          "/work/src/ledger/cli.py",
+          "/work/src/ledger/errors.py",
+          "/work/src/ledger/import_rows.py",
+          "/work/src/ledger/invoicing.py",
+          "/work/src/ledger/money.py",
+          "/work/src/ledger/rates.py",
+          "/work/src/ledger/settlement.py",
+          "/work/tests",
+          "/work/tests/test_invoicing.py",
+          "/work/tests/test_settlement.py"
+        ]
+      }
+    },
+    {
+      "arm": "C",
+      "rep": 2,
+      "variant": "zero",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 12.8,
+      "knowledge_tokens": 0,
+      "injected_tokens": 0,
+      "read_output_tokens": 0,
+      "read_output_tokens_by_category": {
+        "carrier": 0,
+        "code": 0,
+        "other": 0
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [],
+      "hit_rate": 0.0,
+      "hits": 0,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "money.py"
+            ],
+            [
+              "import_rows.py"
+            ],
+            [
+              "settlement.py"
+            ]
+          ],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "collect-only"
+            ]
+          ],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "ensure_usable_price"
+            ]
+          ],
+          "note": ""
+        }
+      },
+      "isolation": {
+        "mechanism": "docker:tmem-abl:iso (mount allow-list)",
+        "container_workspace": "/work",
+        "out_of_arm_count": 0,
+        "out_of_arm": [],
+        "paths_touched": []
+      }
+    },
+    {
+      "arm": "C",
+      "rep": 3,
+      "variant": "free",
+      "valid": false,
+      "invalid_reasons": [
+        "out_of_arm_read:/home/kent (glob)",
+        "out_of_arm_read:/home/kent/abl2 (glob)",
+        "out_of_arm_read:/home/kent (grep)",
+        "out_of_arm_read:/home/kent (bash)",
+        "out_of_arm_read:/home/kent/abl2 (bash)",
+        "out_of_arm_read:/archive (bash)",
+        "out_of_arm_read:/archive/pentest_work_flow (bash)",
+        "out_of_arm_read:/archive/pentest_work_flow/dsh_secops_plugin (bash)",
+        "out_of_arm_read:/archive (grep)"
+      ],
+      "exit_code": 0,
+      "elapsed_sec": 192.5,
+      "knowledge_tokens": 29663,
+      "injected_tokens": 0,
+      "read_output_tokens": 29663,
+      "read_output_tokens_by_category": {
+        "carrier": 0,
+        "code": 5643,
+        "other": 22952
+      },
+      "read_calls": 23,
+      "read_paths": [
+        "/work/README.md",
+        "/work/.git/HEAD",
+        "/work/.git/COMMIT_EDITMSG",
+        "/work/.git/packed-refs",
+        "/work/.git/logs/HEAD",
+        "/work/.git/refs/heads/main",
+        "/work/.gitignore",
+        "/work/src/ledger/import_rows.py",
+        "/home/kent/abl2/plugins/md_carrier_plugin.mjs",
+        "/work/src/ledger/money.py",
+        "/work/src/ledger/settlement.py",
+        "/work/src/ledger/invoicing.py"
+      ],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [],
+      "hit_rate": 0.0,
+      "hits": 0,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [
+            1027,
+            547
+          ],
+          "missing_groups": [
+            [
+              "money.py"
+            ]
+          ],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "collect-only"
+            ]
+          ],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "ensure_usable_price"
+            ]
+          ],
+          "note": ""
+        }
+      },
+      "isolation": {
+        "mechanism": "docker:tmem-abl:iso (mount allow-list)",
+        "container_workspace": "/work",
+        "out_of_arm_count": 9,
+        "out_of_arm": [
+          {
+            "tool": "glob",
+            "path": "/home/kent"
+          },
+          {
+            "tool": "glob",
+            "path": "/home/kent/abl2"
+          },
+          {
+            "tool": "grep",
+            "path": "/home/kent"
+          },
+          {
+            "tool": "bash",
+            "path": "/home/kent"
+          },
+          {
+            "tool": "bash",
+            "path": "/home/kent/abl2"
+          },
+          {
+            "tool": "bash",
+            "path": "/archive"
+          },
+          {
+            "tool": "bash",
+            "path": "/archive/pentest_work_flow"
+          },
+          {
+            "tool": "bash",
+            "path": "/archive/pentest_work_flow/dsh_secops_plugin"
+          },
+          {
+            "tool": "grep",
+            "path": "/archive"
+          }
+        ],
+        "paths_touched": [
+          "/",
+          "/archive",
+          "/archive/pentest_work_flow",
+          "/archive/pentest_work_flow/dsh_secops_plugin",
+          "/archive/tmem",
+          "/archive/tmem/tmem",
+          "/archive/tmem/tmem/adapters/dsh.mjs",
+          "/dev",
+          "/dev/null",
+          "/dsh-home",
+          "/dsh-home/cordis.patch.yml",
+          "/dsh-home/profiles/headless",
+          "/dsh-home/profiles/headless/cordis.patch.yml",
+          "/dsh-home/profiles/headless/cordis.yml",
+          "/dsh-home/profiles/headless/package.json",
+          "/dsh-home/sessions",
+          "/dsh-home/sessions/--work--",
+          "/dsh-home/storages",
+          "/dsh-home/storages/session_projcache/sessions/session-56834858-b489-4a95-8cb1-9e641cbfa0e9.json",
+          "/home",
+          "/home/kent",
+          "/home/kent/abl2",
+          "/home/kent/abl2/plugins/md_carrier_plugin.mjs",
+          "/home/kent/abl2/tmem-a2/tmem",
+          "/home/kent/abl2/tmem-a2/tmem/raw_storage.mjs",
+          "/home/kent/abl2/tmem-a2/tmem/store.mjs",
+          "/proc",
+          "/root",
+          "/sys",
+          "/tmp",
+          "/work",
+          "/work/.git",
+          "/work/.git/COMMIT_EDITMSG",
+          "/work/.git/HEAD",
+          "/work/.git/logs/HEAD",
+          "/work/.git/packed-refs",
+          "/work/.git/refs",
+          "/work/.git/refs/heads/main",
+          "/work/.gitignore",
+          "/work/README.md"
+        ]
+      }
+    },
+    {
+      "arm": "C",
+      "rep": 3,
+      "variant": "zero",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 12.6,
+      "knowledge_tokens": 12,
+      "injected_tokens": 0,
+      "read_output_tokens": 12,
+      "read_output_tokens_by_category": {
+        "carrier": 0,
+        "code": 0,
+        "other": 12
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [],
+      "hit_rate": 0.0,
+      "hits": 0,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "money.py"
+            ],
+            [
+              "import_rows.py"
+            ],
+            [
+              "settlement.py"
+            ]
+          ],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "collect-only"
+            ]
+          ],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "ensure_usable_price"
+            ]
+          ],
+          "note": ""
+        }
+      },
+      "isolation": {
+        "mechanism": "docker:tmem-abl:iso (mount allow-list)",
+        "container_workspace": "/work",
+        "out_of_arm_count": 0,
+        "out_of_arm": [],
+        "paths_touched": []
+      }
+    }
+  ],
+  "aggregate": {
+    "A1|free": {
+      "arm": "A1",
+      "variant": "free",
+      "knowledge_tokens": [
+        21145,
+        14840,
+        18065
+      ],
+      "hit_rate": [
+        0.667,
+        1.0,
+        1.0
+      ],
+      "injected_tokens": [
+        1388,
+        1388,
+        1388
+      ],
+      "read_output_tokens": [
+        19757,
+        13452,
+        16677
+      ],
+      "read_calls": [
+        0,
+        2,
+        0
+      ],
+      "invalid": [],
+      "knowledge_tokens_stats": {
+        "mean": 18016.6667,
+        "n": 3,
+        "sd": 3152.7779,
+        "ci95": [
+          10184.7322,
+          25848.6011
+        ],
+        "values": [
+          21145,
+          14840,
+          18065
+        ]
+      },
+      "hit_rate_stats": {
+        "mean": 0.889,
+        "n": 3,
+        "sd": 0.1923,
+        "ci95": [
+          0.4114,
+          1.3666
+        ],
+        "values": [
+          0.667,
+          1.0,
+          1.0
+        ]
+      },
+      "injected_tokens_stats": {
+        "mean": 1388,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          1388.0,
+          1388.0
+        ],
+        "values": [
+          1388,
+          1388,
+          1388
+        ]
+      },
+      "read_output_tokens_stats": {
+        "mean": 16628.6667,
+        "n": 3,
+        "sd": 3152.7779,
+        "ci95": [
+          8796.7322,
+          24460.6011
+        ],
+        "values": [
+          19757,
+          13452,
+          16677
+        ]
+      },
+      "read_calls_stats": {
+        "mean": 0.6667,
+        "n": 3,
+        "sd": 1.1547,
+        "ci95": [
+          -2.2018,
+          3.5351
+        ],
+        "values": [
+          0,
+          2,
+          0
+        ]
+      }
+    },
+    "A1|zero": {
+      "arm": "A1",
+      "variant": "zero",
+      "knowledge_tokens": [
+        1389,
+        1389,
+        1385
+      ],
+      "hit_rate": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "injected_tokens": [
+        1389,
+        1389,
+        1385
+      ],
+      "read_output_tokens": [
+        0,
+        0,
+        0
+      ],
+      "read_calls": [
+        0,
+        0,
+        0
+      ],
+      "invalid": [],
+      "knowledge_tokens_stats": {
+        "mean": 1387.6667,
+        "n": 3,
+        "sd": 2.3094,
+        "ci95": [
+          1381.9298,
+          1393.4035
+        ],
+        "values": [
+          1389,
+          1389,
+          1385
+        ]
+      },
+      "hit_rate_stats": {
+        "mean": 1.0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          1.0,
+          1.0
+        ],
+        "values": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "injected_tokens_stats": {
+        "mean": 1387.6667,
+        "n": 3,
+        "sd": 2.3094,
+        "ci95": [
+          1381.9298,
+          1393.4035
+        ],
+        "values": [
+          1389,
+          1389,
+          1385
+        ]
+      },
+      "read_output_tokens_stats": {
+        "mean": 0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0,
+          0,
+          0
+        ]
+      },
+      "read_calls_stats": {
+        "mean": 0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    "A2|free": {
+      "arm": "A2",
+      "variant": "free",
+      "knowledge_tokens": [
+        14845,
+        11762,
+        16144
+      ],
+      "hit_rate": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "injected_tokens": [
+        0,
+        0,
+        0
+      ],
+      "read_output_tokens": [
+        14845,
+        11762,
+        16144
+      ],
+      "read_calls": [
+        0,
+        2,
+        2
+      ],
+      "invalid": [],
+      "knowledge_tokens_stats": {
+        "mean": 14250.3333,
+        "n": 3,
+        "sd": 2250.7115,
+        "ci95": [
+          8659.256,
+          19841.4107
+        ],
+        "values": [
+          14845,
+          11762,
+          16144
+        ]
+      },
+      "hit_rate_stats": {
+        "mean": 1.0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          1.0,
+          1.0
+        ],
+        "values": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "injected_tokens_stats": {
+        "mean": 0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0,
+          0,
+          0
+        ]
+      },
+      "read_output_tokens_stats": {
+        "mean": 14250.3333,
+        "n": 3,
+        "sd": 2250.7115,
+        "ci95": [
+          8659.256,
+          19841.4107
+        ],
+        "values": [
+          14845,
+          11762,
+          16144
+        ]
+      },
+      "read_calls_stats": {
+        "mean": 1.3333,
+        "n": 3,
+        "sd": 1.1547,
+        "ci95": [
+          -1.5351,
+          4.2018
+        ],
+        "values": [
+          0,
+          2,
+          2
+        ]
+      }
+    },
+    "A2|zero": {
+      "arm": "A2",
+      "variant": "zero",
+      "knowledge_tokens": [
+        12997,
+        16423,
+        22920
+      ],
+      "hit_rate": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "injected_tokens": [
+        0,
+        0,
+        0
+      ],
+      "read_output_tokens": [
+        12997,
+        16423,
+        22920
+      ],
+      "read_calls": [
+        0,
+        0,
+        0
+      ],
+      "invalid": [],
+      "knowledge_tokens_stats": {
+        "mean": 17446.6667,
+        "n": 3,
+        "sd": 5040.0796,
+        "ci95": [
+          4926.4149,
+          29966.9185
+        ],
+        "values": [
+          12997,
+          16423,
+          22920
+        ]
+      },
+      "hit_rate_stats": {
+        "mean": 1.0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          1.0,
+          1.0
+        ],
+        "values": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "injected_tokens_stats": {
+        "mean": 0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0,
+          0,
+          0
+        ]
+      },
+      "read_output_tokens_stats": {
+        "mean": 17446.6667,
+        "n": 3,
+        "sd": 5040.0796,
+        "ci95": [
+          4926.4149,
+          29966.9185
+        ],
+        "values": [
+          12997,
+          16423,
+          22920
+        ]
+      },
+      "read_calls_stats": {
+        "mean": 0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    "B1|free": {
+      "arm": "B1",
+      "variant": "free",
+      "knowledge_tokens": [
+        5666,
+        7393,
+        8278
+      ],
+      "hit_rate": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "injected_tokens": [
+        2182,
+        2183,
+        2179
+      ],
+      "read_output_tokens": [
+        3484,
+        5210,
+        6099
+      ],
+      "read_calls": [
+        3,
+        5,
+        7
+      ],
+      "invalid": [],
+      "knowledge_tokens_stats": {
+        "mean": 7112.3333,
+        "n": 3,
+        "sd": 1328.4263,
+        "ci95": [
+          3812.3396,
+          10412.3271
+        ],
+        "values": [
+          5666,
+          7393,
+          8278
+        ]
+      },
+      "hit_rate_stats": {
+        "mean": 1.0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          1.0,
+          1.0
+        ],
+        "values": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "injected_tokens_stats": {
+        "mean": 2181.3333,
+        "n": 3,
+        "sd": 2.0817,
+        "ci95": [
+          2176.1622,
+          2186.5045
+        ],
+        "values": [
+          2182,
+          2183,
+          2179
+        ]
+      },
+      "read_output_tokens_stats": {
+        "mean": 4931,
+        "n": 3,
+        "sd": 1329.6379,
+        "ci95": [
+          1627.9963,
+          8234.0037
+        ],
+        "values": [
+          3484,
+          5210,
+          6099
+        ]
+      },
+      "read_calls_stats": {
+        "mean": 5,
+        "n": 3,
+        "sd": 2.0,
+        "ci95": [
+          0.0317,
+          9.9683
+        ],
+        "values": [
+          3,
+          5,
+          7
+        ]
+      }
+    },
+    "B1|zero": {
+      "arm": "B1",
+      "variant": "zero",
+      "knowledge_tokens": [
+        2176,
+        2180,
+        2178
+      ],
+      "hit_rate": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "injected_tokens": [
+        2176,
+        2180,
+        2178
+      ],
+      "read_output_tokens": [
+        0,
+        0,
+        0
+      ],
+      "read_calls": [
+        0,
+        0,
+        0
+      ],
+      "invalid": [],
+      "knowledge_tokens_stats": {
+        "mean": 2178,
+        "n": 3,
+        "sd": 2.0,
+        "ci95": [
+          2173.0317,
+          2182.9683
+        ],
+        "values": [
+          2176,
+          2180,
+          2178
+        ]
+      },
+      "hit_rate_stats": {
+        "mean": 1.0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          1.0,
+          1.0
+        ],
+        "values": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "injected_tokens_stats": {
+        "mean": 2178,
+        "n": 3,
+        "sd": 2.0,
+        "ci95": [
+          2173.0317,
+          2182.9683
+        ],
+        "values": [
+          2176,
+          2180,
+          2178
+        ]
+      },
+      "read_output_tokens_stats": {
+        "mean": 0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0,
+          0,
+          0
+        ]
+      },
+      "read_calls_stats": {
+        "mean": 0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    "B2|free": {
+      "arm": "B2",
+      "variant": "free",
+      "knowledge_tokens": [
+        6381,
+        5054,
+        3784
+      ],
+      "hit_rate": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "injected_tokens": [
+        0,
+        0,
+        0
+      ],
+      "read_output_tokens": [
+        6381,
+        5054,
+        3784
+      ],
+      "read_calls": [
+        8,
+        5,
+        4
+      ],
+      "invalid": [],
+      "knowledge_tokens_stats": {
+        "mean": 5073,
+        "n": 3,
+        "sd": 1298.6043,
+        "ci95": [
+          1847.0882,
+          8298.9118
+        ],
+        "values": [
+          6381,
+          5054,
+          3784
+        ]
+      },
+      "hit_rate_stats": {
+        "mean": 1.0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          1.0,
+          1.0
+        ],
+        "values": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "injected_tokens_stats": {
+        "mean": 0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0,
+          0,
+          0
+        ]
+      },
+      "read_output_tokens_stats": {
+        "mean": 5073,
+        "n": 3,
+        "sd": 1298.6043,
+        "ci95": [
+          1847.0882,
+          8298.9118
+        ],
+        "values": [
+          6381,
+          5054,
+          3784
+        ]
+      },
+      "read_calls_stats": {
+        "mean": 5.6667,
+        "n": 3,
+        "sd": 2.0817,
+        "ci95": [
+          0.4955,
+          10.8378
+        ],
+        "values": [
+          8,
+          5,
+          4
+        ]
+      }
+    },
+    "B2|zero": {
+      "arm": "B2",
+      "variant": "zero",
+      "knowledge_tokens": [
+        7,
+        13,
+        0
+      ],
+      "hit_rate": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "injected_tokens": [
+        0,
+        0,
+        0
+      ],
+      "read_output_tokens": [
+        7,
+        13,
+        0
+      ],
+      "read_calls": [
+        0,
+        0,
+        0
+      ],
+      "invalid": [],
+      "knowledge_tokens_stats": {
+        "mean": 6.6667,
+        "n": 3,
+        "sd": 6.5064,
+        "ci95": [
+          -9.4961,
+          22.8295
+        ],
+        "values": [
+          7,
+          13,
+          0
+        ]
+      },
+      "hit_rate_stats": {
+        "mean": 0.0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "injected_tokens_stats": {
+        "mean": 0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0,
+          0,
+          0
+        ]
+      },
+      "read_output_tokens_stats": {
+        "mean": 6.6667,
+        "n": 3,
+        "sd": 6.5064,
+        "ci95": [
+          -9.4961,
+          22.8295
+        ],
+        "values": [
+          7,
+          13,
+          0
+        ]
+      },
+      "read_calls_stats": {
+        "mean": 0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    "C|free": {
+      "arm": "C",
+      "variant": "free",
+      "knowledge_tokens": [
+        7100,
+        10450
+      ],
+      "hit_rate": [
+        0.0,
+        0.0
+      ],
+      "injected_tokens": [
+        0,
+        0
+      ],
+      "read_output_tokens": [
+        7100,
+        10450
+      ],
+      "read_calls": [
+        13,
+        14
+      ],
+      "invalid": [
+        {
+          "rep": 3,
+          "reasons": [
+            "out_of_arm_read:/home/kent (glob)",
+            "out_of_arm_read:/home/kent/abl2 (glob)",
+            "out_of_arm_read:/home/kent (grep)",
+            "out_of_arm_read:/home/kent (bash)",
+            "out_of_arm_read:/home/kent/abl2 (bash)",
+            "out_of_arm_read:/archive (bash)",
+            "out_of_arm_read:/archive/pentest_work_flow (bash)",
+            "out_of_arm_read:/archive/pentest_work_flow/dsh_secops_plugin (bash)",
+            "out_of_arm_read:/archive (grep)"
+          ]
+        }
+      ],
+      "knowledge_tokens_stats": {
+        "mean": 8775,
+        "n": 2,
+        "sd": 2368.8077,
+        "ci95": [
+          1568.0567,
+          15981.9433
+        ],
+        "values": [
+          7100,
+          10450
+        ]
+      },
+      "hit_rate_stats": {
+        "mean": 0.0,
+        "n": 2,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0.0,
+          0.0
+        ]
+      },
+      "injected_tokens_stats": {
+        "mean": 0,
+        "n": 2,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0,
+          0
+        ]
+      },
+      "read_output_tokens_stats": {
+        "mean": 8775,
+        "n": 2,
+        "sd": 2368.8077,
+        "ci95": [
+          1568.0567,
+          15981.9433
+        ],
+        "values": [
+          7100,
+          10450
+        ]
+      },
+      "read_calls_stats": {
+        "mean": 13.5,
+        "n": 2,
+        "sd": 0.7071,
+        "ci95": [
+          11.3487,
+          15.6513
+        ],
+        "values": [
+          13,
+          14
+        ]
+      }
+    },
+    "C|zero": {
+      "arm": "C",
+      "variant": "zero",
+      "knowledge_tokens": [
+        17,
+        0,
+        12
+      ],
+      "hit_rate": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "injected_tokens": [
+        0,
+        0,
+        0
+      ],
+      "read_output_tokens": [
+        17,
+        0,
+        12
+      ],
+      "read_calls": [
+        0,
+        0,
+        0
+      ],
+      "invalid": [],
+      "knowledge_tokens_stats": {
+        "mean": 9.6667,
+        "n": 3,
+        "sd": 8.7369,
+        "ci95": [
+          -12.037,
+          31.3703
+        ],
+        "values": [
+          17,
+          0,
+          12
+        ]
+      },
+      "hit_rate_stats": {
+        "mean": 0.0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "injected_tokens_stats": {
+        "mean": 0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0,
+          0,
+          0
+        ]
+      },
+      "read_output_tokens_stats": {
+        "mean": 9.6667,
+        "n": 3,
+        "sd": 8.7369,
+        "ci95": [
+          -12.037,
+          31.3703
+        ],
+        "values": [
+          17,
+          0,
+          12
+        ]
+      },
+      "read_calls_stats": {
+        "mean": 0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  },
+  "descriptive": {
+    "injection_only_ratio": 0.2736,
+    "free_variant_total_ratio": 3.5515,
+    "A1_free_mean_injected_tokens": 1388,
+    "A1_free_mean_knowledge_tokens": 18016.6667,
+    "B2_free_mean_knowledge_tokens": 5073,
+    "read_output_tokens_by_category": {
+      "A1": {
+        "carrier": 16169,
+        "code": 307,
+        "other": 149.3
+      },
+      "A2": {
+        "carrier": 13161.7,
+        "code": 614,
+        "other": 470.3
+      },
+      "B1": {
+        "carrier": 2168,
+        "code": 2291.3,
+        "other": 467.3
+      },
+      "B2": {
+        "carrier": 2168,
+        "code": 2428,
+        "other": 472.3
+      },
+      "C": {
+        "carrier": 0,
+        "code": 6532,
+        "other": 2233
+      }
+    },
+    "note": "carrier = 读取记忆载体（MEMORY.md / MEMORIES.md / .tmem）；code = 读取源码与测试；other = 其余工具输出（如命令回显）。知识获取 token 的正式口径把三者都计入，因此 free 变体的绝对值含了解题成本。"
+  },
+  "gates": {
+    "CA-5": {
+      "name": "载体等价性（前置门）",
+      "rule": "散文载体必须由 tmem 载体的同一批 episode 记录机械渲染而来，且每个关键点在两个载体中都可检出",
+      "threshold": "所有关键点 in_tmem_carrier AND in_md_carrier",
+      "value": {
+        "episodes": 4,
+        "facts": [
+          {
+            "id": "Q1_file_order",
+            "ask": "Q1_file_order",
+            "groups": [
+              [
+                "money.py"
+              ],
+              [
+                "import_rows.py"
+              ],
+              [
+                "settlement.py"
+              ]
+            ],
+            "ordered": true,
+            "in_tmem_carrier": true,
+            "in_md_carrier": true
+          },
+          {
+            "id": "Q2_verify_cmd",
+            "ask": "Q2_verify_cmd",
+            "groups": [
+              [
+                "collect-only"
+              ]
+            ],
+            "ordered": false,
+            "in_tmem_carrier": true,
+            "in_md_carrier": true
+          },
+          {
+            "id": "Q3_new_guard",
+            "ask": "Q3_new_guard",
+            "groups": [
+              [
+                "ensure_usable_price"
+              ]
+            ],
+            "ordered": false,
+            "in_tmem_carrier": true,
+            "in_md_carrier": true
+          }
+        ],
+        "md_bytes": 6283
+      },
+      "pass": true
+    },
+    "CA-1": {
+      "name": "成本优势（主判据）",
+      "rule": "A1（tmem 自动注入）的知识获取 token 均值 ≤ B2（散文 MD 按需读取）的 0.30 倍",
+      "threshold": "mean(A1_free.knowledge_tokens) <= 0.30 * mean(B2_free.knowledge_tokens)",
+      "value": {
+        "A1_free_mean_knowledge_tokens": 18016.6667,
+        "B2_free_mean_knowledge_tokens": 5073,
+        "ratio": 3.5515
+      },
+      "pass": false
+    },
+    "CA-1b": {
+      "name": "成本优势（注入式 vs 散文全量注入）",
+      "rule": "A1 的知识获取 token 均值 ≤ B1 的 0.30 倍（同为自动注入，只比载体）",
+      "threshold": "mean(A1_free.knowledge_tokens) <= 0.30 * mean(B1_free.knowledge_tokens)",
+      "value": {
+        "A1_free_mean_knowledge_tokens": 18016.6667,
+        "B1_free_mean_knowledge_tokens": 7112.3333,
+        "ratio": 2.5332
+      },
+      "pass": false
+    },
+    "CA-4": {
+      "name": "获取方式效应可分离",
+      "rule": "同载体下，自动注入臂的知识获取 token 更低且命中率不劣",
+      "threshold": "A1_free.knowledge_tokens <= A2_free.knowledge_tokens AND B1_free.knowledge_tokens <= B2_free.knowledge_tokens AND A1_free.hit_rate >= A2_free.hit_rate AND B1_free.hit_rate >= B2_free.hit_rate",
+      "value": {
+        "knowledge_tokens": {
+          "A1": 18016.6667,
+          "A2": 14250.3333,
+          "B1": 7112.3333,
+          "B2": 5073
+        },
+        "hit_rate": {
+          "A1": 0.889,
+          "A2": 1.0,
+          "B1": 1.0,
+          "B2": 1.0
+        }
+      },
+      "pass": false
+    },
+    "CA-E1": {
+      "name": "效果优势（记忆专有事实）",
+      "rule": "A1 的命中率显著高于 C（无记忆），且不劣于 B2；在 zero 变体（禁止读文件与跑命令）上判定——这是唯一不存在『读代码外得答案』的变体",
+      "threshold": "mean(A1_zero.hit_rate) > mean(C_zero.hit_rate) AND mean(A1_zero.hit_rate) >= mean(B2_zero.hit_rate)",
+      "value": {
+        "variant": "zero",
+        "A1_zero_hit_rate": 1.0,
+        "C_zero_hit_rate": 0.0,
+        "B2_zero_hit_rate": 0.0,
+        "free_variant_hit_rate_descriptive": {
+          "A1": 0.889,
+          "A2": 1.0,
+          "B1": 1.0,
+          "B2": 1.0,
+          "C": 0.0
+        }
+      },
+      "pass": true
+    },
+    "CA-2": {
+      "name": "同签名复发率",
+      "rule": "需要 T1 场景（本课题第二阶段）",
+      "threshold": "未预注册具体阈值",
+      "value": null,
+      "pass": null,
+      "not_executed": "本阶段只执行知识探针（成本与可得性）；复发率需要跨位置复现错误的专门场景与错误签名序列判定"
+    },
+    "CA-3": {
+      "name": "L1 共变提示采纳精确率",
+      "rule": "需要 T2 场景（耦合改动）",
+      "threshold": "未预注册具体阈值",
+      "value": null,
+      "pass": null,
+      "not_executed": "同 CA-2，需专门场景与 L1 提示采纳标注"
+    },
+    "CA-6": {
+      "name": "压缩后回收",
+      "rule": "需要 C1–C4 压缩臂",
+      "threshold": "未预注册具体阈值",
+      "value": null,
+      "pass": null,
+      "not_executed": "需要可复现的压缩触发机制与 compaction_committed 事件校验；本阶段不执行"
+    },
+    "CA-7": {
+      "name": "CA-7",
+      "rule": null,
+      "threshold": null,
+      "value": null,
+      "pass": null,
+      "not_executed": "同 CA-6"
+    },
+    "CA-8": {
+      "name": "CA-8",
+      "rule": null,
+      "threshold": null,
+      "value": null,
+      "pass": null,
+      "not_executed": "同 CA-6"
+    },
+    "CA-9": {
+      "name": "CA-9",
+      "rule": null,
+      "threshold": null,
+      "value": null,
+      "pass": null,
+      "not_executed": "同 CA-6"
+    }
+  }
+}

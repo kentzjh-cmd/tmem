@@ -1,0 +1,3135 @@
+{
+  "study": "carrier-ablation",
+  "oracle_frozen_at": "2026-11-23T22:53:27+08:00",
+  "exp_root": "/home/kent/e2e/abl",
+  "arms": {
+    "A1": {
+      "carrier": "tmem_structured",
+      "access": "auto_injection",
+      "mount": "workspace patch (tmem init) — 官方工作区安装方式",
+      "dsh_home": "homes/plain (home patch 无 tmem 条目)",
+      "path": "正常 PATH（可调用 tmem CLI）",
+      "expect_injection": true
+    },
+    "A2": {
+      "carrier": "tmem_structured",
+      "access": "on_demand",
+      "mount": "workspace patch (tmem init) + PATH 指向打过补丁的 tmem 包副本",
+      "mechanism_ablation": {
+        "file": "tmem-a2/tmem/hooks/dsh.mjs",
+        "patch": "if (preBlocks.length > 0 && process.env.TMEM_ABLATE_NO_INJECT !== \"1\")",
+        "env": "TMEM_ABLATE_NO_INJECT=1",
+        "intent": "只关闭『自动注入』这一条机制；捕获、遥测、检索工具全部保持不变"
+      },
+      "expect_injection": false
+    },
+    "B1": {
+      "carrier": "prose_md",
+      "access": "auto_injection",
+      "mount": "workspace patch (md-carrier 插件) — 注入 MEMORY.md 全文，无检索能力",
+      "dsh_home": "homes/md",
+      "path": "blockbin 置前（tmem CLI 不可用）",
+      "expect_injection": true
+    },
+    "B2": {
+      "carrier": "prose_md",
+      "access": "on_demand",
+      "mount": "无插件；MEMORY.md 只是工作区里的一个文件",
+      "dsh_home": "homes/plain",
+      "path": "blockbin 置前（tmem CLI 不可用）",
+      "expect_injection": false
+    },
+    "C": {
+      "carrier": "none",
+      "access": "none",
+      "mount": "无插件、无 MEMORY.md、无 .tmem",
+      "dsh_home": "homes/plain",
+      "path": "blockbin 置前（tmem CLI 不可用）",
+      "expect_injection": false
+    }
+  },
+  "sessions": [
+    {
+      "arm": "A1",
+      "rep": 1,
+      "variant": "free",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 73.5,
+      "knowledge_tokens": 33595,
+      "injected_tokens": 1387,
+      "read_output_tokens": 32208,
+      "read_output_tokens_by_category": {
+        "carrier": 29246,
+        "code": 2416,
+        "other": 539
+      },
+      "read_calls": 3,
+      "read_paths": [
+        "src/ledger/money.py",
+        "src/ledger/import_rows.py",
+        "src/ledger/settlement.py"
+      ],
+      "tmem_block_injected": true,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_search",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand"
+      ],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            210,
+            363,
+            749
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            1738
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            299
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      }
+    },
+    {
+      "arm": "A1",
+      "rep": 1,
+      "variant": "zero",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 15.8,
+      "knowledge_tokens": 1386,
+      "injected_tokens": 1386,
+      "read_output_tokens": 0,
+      "read_output_tokens_by_category": {
+        "carrier": 0,
+        "code": 0,
+        "other": 0
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": true,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            120,
+            210,
+            325
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            760
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            141
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      }
+    },
+    {
+      "arm": "A1",
+      "rep": 2,
+      "variant": "free",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 17.3,
+      "knowledge_tokens": 17186,
+      "injected_tokens": 1386,
+      "read_output_tokens": 15800,
+      "read_output_tokens_by_category": {
+        "carrier": 15620,
+        "code": 0,
+        "other": 178
+      },
+      "read_calls": 1,
+      "read_paths": [
+        "MEMORIES.md"
+      ],
+      "tmem_block_injected": true,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [
+        "tmem_search",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand"
+      ],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            240,
+            390,
+            613
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            1850
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            320
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      }
+    },
+    {
+      "arm": "A1",
+      "rep": 2,
+      "variant": "zero",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 25.8,
+      "knowledge_tokens": 16575,
+      "injected_tokens": 1387,
+      "read_output_tokens": 15188,
+      "read_output_tokens_by_category": {
+        "carrier": 15188,
+        "code": 0,
+        "other": 0
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": true,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [
+        "tmem_expand",
+        "tmem_search",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand"
+      ],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            268,
+            401,
+            679
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            2153
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            288
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      }
+    },
+    {
+      "arm": "A1",
+      "rep": 3,
+      "variant": "free",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 35.5,
+      "knowledge_tokens": 14656,
+      "injected_tokens": 1388,
+      "read_output_tokens": 13268,
+      "read_output_tokens_by_category": {
+        "carrier": 13266,
+        "code": 0,
+        "other": 0
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": true,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [
+        "tmem_search",
+        "tmem_search",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand"
+      ],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            158,
+            290,
+            560
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            1462
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            227
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      }
+    },
+    {
+      "arm": "A1",
+      "rep": 3,
+      "variant": "zero",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 11.6,
+      "knowledge_tokens": 1388,
+      "injected_tokens": 1388,
+      "read_output_tokens": 0,
+      "read_output_tokens_by_category": {
+        "carrier": 0,
+        "code": 0,
+        "other": 0
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": true,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            178,
+            262,
+            353
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            1081
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            191
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      }
+    },
+    {
+      "arm": "A2",
+      "rep": 1,
+      "variant": "free",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 46.9,
+      "knowledge_tokens": 14737,
+      "injected_tokens": 0,
+      "read_output_tokens": 14737,
+      "read_output_tokens_by_category": {
+        "carrier": 14559,
+        "code": 0,
+        "other": 174
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [
+        "tmem_search",
+        "tmem_search",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand"
+      ],
+      "hit_rate": 0.667,
+      "hits": 2,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [
+            210,
+            160,
+            142
+          ],
+          "missing_groups": [],
+          "note": "all keypoints present but in the wrong order"
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            1306
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            324
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      }
+    },
+    {
+      "arm": "A2",
+      "rep": 1,
+      "variant": "zero",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 21.2,
+      "knowledge_tokens": 11043,
+      "injected_tokens": 0,
+      "read_output_tokens": 11043,
+      "read_output_tokens_by_category": {
+        "carrier": 10914,
+        "code": 0,
+        "other": 129
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [
+        "tmem_search",
+        "tmem_search",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand"
+      ],
+      "hit_rate": 0.667,
+      "hits": 2,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [
+            203,
+            124,
+            106
+          ],
+          "missing_groups": [],
+          "note": "all keypoints present but in the wrong order"
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            1584
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            319
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      }
+    },
+    {
+      "arm": "A2",
+      "rep": 2,
+      "variant": "free",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 25.0,
+      "knowledge_tokens": 17225,
+      "injected_tokens": 0,
+      "read_output_tokens": 17225,
+      "read_output_tokens_by_category": {
+        "carrier": 17220,
+        "code": 0,
+        "other": 3
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [
+        "tmem_search",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand"
+      ],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            371,
+            494,
+            760
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            1659
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            451
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      }
+    },
+    {
+      "arm": "A2",
+      "rep": 2,
+      "variant": "zero",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 61.1,
+      "knowledge_tokens": 18427,
+      "injected_tokens": 0,
+      "read_output_tokens": 18427,
+      "read_output_tokens_by_category": {
+        "carrier": 18293,
+        "code": 0,
+        "other": 129
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [
+        "tmem_search",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand"
+      ],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            482,
+            617,
+            922
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            1911
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            557
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      }
+    },
+    {
+      "arm": "A2",
+      "rep": 3,
+      "variant": "free",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 31.4,
+      "knowledge_tokens": 32960,
+      "injected_tokens": 0,
+      "read_output_tokens": 32960,
+      "read_output_tokens_by_category": {
+        "carrier": 25374,
+        "code": 0,
+        "other": 7582
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [
+        "tmem_search",
+        "tmem_search",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand"
+      ],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            232,
+            316,
+            657
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            1278
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            252
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      }
+    },
+    {
+      "arm": "A2",
+      "rep": 3,
+      "variant": "zero",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 52.6,
+      "knowledge_tokens": 17891,
+      "injected_tokens": 0,
+      "read_output_tokens": 17891,
+      "read_output_tokens_by_category": {
+        "carrier": 17889,
+        "code": 0,
+        "other": 0
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [
+        "tmem_search",
+        "tmem_search",
+        "tmem_search",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand",
+        "tmem_expand"
+      ],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            95,
+            249,
+            583
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            1716
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            186
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      }
+    },
+    {
+      "arm": "B1",
+      "rep": 1,
+      "variant": "free",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 20.4,
+      "knowledge_tokens": 18265,
+      "injected_tokens": 13083,
+      "read_output_tokens": 5182,
+      "read_output_tokens_by_category": {
+        "carrier": 2182,
+        "code": 2611,
+        "other": 387
+      },
+      "read_calls": 5,
+      "read_paths": [
+        "MEMORY.md",
+        "src/ledger/money.py",
+        "src/ledger/import_rows.py",
+        "src/ledger/settlement.py",
+        "src/ledger/errors.py"
+      ],
+      "tmem_block_injected": false,
+      "md_carrier_injected": true,
+      "tmem_tool_calls": [],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            109,
+            143,
+            186
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            843
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            965
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      }
+    },
+    {
+      "arm": "B1",
+      "rep": 1,
+      "variant": "zero",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 8.4,
+      "knowledge_tokens": 2184,
+      "injected_tokens": 2184,
+      "read_output_tokens": 0,
+      "read_output_tokens_by_category": {
+        "carrier": 0,
+        "code": 0,
+        "other": 0
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": false,
+      "md_carrier_injected": true,
+      "tmem_tool_calls": [],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            92,
+            131,
+            175
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            858
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            426
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      }
+    },
+    {
+      "arm": "B1",
+      "rep": 2,
+      "variant": "free",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 26.0,
+      "knowledge_tokens": 21135,
+      "injected_tokens": 15265,
+      "read_output_tokens": 5870,
+      "read_output_tokens_by_category": {
+        "carrier": 2182,
+        "code": 3287,
+        "other": 398
+      },
+      "read_calls": 6,
+      "read_paths": [
+        "MEMORY.md",
+        "src/ledger/money.py",
+        "src/ledger/import_rows.py",
+        "src/ledger/settlement.py",
+        "tests/test_settlement.py",
+        "tests/test_import_rows.py"
+      ],
+      "tmem_block_injected": false,
+      "md_carrier_injected": true,
+      "tmem_tool_calls": [],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            152,
+            176,
+            206
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            1033
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            362
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      }
+    },
+    {
+      "arm": "B1",
+      "rep": 2,
+      "variant": "zero",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 13.6,
+      "knowledge_tokens": 2178,
+      "injected_tokens": 2178,
+      "read_output_tokens": 0,
+      "read_output_tokens_by_category": {
+        "carrier": 0,
+        "code": 0,
+        "other": 0
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": false,
+      "md_carrier_injected": true,
+      "tmem_tool_calls": [],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            100,
+            175,
+            381
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            1208
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            232
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      }
+    },
+    {
+      "arm": "B1",
+      "rep": 3,
+      "variant": "free",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 54.9,
+      "knowledge_tokens": 14031,
+      "injected_tokens": 8722,
+      "read_output_tokens": 5309,
+      "read_output_tokens_by_category": {
+        "carrier": 2182,
+        "code": 2611,
+        "other": 514
+      },
+      "read_calls": 5,
+      "read_paths": [
+        "/home/kent/e2e/abl/arms/B1/rep3/MEMORY.md",
+        "/home/kent/e2e/abl/arms/B1/rep3/src/ledger/money.py",
+        "/home/kent/e2e/abl/arms/B1/rep3/src/ledger/import_rows.py",
+        "/home/kent/e2e/abl/arms/B1/rep3/src/ledger/settlement.py",
+        "/home/kent/e2e/abl/arms/B1/rep3/src/ledger/errors.py"
+      ],
+      "tmem_block_injected": false,
+      "md_carrier_injected": true,
+      "tmem_tool_calls": [],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            157,
+            181,
+            211
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            1138
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            1482
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      }
+    },
+    {
+      "arm": "B1",
+      "rep": 3,
+      "variant": "zero",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 8.6,
+      "knowledge_tokens": 2178,
+      "injected_tokens": 2178,
+      "read_output_tokens": 0,
+      "read_output_tokens_by_category": {
+        "carrier": 0,
+        "code": 0,
+        "other": 0
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": false,
+      "md_carrier_injected": true,
+      "tmem_tool_calls": [],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            102,
+            150,
+            310
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            903
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            196
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      }
+    },
+    {
+      "arm": "B2",
+      "rep": 1,
+      "variant": "free",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 18.3,
+      "knowledge_tokens": 5177,
+      "injected_tokens": 0,
+      "read_output_tokens": 5177,
+      "read_output_tokens_by_category": {
+        "carrier": 2182,
+        "code": 2416,
+        "other": 577
+      },
+      "read_calls": 4,
+      "read_paths": [
+        "/home/kent/e2e/abl/arms/B2/rep1/MEMORY.md",
+        "/home/kent/e2e/abl/arms/B2/rep1/src/ledger/money.py",
+        "/home/kent/e2e/abl/arms/B2/rep1/src/ledger/import_rows.py",
+        "/home/kent/e2e/abl/arms/B2/rep1/src/ledger/settlement.py"
+      ],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [],
+      "hit_rate": 0.667,
+      "hits": 2,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            175,
+            229,
+            385
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "collect-only"
+            ]
+          ],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            1161
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      }
+    },
+    {
+      "arm": "B2",
+      "rep": 1,
+      "variant": "zero",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 12.2,
+      "knowledge_tokens": 13,
+      "injected_tokens": 0,
+      "read_output_tokens": 13,
+      "read_output_tokens_by_category": {
+        "carrier": 0,
+        "code": 0,
+        "other": 12
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [],
+      "hit_rate": 0.0,
+      "hits": 0,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "money.py"
+            ],
+            [
+              "import_rows.py"
+            ],
+            [
+              "settlement.py"
+            ]
+          ],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "collect-only"
+            ]
+          ],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "ensure_usable_price"
+            ]
+          ],
+          "note": ""
+        }
+      }
+    },
+    {
+      "arm": "B2",
+      "rep": 2,
+      "variant": "free",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 18.0,
+      "knowledge_tokens": 5012,
+      "injected_tokens": 0,
+      "read_output_tokens": 5012,
+      "read_output_tokens_by_category": {
+        "carrier": 2182,
+        "code": 2416,
+        "other": 412
+      },
+      "read_calls": 4,
+      "read_paths": [
+        "MEMORY.md",
+        "src/ledger/money.py",
+        "src/ledger/import_rows.py",
+        "src/ledger/settlement.py"
+      ],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            161,
+            185,
+            215
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            981
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            360
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      }
+    },
+    {
+      "arm": "B2",
+      "rep": 2,
+      "variant": "zero",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 13.5,
+      "knowledge_tokens": 7,
+      "injected_tokens": 0,
+      "read_output_tokens": 7,
+      "read_output_tokens_by_category": {
+        "carrier": 0,
+        "code": 0,
+        "other": 7
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [],
+      "hit_rate": 0.0,
+      "hits": 0,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "money.py"
+            ],
+            [
+              "import_rows.py"
+            ],
+            [
+              "settlement.py"
+            ]
+          ],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "collect-only"
+            ]
+          ],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "ensure_usable_price"
+            ]
+          ],
+          "note": ""
+        }
+      }
+    },
+    {
+      "arm": "B2",
+      "rep": 3,
+      "variant": "free",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 25.5,
+      "knowledge_tokens": 5006,
+      "injected_tokens": 0,
+      "read_output_tokens": 5006,
+      "read_output_tokens_by_category": {
+        "carrier": 2182,
+        "code": 2611,
+        "other": 180
+      },
+      "read_calls": 5,
+      "read_paths": [
+        "MEMORY.md",
+        "src/ledger/money.py",
+        "src/ledger/import_rows.py",
+        "src/ledger/settlement.py",
+        "src/ledger/errors.py"
+      ],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            97,
+            121,
+            148
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            1112
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            1324
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      }
+    },
+    {
+      "arm": "B2",
+      "rep": 3,
+      "variant": "zero",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 13.1,
+      "knowledge_tokens": 7,
+      "injected_tokens": 0,
+      "read_output_tokens": 7,
+      "read_output_tokens_by_category": {
+        "carrier": 0,
+        "code": 0,
+        "other": 7
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [],
+      "hit_rate": 0.0,
+      "hits": 0,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "money.py"
+            ],
+            [
+              "import_rows.py"
+            ],
+            [
+              "settlement.py"
+            ]
+          ],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "collect-only"
+            ]
+          ],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "ensure_usable_price"
+            ]
+          ],
+          "note": ""
+        }
+      }
+    },
+    {
+      "arm": "C",
+      "rep": 1,
+      "variant": "free",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 93.1,
+      "knowledge_tokens": 58429,
+      "injected_tokens": 0,
+      "read_output_tokens": 58429,
+      "read_output_tokens_by_category": {
+        "carrier": 8611,
+        "code": 523,
+        "other": 48410
+      },
+      "read_calls": 10,
+      "read_paths": [
+        ".gitignore",
+        ".dsh/plugins/tmem-dsh-plugin.mjs",
+        ".dsh/tmem.patch.yml",
+        "AGENTS.md",
+        "/home/kent/e2e/abl/blockbin/tmem",
+        "/home/kent/e2e/abl/arms_manifest.json",
+        "/home/kent/e2e/abl/metrics-carrier-ablation.md",
+        "/home/kent/e2e/ledger-svc/.tmem/traces/tr_4c1d4e9195.json",
+        "/home/kent/e2e/ledger-svc/.tmem/raw/tr_4c1d4e9195.raw.json",
+        "/home/kent/e2e/abl/arms/C/rep1/src/ledger/money.py"
+      ],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [],
+      "hit_rate": 0.333,
+      "hits": 1,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            700,
+            800,
+            926
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "collect-only"
+            ]
+          ],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "ensure_usable_price"
+            ]
+          ],
+          "note": ""
+        }
+      }
+    },
+    {
+      "arm": "C",
+      "rep": 1,
+      "variant": "zero",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 16.7,
+      "knowledge_tokens": 0,
+      "injected_tokens": 0,
+      "read_output_tokens": 0,
+      "read_output_tokens_by_category": {
+        "carrier": 0,
+        "code": 0,
+        "other": 0
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [],
+      "hit_rate": 0.0,
+      "hits": 0,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "money.py"
+            ],
+            [
+              "import_rows.py"
+            ],
+            [
+              "settlement.py"
+            ]
+          ],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "collect-only"
+            ]
+          ],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "ensure_usable_price"
+            ]
+          ],
+          "note": ""
+        }
+      }
+    },
+    {
+      "arm": "C",
+      "rep": 2,
+      "variant": "free",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 73.4,
+      "knowledge_tokens": 49636,
+      "injected_tokens": 0,
+      "read_output_tokens": 49636,
+      "read_output_tokens_by_category": {
+        "carrier": 5656,
+        "code": 3390,
+        "other": 40550
+      },
+      "read_calls": 14,
+      "read_paths": [
+        "/home/kent/e2e/abl/arms/C/rep2/README.md",
+        "/home/kent/e2e/abl/arms/C/rep2/.dsh/skills/tmem/SKILL.md",
+        "/home/kent/e2e/abl/carrier/MEMORY.md",
+        "/home/kent/e2e/abl/arms/C/rep2/src/ledger/money.py",
+        "/home/kent/e2e/abl/arms/C/rep2/src/ledger/import_rows.py",
+        "/home/kent/e2e/abl/arms/C/rep2/.dsh/tmem.patch.yml",
+        "/home/kent/e2e/abl/arms/C/rep2/.git/logs/HEAD",
+        "/home/kent/e2e/abl/arms/C/rep2/src/ledger/settlement.py",
+        "/home/kent/e2e/abl/arms/B1/rep1/MEMORY.md",
+        "/home/kent/e2e/abl/carrier/carrier_facts.json",
+        "/home/kent/e2e/abl/ledger-svc/MEMORIES.md",
+        "/home/kent/e2e/abl/ledger-svc/src/ledger/money.py"
+      ],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            394,
+            418,
+            448
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            1560
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            544
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      }
+    },
+    {
+      "arm": "C",
+      "rep": 2,
+      "variant": "zero",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 13.3,
+      "knowledge_tokens": 0,
+      "injected_tokens": 0,
+      "read_output_tokens": 0,
+      "read_output_tokens_by_category": {
+        "carrier": 0,
+        "code": 0,
+        "other": 0
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [],
+      "hit_rate": 0.0,
+      "hits": 0,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "money.py"
+            ],
+            [
+              "import_rows.py"
+            ],
+            [
+              "settlement.py"
+            ]
+          ],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "collect-only"
+            ]
+          ],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "ensure_usable_price"
+            ]
+          ],
+          "note": ""
+        }
+      }
+    },
+    {
+      "arm": "C",
+      "rep": 3,
+      "variant": "free",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 81.3,
+      "knowledge_tokens": 50602,
+      "injected_tokens": 0,
+      "read_output_tokens": 50602,
+      "read_output_tokens_by_category": {
+        "carrier": 16462,
+        "code": 2131,
+        "other": 31907
+      },
+      "read_calls": 13,
+      "read_paths": [
+        "README.md",
+        "/home/kent/e2e/abl/arms/C/rep3/.dsh/tmem.patch.yml",
+        "/home/kent/e2e/abl/arms/C/rep3/.dsh/plugins/tmem-dsh-plugin.mjs",
+        "/home/kent/e2e/abl/arms/C/rep3/.gitignore",
+        "/home/kent/e2e/abl/carrier/MEMORY.md",
+        "/home/kent/e2e/abl/arms/C/rep3/src/ledger/money.py",
+        "/home/kent/e2e/abl/arms/B1/rep3/MEMORY.md",
+        "/home/kent/e2e/abl/arms/B1/rep3/src/ledger/money.py",
+        "/home/kent/e2e/abl/arms/A1/rep3/.tmem/traces/tr_01aed48efa.json",
+        "/home/kent/e2e/abl/arms/C/rep3/src/ledger/invoicing.py",
+        "/home/kent/e2e/abl/arms/A1/rep3/.tmem/raw/tr_01aed48efa.raw.json",
+        "/home/kent/e2e/abl/arms/A1/rep3/.tmem/raw/tr_01aed48efa.raw.json"
+      ],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [],
+      "hit_rate": 1.0,
+      "hits": 3,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            415,
+            452,
+            649
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            2456
+          ],
+          "missing_groups": [],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": true,
+          "matched_groups": [
+            430
+          ],
+          "missing_groups": [],
+          "note": ""
+        }
+      }
+    },
+    {
+      "arm": "C",
+      "rep": 3,
+      "variant": "zero",
+      "valid": true,
+      "invalid_reasons": [],
+      "exit_code": 0,
+      "elapsed_sec": 13.6,
+      "knowledge_tokens": 0,
+      "injected_tokens": 0,
+      "read_output_tokens": 0,
+      "read_output_tokens_by_category": {
+        "carrier": 0,
+        "code": 0,
+        "other": 0
+      },
+      "read_calls": 0,
+      "read_paths": [],
+      "tmem_block_injected": false,
+      "md_carrier_injected": false,
+      "tmem_tool_calls": [],
+      "hit_rate": 0.0,
+      "hits": 0,
+      "questions": {
+        "Q1_file_order": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "money.py"
+            ],
+            [
+              "import_rows.py"
+            ],
+            [
+              "settlement.py"
+            ]
+          ],
+          "note": ""
+        },
+        "Q2_verify_cmd": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "collect-only"
+            ]
+          ],
+          "note": ""
+        },
+        "Q3_new_guard": {
+          "ask": null,
+          "hit": false,
+          "matched_groups": [],
+          "missing_groups": [
+            [
+              "ensure_usable_price"
+            ]
+          ],
+          "note": ""
+        }
+      }
+    }
+  ],
+  "aggregate": {
+    "A1|free": {
+      "arm": "A1",
+      "variant": "free",
+      "knowledge_tokens": [
+        33595,
+        17186,
+        14656
+      ],
+      "hit_rate": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "injected_tokens": [
+        1387,
+        1386,
+        1388
+      ],
+      "read_output_tokens": [
+        32208,
+        15800,
+        13268
+      ],
+      "read_calls": [
+        3,
+        1,
+        0
+      ],
+      "invalid": [],
+      "knowledge_tokens_stats": {
+        "mean": 21812.3333,
+        "n": 3,
+        "sd": 10282.2007,
+        "ci95": [
+          -3730.0691,
+          47354.7357
+        ],
+        "values": [
+          33595,
+          17186,
+          14656
+        ]
+      },
+      "hit_rate_stats": {
+        "mean": 1.0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          1.0,
+          1.0
+        ],
+        "values": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "injected_tokens_stats": {
+        "mean": 1387,
+        "n": 3,
+        "sd": 1.0,
+        "ci95": [
+          1384.5159,
+          1389.4841
+        ],
+        "values": [
+          1387,
+          1386,
+          1388
+        ]
+      },
+      "read_output_tokens_stats": {
+        "mean": 20425.3333,
+        "n": 3,
+        "sd": 10282.3237,
+        "ci95": [
+          -5117.3748,
+          45968.0415
+        ],
+        "values": [
+          32208,
+          15800,
+          13268
+        ]
+      },
+      "read_calls_stats": {
+        "mean": 1.3333,
+        "n": 3,
+        "sd": 1.5275,
+        "ci95": [
+          -2.4612,
+          5.1279
+        ],
+        "values": [
+          3,
+          1,
+          0
+        ]
+      }
+    },
+    "A1|zero": {
+      "arm": "A1",
+      "variant": "zero",
+      "knowledge_tokens": [
+        1386,
+        16575,
+        1388
+      ],
+      "hit_rate": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "injected_tokens": [
+        1386,
+        1387,
+        1388
+      ],
+      "read_output_tokens": [
+        0,
+        15188,
+        0
+      ],
+      "read_calls": [
+        0,
+        0,
+        0
+      ],
+      "invalid": [],
+      "knowledge_tokens_stats": {
+        "mean": 6449.6667,
+        "n": 3,
+        "sd": 8768.7959,
+        "ci95": [
+          -15333.23,
+          28232.5634
+        ],
+        "values": [
+          1386,
+          16575,
+          1388
+        ]
+      },
+      "hit_rate_stats": {
+        "mean": 1.0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          1.0,
+          1.0
+        ],
+        "values": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "injected_tokens_stats": {
+        "mean": 1387,
+        "n": 3,
+        "sd": 1.0,
+        "ci95": [
+          1384.5159,
+          1389.4841
+        ],
+        "values": [
+          1386,
+          1387,
+          1388
+        ]
+      },
+      "read_output_tokens_stats": {
+        "mean": 5062.6667,
+        "n": 3,
+        "sd": 8768.7959,
+        "ci95": [
+          -16720.2299,
+          26845.5632
+        ],
+        "values": [
+          0,
+          15188,
+          0
+        ]
+      },
+      "read_calls_stats": {
+        "mean": 0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    "A2|free": {
+      "arm": "A2",
+      "variant": "free",
+      "knowledge_tokens": [
+        14737,
+        17225,
+        32960
+      ],
+      "hit_rate": [
+        0.667,
+        1.0,
+        1.0
+      ],
+      "injected_tokens": [
+        0,
+        0,
+        0
+      ],
+      "read_output_tokens": [
+        14737,
+        17225,
+        32960
+      ],
+      "read_calls": [
+        0,
+        0,
+        0
+      ],
+      "invalid": [],
+      "knowledge_tokens_stats": {
+        "mean": 21640.6667,
+        "n": 3,
+        "sd": 9881.4481,
+        "ci95": [
+          -2906.2112,
+          46187.5445
+        ],
+        "values": [
+          14737,
+          17225,
+          32960
+        ]
+      },
+      "hit_rate_stats": {
+        "mean": 0.889,
+        "n": 3,
+        "sd": 0.1923,
+        "ci95": [
+          0.4114,
+          1.3666
+        ],
+        "values": [
+          0.667,
+          1.0,
+          1.0
+        ]
+      },
+      "injected_tokens_stats": {
+        "mean": 0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0,
+          0,
+          0
+        ]
+      },
+      "read_output_tokens_stats": {
+        "mean": 21640.6667,
+        "n": 3,
+        "sd": 9881.4481,
+        "ci95": [
+          -2906.2112,
+          46187.5445
+        ],
+        "values": [
+          14737,
+          17225,
+          32960
+        ]
+      },
+      "read_calls_stats": {
+        "mean": 0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    "A2|zero": {
+      "arm": "A2",
+      "variant": "zero",
+      "knowledge_tokens": [
+        11043,
+        18427,
+        17891
+      ],
+      "hit_rate": [
+        0.667,
+        1.0,
+        1.0
+      ],
+      "injected_tokens": [
+        0,
+        0,
+        0
+      ],
+      "read_output_tokens": [
+        11043,
+        18427,
+        17891
+      ],
+      "read_calls": [
+        0,
+        0,
+        0
+      ],
+      "invalid": [],
+      "knowledge_tokens_stats": {
+        "mean": 15787,
+        "n": 3,
+        "sd": 4117.1563,
+        "ci95": [
+          5559.4168,
+          26014.5832
+        ],
+        "values": [
+          11043,
+          18427,
+          17891
+        ]
+      },
+      "hit_rate_stats": {
+        "mean": 0.889,
+        "n": 3,
+        "sd": 0.1923,
+        "ci95": [
+          0.4114,
+          1.3666
+        ],
+        "values": [
+          0.667,
+          1.0,
+          1.0
+        ]
+      },
+      "injected_tokens_stats": {
+        "mean": 0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0,
+          0,
+          0
+        ]
+      },
+      "read_output_tokens_stats": {
+        "mean": 15787,
+        "n": 3,
+        "sd": 4117.1563,
+        "ci95": [
+          5559.4168,
+          26014.5832
+        ],
+        "values": [
+          11043,
+          18427,
+          17891
+        ]
+      },
+      "read_calls_stats": {
+        "mean": 0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    "B1|free": {
+      "arm": "B1",
+      "variant": "free",
+      "knowledge_tokens": [
+        18265,
+        21135,
+        14031
+      ],
+      "hit_rate": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "injected_tokens": [
+        13083,
+        15265,
+        8722
+      ],
+      "read_output_tokens": [
+        5182,
+        5870,
+        5309
+      ],
+      "read_calls": [
+        5,
+        6,
+        5
+      ],
+      "invalid": [],
+      "knowledge_tokens_stats": {
+        "mean": 17810.3333,
+        "n": 3,
+        "sd": 3573.7579,
+        "ci95": [
+          8932.6266,
+          26688.04
+        ],
+        "values": [
+          18265,
+          21135,
+          14031
+        ]
+      },
+      "hit_rate_stats": {
+        "mean": 1.0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          1.0,
+          1.0
+        ],
+        "values": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "injected_tokens_stats": {
+        "mean": 12356.6667,
+        "n": 3,
+        "sd": 3331.4235,
+        "ci95": [
+          4080.952,
+          20632.3813
+        ],
+        "values": [
+          13083,
+          15265,
+          8722
+        ]
+      },
+      "read_output_tokens_stats": {
+        "mean": 5453.6667,
+        "n": 3,
+        "sd": 366.1043,
+        "ci95": [
+          4544.2133,
+          6363.1201
+        ],
+        "values": [
+          5182,
+          5870,
+          5309
+        ]
+      },
+      "read_calls_stats": {
+        "mean": 5.3333,
+        "n": 3,
+        "sd": 0.5774,
+        "ci95": [
+          3.8991,
+          6.7676
+        ],
+        "values": [
+          5,
+          6,
+          5
+        ]
+      }
+    },
+    "B1|zero": {
+      "arm": "B1",
+      "variant": "zero",
+      "knowledge_tokens": [
+        2184,
+        2178,
+        2178
+      ],
+      "hit_rate": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "injected_tokens": [
+        2184,
+        2178,
+        2178
+      ],
+      "read_output_tokens": [
+        0,
+        0,
+        0
+      ],
+      "read_calls": [
+        0,
+        0,
+        0
+      ],
+      "invalid": [],
+      "knowledge_tokens_stats": {
+        "mean": 2180,
+        "n": 3,
+        "sd": 3.4641,
+        "ci95": [
+          2171.3947,
+          2188.6053
+        ],
+        "values": [
+          2184,
+          2178,
+          2178
+        ]
+      },
+      "hit_rate_stats": {
+        "mean": 1.0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          1.0,
+          1.0
+        ],
+        "values": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "injected_tokens_stats": {
+        "mean": 2180,
+        "n": 3,
+        "sd": 3.4641,
+        "ci95": [
+          2171.3947,
+          2188.6053
+        ],
+        "values": [
+          2184,
+          2178,
+          2178
+        ]
+      },
+      "read_output_tokens_stats": {
+        "mean": 0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0,
+          0,
+          0
+        ]
+      },
+      "read_calls_stats": {
+        "mean": 0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    "B2|free": {
+      "arm": "B2",
+      "variant": "free",
+      "knowledge_tokens": [
+        5177,
+        5012,
+        5006
+      ],
+      "hit_rate": [
+        0.667,
+        1.0,
+        1.0
+      ],
+      "injected_tokens": [
+        0,
+        0,
+        0
+      ],
+      "read_output_tokens": [
+        5177,
+        5012,
+        5006
+      ],
+      "read_calls": [
+        4,
+        4,
+        5
+      ],
+      "invalid": [],
+      "knowledge_tokens_stats": {
+        "mean": 5065,
+        "n": 3,
+        "sd": 97.0412,
+        "ci95": [
+          4823.9362,
+          5306.0638
+        ],
+        "values": [
+          5177,
+          5012,
+          5006
+        ]
+      },
+      "hit_rate_stats": {
+        "mean": 0.889,
+        "n": 3,
+        "sd": 0.1923,
+        "ci95": [
+          0.4114,
+          1.3666
+        ],
+        "values": [
+          0.667,
+          1.0,
+          1.0
+        ]
+      },
+      "injected_tokens_stats": {
+        "mean": 0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0,
+          0,
+          0
+        ]
+      },
+      "read_output_tokens_stats": {
+        "mean": 5065,
+        "n": 3,
+        "sd": 97.0412,
+        "ci95": [
+          4823.9362,
+          5306.0638
+        ],
+        "values": [
+          5177,
+          5012,
+          5006
+        ]
+      },
+      "read_calls_stats": {
+        "mean": 4.3333,
+        "n": 3,
+        "sd": 0.5774,
+        "ci95": [
+          2.8991,
+          5.7676
+        ],
+        "values": [
+          4,
+          4,
+          5
+        ]
+      }
+    },
+    "B2|zero": {
+      "arm": "B2",
+      "variant": "zero",
+      "knowledge_tokens": [
+        13,
+        7,
+        7
+      ],
+      "hit_rate": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "injected_tokens": [
+        0,
+        0,
+        0
+      ],
+      "read_output_tokens": [
+        13,
+        7,
+        7
+      ],
+      "read_calls": [
+        0,
+        0,
+        0
+      ],
+      "invalid": [],
+      "knowledge_tokens_stats": {
+        "mean": 9,
+        "n": 3,
+        "sd": 3.4641,
+        "ci95": [
+          0.3947,
+          17.6053
+        ],
+        "values": [
+          13,
+          7,
+          7
+        ]
+      },
+      "hit_rate_stats": {
+        "mean": 0.0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "injected_tokens_stats": {
+        "mean": 0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0,
+          0,
+          0
+        ]
+      },
+      "read_output_tokens_stats": {
+        "mean": 9,
+        "n": 3,
+        "sd": 3.4641,
+        "ci95": [
+          0.3947,
+          17.6053
+        ],
+        "values": [
+          13,
+          7,
+          7
+        ]
+      },
+      "read_calls_stats": {
+        "mean": 0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    "C|free": {
+      "arm": "C",
+      "variant": "free",
+      "knowledge_tokens": [
+        58429,
+        49636,
+        50602
+      ],
+      "hit_rate": [
+        0.333,
+        1.0,
+        1.0
+      ],
+      "injected_tokens": [
+        0,
+        0,
+        0
+      ],
+      "read_output_tokens": [
+        58429,
+        49636,
+        50602
+      ],
+      "read_calls": [
+        10,
+        14,
+        13
+      ],
+      "invalid": [],
+      "knowledge_tokens_stats": {
+        "mean": 52889,
+        "n": 3,
+        "sd": 4822.0316,
+        "ci95": [
+          40910.4094,
+          64867.5906
+        ],
+        "values": [
+          58429,
+          49636,
+          50602
+        ]
+      },
+      "hit_rate_stats": {
+        "mean": 0.7777,
+        "n": 3,
+        "sd": 0.3851,
+        "ci95": [
+          -0.179,
+          1.7343
+        ],
+        "values": [
+          0.333,
+          1.0,
+          1.0
+        ]
+      },
+      "injected_tokens_stats": {
+        "mean": 0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0,
+          0,
+          0
+        ]
+      },
+      "read_output_tokens_stats": {
+        "mean": 52889,
+        "n": 3,
+        "sd": 4822.0316,
+        "ci95": [
+          40910.4094,
+          64867.5906
+        ],
+        "values": [
+          58429,
+          49636,
+          50602
+        ]
+      },
+      "read_calls_stats": {
+        "mean": 12.3333,
+        "n": 3,
+        "sd": 2.0817,
+        "ci95": [
+          7.1622,
+          17.5045
+        ],
+        "values": [
+          10,
+          14,
+          13
+        ]
+      }
+    },
+    "C|zero": {
+      "arm": "C",
+      "variant": "zero",
+      "knowledge_tokens": [
+        0,
+        0,
+        0
+      ],
+      "hit_rate": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "injected_tokens": [
+        0,
+        0,
+        0
+      ],
+      "read_output_tokens": [
+        0,
+        0,
+        0
+      ],
+      "read_calls": [
+        0,
+        0,
+        0
+      ],
+      "invalid": [],
+      "knowledge_tokens_stats": {
+        "mean": 0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0,
+          0,
+          0
+        ]
+      },
+      "hit_rate_stats": {
+        "mean": 0.0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "injected_tokens_stats": {
+        "mean": 0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0,
+          0,
+          0
+        ]
+      },
+      "read_output_tokens_stats": {
+        "mean": 0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0,
+          0,
+          0
+        ]
+      },
+      "read_calls_stats": {
+        "mean": 0,
+        "n": 3,
+        "sd": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "values": [
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  },
+  "descriptive": {
+    "injection_only_ratio": 0.2738,
+    "free_variant_total_ratio": 4.3065,
+    "A1_free_mean_injected_tokens": 1387,
+    "A1_free_mean_knowledge_tokens": 21812.3333,
+    "B2_free_mean_knowledge_tokens": 5065,
+    "read_output_tokens_by_category": {
+      "A1": {
+        "carrier": 19377.3,
+        "code": 805.3,
+        "other": 239
+      },
+      "A2": {
+        "carrier": 19051,
+        "code": 0,
+        "other": 2586.3
+      },
+      "B1": {
+        "carrier": 2182,
+        "code": 2836.3,
+        "other": 433
+      },
+      "B2": {
+        "carrier": 2182,
+        "code": 2481,
+        "other": 389.7
+      },
+      "C": {
+        "carrier": 10243,
+        "code": 2014.7,
+        "other": 40289
+      }
+    },
+    "note": "carrier = 读取记忆载体（MEMORY.md / MEMORIES.md / .tmem）；code = 读取源码与测试；other = 其余工具输出（如命令回显）。知识获取 token 的正式口径把三者都计入，因此 free 变体的绝对值含了解题成本。"
+  },
+  "gates": {
+    "CA-5": {
+      "name": "载体等价性（前置门）",
+      "rule": "散文载体必须由 tmem 载体的同一批 episode 记录机械渲染而来，且每个关键点在两个载体中都可检出",
+      "threshold": "所有关键点 in_tmem_carrier AND in_md_carrier",
+      "value": {
+        "episodes": 4,
+        "facts": [
+          {
+            "id": "Q1_file_order",
+            "ask": "Q1_file_order",
+            "groups": [
+              [
+                "money.py"
+              ],
+              [
+                "import_rows.py"
+              ],
+              [
+                "settlement.py"
+              ]
+            ],
+            "ordered": true,
+            "in_tmem_carrier": true,
+            "in_md_carrier": true
+          },
+          {
+            "id": "Q2_verify_cmd",
+            "ask": "Q2_verify_cmd",
+            "groups": [
+              [
+                "collect-only"
+              ]
+            ],
+            "ordered": false,
+            "in_tmem_carrier": true,
+            "in_md_carrier": true
+          },
+          {
+            "id": "Q3_new_guard",
+            "ask": "Q3_new_guard",
+            "groups": [
+              [
+                "ensure_usable_price"
+              ]
+            ],
+            "ordered": false,
+            "in_tmem_carrier": true,
+            "in_md_carrier": true
+          }
+        ],
+        "md_bytes": 6283
+      },
+      "pass": true
+    },
+    "CA-1": {
+      "name": "成本优势（主判据）",
+      "rule": "A1（tmem 自动注入）的知识获取 token 均值 ≤ B2（散文 MD 按需读取）的 0.30 倍",
+      "threshold": "mean(A1_free.knowledge_tokens) <= 0.30 * mean(B2_free.knowledge_tokens)",
+      "value": {
+        "A1_free_mean_knowledge_tokens": 21812.3333,
+        "B2_free_mean_knowledge_tokens": 5065,
+        "ratio": 4.3065
+      },
+      "pass": false
+    },
+    "CA-1b": {
+      "name": "成本优势（注入式 vs 散文全量注入）",
+      "rule": "A1 的知识获取 token 均值 ≤ B1 的 0.30 倍（同为自动注入，只比载体）",
+      "threshold": "mean(A1_free.knowledge_tokens) <= 0.30 * mean(B1_free.knowledge_tokens)",
+      "value": {
+        "A1_free_mean_knowledge_tokens": 21812.3333,
+        "B1_free_mean_knowledge_tokens": 17810.3333,
+        "ratio": 1.2247
+      },
+      "pass": false
+    },
+    "CA-4": {
+      "name": "获取方式效应可分离",
+      "rule": "同载体下，自动注入臂的知识获取 token 更低且命中率不劣",
+      "threshold": "A1_free.knowledge_tokens <= A2_free.knowledge_tokens AND B1_free.knowledge_tokens <= B2_free.knowledge_tokens AND A1_free.hit_rate >= A2_free.hit_rate AND B1_free.hit_rate >= B2_free.hit_rate",
+      "value": {
+        "knowledge_tokens": {
+          "A1": 21812.3333,
+          "A2": 21640.6667,
+          "B1": 17810.3333,
+          "B2": 5065
+        },
+        "hit_rate": {
+          "A1": 1.0,
+          "A2": 0.889,
+          "B1": 1.0,
+          "B2": 0.889
+        }
+      },
+      "pass": false
+    },
+    "CA-E1": {
+      "name": "效果优势（记忆专有事实）",
+      "rule": "A1 的命中率显著高于 C（无记忆），且不劣于 B2；在 zero 变体（禁止读文件与跑命令）上判定——这是唯一不存在『读代码外得答案』的变体",
+      "threshold": "mean(A1_zero.hit_rate) > mean(C_zero.hit_rate) AND mean(A1_zero.hit_rate) >= mean(B2_zero.hit_rate)",
+      "value": {
+        "variant": "zero",
+        "A1_zero_hit_rate": 1.0,
+        "C_zero_hit_rate": 0.0,
+        "B2_zero_hit_rate": 0.0,
+        "free_variant_hit_rate_descriptive": {
+          "A1": 1.0,
+          "A2": 0.889,
+          "B1": 1.0,
+          "B2": 0.889,
+          "C": 0.7777
+        }
+      },
+      "pass": true
+    },
+    "CA-2": {
+      "name": "同签名复发率",
+      "rule": "需要 T1 场景（本课题第二阶段）",
+      "threshold": "未预注册具体阈值",
+      "value": null,
+      "pass": null,
+      "not_executed": "本阶段只执行知识探针（成本与可得性）；复发率需要跨位置复现错误的专门场景与错误签名序列判定"
+    },
+    "CA-3": {
+      "name": "L1 共变提示采纳精确率",
+      "rule": "需要 T2 场景（耦合改动）",
+      "threshold": "未预注册具体阈值",
+      "value": null,
+      "pass": null,
+      "not_executed": "同 CA-2，需专门场景与 L1 提示采纳标注"
+    },
+    "CA-6": {
+      "name": "压缩后回收",
+      "rule": "需要 C1–C4 压缩臂",
+      "threshold": "未预注册具体阈值",
+      "value": null,
+      "pass": null,
+      "not_executed": "需要可复现的压缩触发机制与 compaction_committed 事件校验；本阶段不执行"
+    },
+    "CA-7": {
+      "name": "CA-7",
+      "rule": null,
+      "threshold": null,
+      "value": null,
+      "pass": null,
+      "not_executed": "同 CA-6"
+    },
+    "CA-8": {
+      "name": "CA-8",
+      "rule": null,
+      "threshold": null,
+      "value": null,
+      "pass": null,
+      "not_executed": "同 CA-6"
+    },
+    "CA-9": {
+      "name": "CA-9",
+      "rule": null,
+      "threshold": null,
+      "value": null,
+      "pass": null,
+      "not_executed": "同 CA-6"
+    }
+  }
+}

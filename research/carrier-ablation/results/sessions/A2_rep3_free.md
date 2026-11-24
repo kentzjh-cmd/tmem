@@ -1,0 +1,77 @@
+# A2 reprep3 free —— 会话输出（命中率的评分输入）
+
+已从项目记忆库（`.tmem/` 结构化记忆 + 会话回放）查到完整的修复记录。以下是三个问题的答案。
+
+---
+
+## 1) 修改的文件及顺序
+
+根因链（不是单点）：导出端把空数值单元格写成字面文本 `nan` → `import_rows.parse_price()` 直接 `float(raw)` 放行 NaN → `Decimal('NaN').quantize()` 静默通过 → `int(nan * 100)` 才炸出 `ValueError: cannot convert NaN to integer`。
+
+修复按会话中的实际改动顺序（MUTATE 时序）：
+
+| # | 文件 | 改动内容 |
+|---|------|---------|
+| 1 | `src/ledger/money.py` | 新增统一校验函数 `ensure_usable_price()`，抛 `ledger.errors.ValidationError`；引入 `math` 与 `ValidationError` |
+| 2 | `src/ledger/import_rows.py` | `parse_price()` 改走 `ensure_usable_price()`；`parse_rows()`/`rows_to_tuples()` 传入行描述；`parse_price_checked()` 改为委托 `parse_price`（由 `ValueError` 改 `ValidationError`） |
+| 3 | `src/ledger/settlement.py` | `settle_invoice()`/`settle_line()` 先校验单价再换算；`settle_invoice_checked()` 由 `ValueError` 改为 `ValidationError`（兜底边界） |
+| 4 | `tests/test_import_rows.py` | **新建**文件，15 个用例 |
+| 5 | `tests/test_settlement.py` | 新增/改写用例（端到端 `test_headless_import_with_empty_price_cell_is_rejected` 等） |
+| 6 | `MEMORY.md` | 写入根因分析与新基线 |
+
+注：过程中 `src/ledger/invoicing.py` 也被试改过（想在那里加校验），但最终被回退——`git status` 的最终改动集只有 `money.py`、`import_rows.py`、`settlement.py`、`tests/test_settlement.py` + 新增 `tests/test_import_rows.py`。
+
+---
+
+## 2) 验证命令
+
+主验证（跑全量测试套件）：
+
+```bash
+PYTHONPATH=src python3 -m pytest -q 2>&1 | tail -5
+# => 2 failed, 39 passed in 0.09s
+```
+
+稳定性 + 按文件隔离验证：
+
+```bash
+for i in 1 2 3; do PYTHONPATH=src python3 -m pytest -q 2>&1 | tail -1; done
+for f in tests/test_import_rows.py tests/test_settlement.py tests/test_rates.py \
+         tests/test_pagination.py tests/test_invoicing.py tests/test_idempotency.py; do
+  echo "--- $f"; PYTHONPATH=src python3 -m pytest "$f" -q 2>&1 | tail -1
+done
+```
+
+结果：`tests/test_import_rows.py` 15 passed、`tests/test_settlement.py` 14 passed；剩余 2 个失败是**与本次修复无关的既有缺陷**（`tests/test_pagination.py::test_pagination_does_not_lose_invoices` 和 `tests/test_rates.py::test_get_cached_rate_falls_back_to_rate_table`）。
+
+用例收集计数核对：
+
+```bash
+PYTHONPATH=src python3 -m pytest --collect-only -q 2>&1 | tail -3          # 41 tests collected
+PYTHONPATH=src python3 -m pytest tests/test_import_rows.py --collect-only -q  # 15 collected
+PYTHONPATH=src python3 -m pytest tests/test_settlement.py --collect-only -q  # 14 collected
+```
+
+另外还跑了 `git diff --stat` / `git diff src/` 复核改动面，以及 `git status --porcelain` 确认最终文件清单。
+
+---
+
+## 3) 新增的「统一校验价格是否可用」入口函数
+
+**`ensure_usable_price`** —— 定义在 `src/ledger/money.py`（修复后位于第 55 行）：
+
+```python
+def ensure_usable_price(value, description: str = "line") -> float:
+```
+
+职责：把任意输入统一规整为可用价格；`None`/空串 → `ValidationError("missing price for {description}")`；非数值 → `ValidationError("invalid price for ...")`；`nan` → `missing price`；`inf` → `non-finite price`。失败一律用项目自己的 `ledger.errors.ValidationError`，不再抛裸 `ValueError`。
+
+调用点（修复后 grep 结果）：
+- `src/ledger/import_rows.py:15` — `parse_price()` 委托给它（导入边界，根因所在）
+- `src/ledger/settlement.py:25` — `settle_invoice()` 换算前校验
+- `src/ledger/settlement.py:65` — `settle_line()` 换算前校验
+- `src/ledger/settlement.py:91` — `settle_invoice_checked()`
+
+---
+
+⚠️ **一个需要提醒你的现状差异**：这次修复是在另一个检出目录（`/home/kent/e2e/abl/ledger-svc`）里完成的，而当前工作区 `/work` **仍是修复前的代码**——我核对过 `src/ledger/money.py`（49 行，无 `ensure_usable_price`）和 `src/ledger/import_rows.py`（`parse_price` 仍是裸 `float(raw)`），且 `/work` 下也没有 `MEMORY.md` 这个散文载体，只有 `.tmem/` 结构化记忆库。如果需要把修复落到当前工作区，告诉我，我可以直接照记录复现这套改动。

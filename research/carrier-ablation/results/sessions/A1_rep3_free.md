@@ -1,0 +1,57 @@
+# A1 reprep3 free —— 会话输出（命中率的评分输入）
+
+已从项目记忆（`.tmem/` 结构化库，对应 trace `tr_01aed48efa` / episode `ep_e98083fe22`，session `session-4bd4516f-…`）中恢复出完整修复路径。以下是三个问题的答案（未运行任何命令）。
+
+---
+
+## 1) 修改的文件与顺序
+
+按实际编辑时序（源码在前、测试在后）：
+
+| 序 | 文件 | 改动 |
+|---|---|---|
+| 1 | `src/ledger/money.py` | 新增 `import math`、导入 `ValidationError`，写入**共享守卫** `ensure_usable_price(value, description="line")`（拒 `None`/空串/非数字/NaN/Inf，抛 `ValidationError`） |
+| 2 | `src/ledger/import_rows.py` | `parse_price(raw, description)` 改为委托 `ensure_usable_price`；`parse_rows()`/`rows_to_tuples()` 把 `row["description"]` 传下去；`parse_price_checked()` 改为委托 `parse_price`（**根因所在的导入边界**） |
+| 3 | `src/ledger/invoicing.py` | ⚠️ 中途一度在 `build_invoice()` 里加构建期校验，但这会破坏既有契约（`test_settle_invoice_rejects_missing_price` 期望由结算层拒绝），**随后被回退**，最终 diff 里不含此文件 |
+| 4 | `src/ledger/settlement.py` | `settle_invoice()`、`settle_line()` 换算前先 `ensure_usable_price(line.unit_price, line.description)`；`settle_invoice_checked()` 由抛 `ValueError` 改为抛 `ValidationError`（**兜底层**） |
+| 5 | `tests/test_import_rows.py` | 新建文件，15 个用例（空单元格 `"nan"`、`""`、`"   "`、`None`、`"abc"`、`inf`、零价、合法价等） |
+| 6 | `tests/test_settlement.py` | 追加5 个用例，含端到端 `test_headless_import_with_empty_price_cell_is_rejected` 与 `test_settle_invoice_checked_rejects_missing_price_with_validation_error` |
+| 7 | `MEMORY.md` | 写入根因链、导出端“空单元格写成字面量 `nan`”的约定与新的测试基线 |
+
+根因链（三段而非单点）：导出端把空数值单元格写成字面文本 `nan` → `parse_price()` 只做 `float(raw)` 放行 NaN → NaN 能静默穿过 `Decimal.quantize()`，直到 `int(NaN)` 才炸成 `ValueError: cannot convert NaN to integer`。
+
+## 2) 验证命令
+
+```bash
+# 全量回归（主验证）
+PYTHONPATH=src python3 -m pytest -q 2>&1 | tail -8        # → 2 failed, 39 passed
+
+# 稳定性：连跑 3 次，结果一致
+for i in 1 2 3; do PYTHONPATH=src python3 -m pytest -q 2>&1 | tail -1; done
+
+# 按文件隔离验证
+for f in tests/test_import_rows.py tests/test_settlement.py tests/test_rates.py \
+         tests/test_pagination.py tests/test_invoicing.py tests/test_idempotency.py; do
+  PYTHONPATH=src python3 -m pytest "$f" -q 2>&1 | tail -1
+done
+# → test_import_rows.py 15 passed；test_settlement.py 14 passed（其余为无关失败）
+
+# 收集用例核对
+PYTHONPATH=src python3 -m pytest --collect-only -q                  # → 41 tests collected
+PYTHONPATH=src python3 -m pytest tests/test_import_rows.py --collect-only -q   # → 15
+PYTHONPATH=src python3 -m pytest tests/test_settlement.py --collect-only -q   # → 14
+
+# 变更集核对
+git diff --stat && git status --porcelain
+```
+
+补充：期间还用 `PYTHONPATH=src python3 - <<'PY'` 做过逐层 ad-hoc 校验（导入层/构建层/结算层都抛 `ValidationError` 而非 `ValueError`）。
+
+**基线说明**：最终为 `2 failed, 39 passed`；这 2 个失败是**修复前就存在、与本次无关**的缺陷 —— `tests/test_pagination.py::test_pagination_does_not_lose_invoices` 与 `tests/test_rates.py::test_get_cached_rate_falls_back_to_rate_table`（`KeyError: 'USD:CNY'`）。
+
+## 3) 统一的“价格是否可用”入口函数
+
+**`ensure_usable_price(value, description: str = "line") -> float`**，定义在 **`src/ledger/money.py`**（第 55 行）。
+
+- 合法则返回 `float`；不可用则抛项目自己的 **`ledger.errors.ValidationError`**（消息形如 `missing price for hosting` / `invalid price for line: 'abc'` / `non-finite price for line: 'inf'`）。
+- 三层统一走它：`import_rows.parse_price`（第 15 行）、`settlement.settle_invoice`（第 25 行）、`settlement.settle_line`（第 65 行）、`settlement.settle_invoice_checked`（第 91 行）。

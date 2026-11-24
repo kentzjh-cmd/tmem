@@ -1,0 +1,42 @@
+# B1 reprep1 free —— 会话输出（命中率的评分输入）
+
+我查阅了工作区里的项目记忆载体 `MEMORY.md`（本工作区没有 `.tmem/` 结构化库，只有散文载体）。以下是三个问题的答案：
+
+## 1) 修复顺序（依次改的文件）
+
+按 `MEMORY.md:29` 记录的「改动文件（按修复顺序）」：
+
+```
+src/ledger/money.py  →  src/ledger/import_rows.py  →  src/ledger/settlement.py
+```
+
+- **`money.py`**：先落一个共享的价格守卫（统一校验入口）。
+- **`import_rows.py`**（根因边界，`import_rows.py:13`）：`parse_price()` 改走 `ensure_usable_price()`；`parse_rows()` / `rows_to_tuples()` 把行描述传下去；`parse_price_checked()` 改为委托。
+- **`settlement.py`**（兜底边界，`settlement.py:25,65,91`）：`settle_invoice()` / `settle_line()` 先校验单价再换算；`settle_invoice_checked()` 的异常由 `ValueError` 改为 `ValidationError`。
+
+配套涉及文件（`MEMORY.md:30`）：`src/ledger/invoicing.py`、`tests/test_import_rows.py`、`tests/test_settlement.py`、`MEMORY.md`。
+
+## 2) 验证命令
+
+全量与单文件（`MEMORY.md:31`）：
+
+```bash
+PYTHONPATH=src python3 -m pytest -q 2>&1
+PYTHONPATH=src python3 -m pytest "$f" -q 2>&1     # $f = 相关测试文件
+```
+
+另有一轮收集校验（`MEMORY.md:32`）：
+
+```bash
+PYTHONPATH=src python3 -m pytest --collect-only -q 2>&1 \
+  && PYTHONPATH=src python3 -m pytest tests/test_import_rows.py --collect-only -q 2>&1 \
+  && PYTHONPATH=src python3 -m pytest tests/test_settlement.py --collect-only -q 2>&1
+```
+
+## 3) 统一校验入口函数名
+
+**`ensure_usable_price()`**，放在 `src/ledger/money.py`（`MEMORY.md:37` 明确写了 `parse_price()` 改走 `ensure_usable_price()`），缺失价格统一抛项目自己的 `ledger.errors.ValidationError`（消息形如 `missing price for hosting` / `missing price for line`）。
+
+---
+
+⚠️ 一点必须提醒的事实差异：当前工作区的源码里 **没有** `ensure_usable_price`（`src/ledger/money.py` 仍是原始的货币换算模块），`import_rows.py:45` 的 `parse_price_checked()` 和 `settlement.py:90` 也仍然抛普通 `ValueError`——也就是说上述修复**只存在于记忆记录中，并未落在当前工作树的代码里**。我按要求没有运行任何命令，因此未跑测试去验证当前实际状态；如果你需要，我可以据此把这次修复重新落到代码并补跑测试。
