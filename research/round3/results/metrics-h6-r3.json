@@ -1,0 +1,422 @@
+{
+  "measurement": "H6' memory-exclusive probe (disclosed addition, Round 2)",
+  "note": "披露式追加测量。预注册的 G7 口径与阈值保持不变，G7 仍按其判定；本测量单独记为 H6'，不与 G7 合并、不替换。",
+  "tokenizer": "cl100k_base (tiktoken)",
+  "scenes": {
+    "A_plugin_memory|zero": "H6_probe_a_zero",
+    "A_plugin_memory|free": "H6_probe_a_free",
+    "B_no_plugin|zero": "H6_probe_b_zero",
+    "B_no_plugin|free": "H6_probe_b_free",
+    "C_plugin_no_session|zero": "H6_probe_c_zero",
+    "C_plugin_no_session|free": "H6_probe_c_free"
+  },
+  "summary": {
+    "A_plugin_memory|zero": {
+      "hit_rate": 0.333,
+      "injected": true,
+      "injected_tokens_estimate": 1874,
+      "read_calls": 0,
+      "read_output_tokens_estimate": 0
+    },
+    "A_plugin_memory|free": {
+      "hit_rate": 0.333,
+      "injected": true,
+      "injected_tokens_estimate": 1878,
+      "read_calls": 4,
+      "read_output_tokens_estimate": 46544
+    },
+    "B_no_plugin|zero": {
+      "hit_rate": 0.0,
+      "injected": false,
+      "injected_tokens_estimate": 0,
+      "read_calls": 0,
+      "read_output_tokens_estimate": 0
+    },
+    "B_no_plugin|free": {
+      "hit_rate": 0.333,
+      "injected": false,
+      "injected_tokens_estimate": 0,
+      "read_calls": 21,
+      "read_output_tokens_estimate": 25408
+    },
+    "C_plugin_no_session|zero": {
+      "hit_rate": 0.0,
+      "injected": false,
+      "injected_tokens_estimate": 0,
+      "read_calls": 0,
+      "read_output_tokens_estimate": 178
+    },
+    "C_plugin_no_session|free": {
+      "hit_rate": 0.333,
+      "injected": false,
+      "injected_tokens_estimate": 0,
+      "read_calls": 8,
+      "read_output_tokens_estimate": 70941
+    }
+  },
+  "detail": {
+    "A_plugin_memory|zero": {
+      "scene": "H6_probe_a_zero",
+      "questions": {
+        "Q1_file_order": {
+          "ask": "修复 nan 价格的坑时依次改了哪几个文件、什么顺序？",
+          "used_keypoints": [
+            "money.py",
+            "settlement.py"
+          ],
+          "matched_keypoints": [
+            "money.py",
+            "settlement.py"
+          ],
+          "hit": true,
+          "why_memory_exclusive": "文件顺序只存在于 trace 的 L2 causal repair / root cause 中；agent 自写笔记未记录 money.py"
+        },
+        "Q2_verify_cmd": {
+          "ask": "修完后用什么命令验证？",
+          "used_keypoints": [
+            "collect-only"
+          ],
+          "matched_keypoints": [],
+          "hit": false,
+          "why_memory_exclusive": "含 `--collect-only` 的验证命令只在 trace 的 l2_causal_repairs.verification_cmd 中"
+        },
+        "Q3_commit": {
+          "ask": "引入 parse_price_checked 死代码的提交是哪一次？",
+          "used_keypoints": [
+            "a33c3c8"
+          ],
+          "matched_keypoints": [],
+          "hit": false,
+          "why_memory_exclusive": "commit hash 只在 trace 的 problem_intent 中；自写笔记无 commit 信息"
+        }
+      },
+      "hits": 1,
+      "total": 3,
+      "hit_rate": 0.333,
+      "cost": {
+        "memory_block_injected": true,
+        "injected_bytes": 6109,
+        "injected_tokens_estimate": 1874,
+        "read_calls": 0,
+        "read_paths": [],
+        "read_output_bytes": 0,
+        "read_output_tokens_estimate": 0,
+        "event_count": 22
+      },
+      "answer_bytes": 2554,
+      "answer_tokens_estimate": 870
+    },
+    "A_plugin_memory|free": {
+      "scene": "H6_probe_a_free",
+      "questions": {
+        "Q1_file_order": {
+          "ask": "修复 nan 价格的坑时依次改了哪几个文件、什么顺序？",
+          "used_keypoints": [
+            "money.py",
+            "settlement.py"
+          ],
+          "matched_keypoints": [
+            "money.py",
+            "settlement.py"
+          ],
+          "hit": true,
+          "why_memory_exclusive": "文件顺序只存在于 trace 的 L2 causal repair / root cause 中；agent 自写笔记未记录 money.py"
+        },
+        "Q2_verify_cmd": {
+          "ask": "修完后用什么命令验证？",
+          "used_keypoints": [
+            "collect-only"
+          ],
+          "matched_keypoints": [],
+          "hit": false,
+          "why_memory_exclusive": "含 `--collect-only` 的验证命令只在 trace 的 l2_causal_repairs.verification_cmd 中"
+        },
+        "Q3_commit": {
+          "ask": "引入 parse_price_checked 死代码的提交是哪一次？",
+          "used_keypoints": [
+            "a33c3c8"
+          ],
+          "matched_keypoints": [],
+          "hit": false,
+          "why_memory_exclusive": "commit hash 只在 trace 的 problem_intent 中；自写笔记无 commit 信息"
+        }
+      },
+      "hits": 1,
+      "total": 3,
+      "hit_rate": 0.333,
+      "cost": {
+        "memory_block_injected": true,
+        "injected_bytes": 6109,
+        "injected_tokens_estimate": 1878,
+        "read_calls": 4,
+        "read_paths": [
+          "MEMORIES.md",
+          "CONVENTIONS.md",
+          "/home/kent/e2e/r3/ledger-svc/.tmem/traces/tr_e66fe4c00d.json",
+          "/home/kent/e2e/r3/ledger-svc/src/ledger/import_rows.py"
+        ],
+        "read_output_bytes": 146487,
+        "read_output_tokens_estimate": 46544,
+        "event_count": 70
+      },
+      "answer_bytes": 4220,
+      "answer_tokens_estimate": 1490
+    },
+    "B_no_plugin|zero": {
+      "scene": "H6_probe_b_zero",
+      "questions": {
+        "Q1_file_order": {
+          "ask": "修复 nan 价格的坑时依次改了哪几个文件、什么顺序？",
+          "used_keypoints": [
+            "money.py",
+            "settlement.py"
+          ],
+          "matched_keypoints": [
+            "settlement.py"
+          ],
+          "hit": false,
+          "why_memory_exclusive": "文件顺序只存在于 trace 的 L2 causal repair / root cause 中；agent 自写笔记未记录 money.py"
+        },
+        "Q2_verify_cmd": {
+          "ask": "修完后用什么命令验证？",
+          "used_keypoints": [
+            "collect-only"
+          ],
+          "matched_keypoints": [],
+          "hit": false,
+          "why_memory_exclusive": "含 `--collect-only` 的验证命令只在 trace 的 l2_causal_repairs.verification_cmd 中"
+        },
+        "Q3_commit": {
+          "ask": "引入 parse_price_checked 死代码的提交是哪一次？",
+          "used_keypoints": [
+            "a33c3c8"
+          ],
+          "matched_keypoints": [],
+          "hit": false,
+          "why_memory_exclusive": "commit hash 只在 trace 的 problem_intent 中；自写笔记无 commit 信息"
+        }
+      },
+      "hits": 0,
+      "total": 3,
+      "hit_rate": 0.0,
+      "cost": {
+        "memory_block_injected": false,
+        "injected_bytes": 0,
+        "injected_tokens_estimate": 0,
+        "read_calls": 0,
+        "read_paths": [],
+        "read_output_bytes": 0,
+        "read_output_tokens_estimate": 0,
+        "event_count": 20
+      },
+      "answer_bytes": 2934,
+      "answer_tokens_estimate": 971
+    },
+    "B_no_plugin|free": {
+      "scene": "H6_probe_b_free",
+      "questions": {
+        "Q1_file_order": {
+          "ask": "修复 nan 价格的坑时依次改了哪几个文件、什么顺序？",
+          "used_keypoints": [
+            "money.py",
+            "settlement.py"
+          ],
+          "matched_keypoints": [
+            "money.py",
+            "settlement.py"
+          ],
+          "hit": true,
+          "why_memory_exclusive": "文件顺序只存在于 trace 的 L2 causal repair / root cause 中；agent 自写笔记未记录 money.py"
+        },
+        "Q2_verify_cmd": {
+          "ask": "修完后用什么命令验证？",
+          "used_keypoints": [
+            "collect-only"
+          ],
+          "matched_keypoints": [],
+          "hit": false,
+          "why_memory_exclusive": "含 `--collect-only` 的验证命令只在 trace 的 l2_causal_repairs.verification_cmd 中"
+        },
+        "Q3_commit": {
+          "ask": "引入 parse_price_checked 死代码的提交是哪一次？",
+          "used_keypoints": [
+            "a33c3c8"
+          ],
+          "matched_keypoints": [],
+          "hit": false,
+          "why_memory_exclusive": "commit hash 只在 trace 的 problem_intent 中；自写笔记无 commit 信息"
+        }
+      },
+      "hits": 1,
+      "total": 3,
+      "hit_rate": 0.333,
+      "cost": {
+        "memory_block_injected": false,
+        "injected_bytes": 0,
+        "injected_tokens_estimate": 0,
+        "read_calls": 21,
+        "read_paths": [
+          "/home/kent/e2e/r3/ledger-svc-control/MEMORIES.md",
+          "/home/kent/e2e/r3/ledger-svc-control/CONVENTIONS.md",
+          "/home/kent/e2e/r3/ledger-svc-control/README.md",
+          "/home/kent/e2e/r3/ledger-svc-control/.git/HEAD",
+          "/home/kent/e2e/r3/ledger-svc-control/.git/logs/HEAD",
+          "/home/kent/e2e/r3/ledger-svc-control/.tmem/traces/tr_0edd35e965.json",
+          "/home/kent/e2e/r3/ledger-svc-control/.git/packed-refs",
+          "/home/kent/e2e/r3/ledger-svc-control/src/ledger/import_rows.py",
+          "/home/kent/e2e/r3/ledger-svc-control/src/ledger/money.py",
+          "/home/kent/e2e/r3/ledger-svc-control/.git/objects/54/e1833476781dc61751173b7a88a76160fc28ae",
+          "/home/kent/e2e/r3/ledger-svc-control/.pytest_cache/v/cache/lastfailed",
+          "/home/kent/e2e/r3/ledger-svc-control/.pytest_cache/v/cache/nodeids",
+          "/home/kent/e2e/r3/ledger-svc-control/src/ledger/settlement.py",
+          "/home/kent/e2e/r3/ledger-svc-control/src/ledger/invoicing.py",
+          "/home/kent/e2e/r3/ledger-svc-control/tests/test_import_rows.py",
+          "/home/kent/e2e/r3/ledger-svc-control/tests/test_money.py",
+          "/home/kent/e2e/r3/ledger-svc-control/tests/test_settlement.py",
+          "/home/kent/e2e/r3/ledger-svc-control/tests/test_invoicing.py",
+          "/home/kent/e2e/r3/ledger-svc-control/.git/logs/refs/heads/main",
+          "/home/kent/e2e/r3/ledger-svc-control/.git/COMMIT_EDITMSG",
+          "/home/kent/e2e/r3/ledger-svc-control/src/ledger/errors.py"
+        ],
+        "read_output_bytes": 77657,
+        "read_output_tokens_estimate": 25408,
+        "event_count": 144
+      },
+      "answer_bytes": 6772,
+      "answer_tokens_estimate": 2253
+    },
+    "C_plugin_no_session|zero": {
+      "scene": "H6_probe_c_zero",
+      "questions": {
+        "Q1_file_order": {
+          "ask": "修复 nan 价格的坑时依次改了哪几个文件、什么顺序？",
+          "used_keypoints": [
+            "money.py",
+            "settlement.py"
+          ],
+          "matched_keypoints": [],
+          "hit": false,
+          "why_memory_exclusive": "文件顺序只存在于 trace 的 L2 causal repair / root cause 中；agent 自写笔记未记录 money.py"
+        },
+        "Q2_verify_cmd": {
+          "ask": "修完后用什么命令验证？",
+          "used_keypoints": [
+            "collect-only"
+          ],
+          "matched_keypoints": [],
+          "hit": false,
+          "why_memory_exclusive": "含 `--collect-only` 的验证命令只在 trace 的 l2_causal_repairs.verification_cmd 中"
+        },
+        "Q3_commit": {
+          "ask": "引入 parse_price_checked 死代码的提交是哪一次？",
+          "used_keypoints": [
+            "a33c3c8"
+          ],
+          "matched_keypoints": [],
+          "hit": false,
+          "why_memory_exclusive": "commit hash 只在 trace 的 problem_intent 中；自写笔记无 commit 信息"
+        }
+      },
+      "hits": 0,
+      "total": 3,
+      "hit_rate": 0.0,
+      "cost": {
+        "memory_block_injected": false,
+        "injected_bytes": 0,
+        "injected_tokens_estimate": 0,
+        "read_calls": 0,
+        "read_paths": [],
+        "read_output_bytes": 916,
+        "read_output_tokens_estimate": 178,
+        "event_count": 64
+      },
+      "answer_bytes": 2359,
+      "answer_tokens_estimate": 776
+    },
+    "C_plugin_no_session|free": {
+      "scene": "H6_probe_c_free",
+      "questions": {
+        "Q1_file_order": {
+          "ask": "修复 nan 价格的坑时依次改了哪几个文件、什么顺序？",
+          "used_keypoints": [
+            "money.py",
+            "settlement.py"
+          ],
+          "matched_keypoints": [
+            "money.py",
+            "settlement.py"
+          ],
+          "hit": true,
+          "why_memory_exclusive": "文件顺序只存在于 trace 的 L2 causal repair / root cause 中；agent 自写笔记未记录 money.py"
+        },
+        "Q2_verify_cmd": {
+          "ask": "修完后用什么命令验证？",
+          "used_keypoints": [
+            "collect-only"
+          ],
+          "matched_keypoints": [],
+          "hit": false,
+          "why_memory_exclusive": "含 `--collect-only` 的验证命令只在 trace 的 l2_causal_repairs.verification_cmd 中"
+        },
+        "Q3_commit": {
+          "ask": "引入 parse_price_checked 死代码的提交是哪一次？",
+          "used_keypoints": [
+            "a33c3c8"
+          ],
+          "matched_keypoints": [],
+          "hit": false,
+          "why_memory_exclusive": "commit hash 只在 trace 的 problem_intent 中；自写笔记无 commit 信息"
+        }
+      },
+      "hits": 1,
+      "total": 3,
+      "hit_rate": 0.333,
+      "cost": {
+        "memory_block_injected": false,
+        "injected_bytes": 0,
+        "injected_tokens_estimate": 0,
+        "read_calls": 8,
+        "read_paths": [
+          "/home/kent/e2e/r3/ledger-svc-control-c/MEMORIES.md",
+          "/home/kent/e2e/r3/ledger-svc-control-c/README.md",
+          "/home/kent/e2e/r3/ledger-svc-control-c/.tmem/runtime_state.json",
+          "/home/kent/e2e/r3/ledger-svc-control-c/.dsh/tmem.patch.yml",
+          "/home/kent/e2e/r3/ledger-svc/.tmem/episodes/ep_24942889f6.json",
+          "/home/kent/e2e/r3/ledger-svc/.tmem/env_facts.json",
+          "/home/kent/e2e/r3/ledger-svc/.tmem/traces/tr_e66fe4c00d.json",
+          "/home/kent/e2e/r3/ledger-svc-control-c/src/ledger/import_rows.py"
+        ],
+        "read_output_bytes": 225244,
+        "read_output_tokens_estimate": 70941,
+        "event_count": 113
+      },
+      "answer_bytes": 4036,
+      "answer_tokens_estimate": 1400
+    }
+  },
+  "gates": {
+    "H6'-1_availability": {
+      "name": "记忆专有事实的可得性（A 零读取臂 vs B/C 零读取臂）",
+      "value": {
+        "A_zero": 0.333,
+        "B_zero": 0.0,
+        "C_zero": 0.0
+      },
+      "threshold": "A_zero >= B_zero + 0.30 且 A_zero >= C_zero + 0.30",
+      "pass": true
+    },
+    "H6'-2_cost": {
+      "name": "获取成本（A 零读取臂 vs A 允许读取臂）",
+      "value": {
+        "A_zero_injected_tokens": 1874,
+        "A_free_read_tokens": 46544,
+        "A_free_read_calls": 4,
+        "B_free_read_tokens": 25408,
+        "B_free_read_calls": 21
+      },
+      "threshold": "A_zero 的知识获取 token <= B_free 的 0.30 倍",
+      "pass": true,
+      "implementation_note": "预注册阈值原文实现；此前 pass=None 属评分器未实现该判定，非阈值变更。"
+    }
+  }
+}

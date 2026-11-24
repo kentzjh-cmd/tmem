@@ -608,6 +608,8 @@ G9 检查"仓库 tracked 无改动"。两次判 FAIL 的**唯一脏文件都是�
 
 **结论口径**：G9 的判定对"研究者在运行期间是否碰过仓库"敏感，因此它必须与"会话是否污染了仓库"分开陈述——后者由 B 臂逐场断言、watcher 与 `analyze_arm_contamination.py` 独立证明，**Round 3 全程零意外写入**。
 
+> **两份判定都已归档**（`research/round3/results/`）：`metrics-r3-first-pass-dirty-tree.json`（00:08，6/9，G9 FAIL，脏文件 = 当时正在撰写的 `docs/dsh-memory-carrier-ablation.md`）与 `metrics-r3-recheck-clean-tree.json`（20:53 在干净工作树上同脚本同阈值复算，**7/9，G9 PASS**，`repo_tracked_dirty = []`）。两次判定的其余八道门槛取值逐项相同，差异**只在 G9**。
+
 #### Round 2 → Round 3 的净变化（结论层面）
 
 1. **N12 修复的正面证据**：Round 3 的 A 臂会话由**工作区副本**挂载（`tmem init` 写出的独立文件），修复后 `tmem_search`/`tmem_expand` **正常注册**（见 §3.12 的三向对照与本轮 A 臂的挂载审计 `mount=YES`），"注入照常但工具永不注册"的半挂载状态不再出现。
@@ -879,6 +881,9 @@ setsid nohup bash /home/kent/e2e/_harness/resume_when_quota.sh \
 | `docs/dsh-memory-carrier-ablation.md` | 载体消融与量化研究课题（协议，含 §12 的 v1.2 修订与执行事故记录） | — |
 | `docs/dsh-memory-carrier-ablation-report.md` | 载体消融课题**研究报告**（方法 + 结果 + 讨论 + 局限 + 复现清单） | — |
 | `research/carrier-ablation/` | 载体消融课题的**装置快照**（预注册 oracle v1.1/v1.2、散文注入器与回归测试、建臂与渲染脚本、容器隔离编排器、机器判定器、隔离镜像定义） | D1 / D2 / D3 |
+| `research/round3/results/` | Round 3 主数据集的**机器判定留档**（第一次判定 6/9、G9 FAIL 与干净树复算 7/9、G9 PASS 两份并存；H6′ 判定） | — |
+| `research/carrier-ablation/results/` | 载体消融课题的判定留档（两阶段机器判定、隔离探针、挂载自检、30 场会话回答文本） | — |
+| `research/carrier-ablation/verify_report_numbers.py` | 报告数值 ↔ 机器判定的一致性校验器（篡改任一已发布数字即 FAIL） | — |
 
 > 改动已按用户决定**直接提交并推送到 `origin/main`**（不建 PR、不发布 npm；N8/N9/N10 不修）。
 > 全量测试：`cd /archive/tmem && npm test` → **63 pass / 0 fail**（Round 1 时为 53，N1/N2/N3/N4 修复后为 57，N12 修复后为 62，上游提交 `8238202` 又补 1 个用例后为 63）。
