@@ -1,0 +1,66 @@
+已从项目记忆库（`.tmem/` 结构化载体）查到答案，未运行任何命令。以下结论来自 episode `ep_e98083fe22` / playbook `tr_01aed48efa`（session `session-4bd4516f-1403-4438-827f-ba02eac68e20`，commit feb9e01）。
+
+## 1)依次修改的文件与顺序
+
+|顺序 | 文件 | 改动内容 |
+|---|---|---|
+| 1 | `src/ledger/money.py` | 新增共享闸门 `ensure_usable_price()`（加 `import math`、`from .errors import ValidationError`）；顺带调整 `format_money` |
+| 2 | `src/ledger/import_rows.py` | `parse_price()` 改走 `ensure_usable_price()`；`parse_rows()` / `rows_to_tuples()` 传入行描述；`parse_price_checked()` 改为委托 `parse_price`（不再抛 `ValueError`） |
+| 3 | `src/ledger/invoicing.py` | ⚠️ **临时**给 `build_invoice()` 加了闸门，随后**回滚**（seq 166/171）——因为项目的既定契约是「由结算层拒绝缺失价格」，最终 diff 里这个文件无改动 |
+| 4 | `src/ledger/settlement.py` | `settle_invoice()` / `settle_line()` 换算前先校验单价；`settle_invoice_checked()` 由 `ValueError` 改为 `ValidationError` |
+| 5 | `tests/test_import_rows.py` | 新建文件（15 个测试） |
+| 6 | `tests/test_settlement.py` | 补/重写回归测试（14 个测试） |
+| 7 | `MEMORY.md` | 写入根因分析与新基线 |
+
+根因链（记忆里的结论）：导出端把空数值单元格写成字面文本 `nan` → 导入边界 `parse_price()` 用 `float(raw)` 放行 → `NaN` 一路存活穿过 `quantize()` → 到结算 `int(...)` 才炸成 `ValueError: cannot convert NaN to integer`。
+
+最终 `git diff --stat`：`src/ledger/import_rows.py`、`src/ledger/money.py`、`src/ledger/settlement.py`、`tests/test_settlement.py` 共 4 个文件、+101/−14（另加新建的 `tests/test_import_rows.py` 与 `MEMORY.md`）。
+
+## 2) 验证用的命令
+
+主命令（记忆记录的两条 Verification Cmds）：
+
+```bash
+PYTHONPATH=src python3 -m pytest -q 2>&1 && PYTHONPATH=src python3 -m pytest "$f" -q 2>&1
+```
+
+逐条跑过的实际命令：
+
+```bash
+# 全量套件（多跑 3 次确认稳定）
+for i in 1 2 3; do PYTHONPATH=src python3 -m pytest -q 2>&1 | tail -1; done
+# 结果：2 failed, 39 passed（三次一致）
+
+# 按文件隔离
+for f in tests/test_import_rows.py tests/test_settlement.py tests/test_rates.py \
+         tests/test_pagination.py tests/test_invoicing.py tests/test_idempotency.py; do
+  echo "--- $f"; PYTHONPATH=src python3 -m pytest "$f" -q 2>&1 | tail -1
+done
+# import_rows.py 15 passed；settlement.py 14 passed
+
+# 收集核对
+PYTHONPATH=src python3 -m pytest --collect-only -q 2>&1 | tail -3
+PYTHONPATH=src python3 -m pytest tests/test_import_rows.py --collect-only -q 2>&1 | tail -2
+PYTHONPATH=src python3 -m pytest tests/test_settlement.py --collect-only -q 2>&1 | tail -2
+
+# 复核最终改动
+git diff --stat && echo "=== FULL DIFF (src) ===" && git diff src/
+```
+
+另外用内联 python 脚本验证三层（`parse_price` / `parse_rows` / `parse_price_checked` / `build_invoice` / `settle_invoice` / `settle_line` / `settle_invoice_checked`）都抛 `ValidationError` 而非 `ValueError`。
+
+⚠️ 剩余的 2 个失败（`tests/test_pagination.py::test_pagination_does_not_lose_invoices`、`tests/test_rates.py::test_get_cached_rate_falls_back_to_rate_table`，`KeyError: 'USD:CNY'`）是修复前就存在的基线缺陷，与本次 nan 修复无关。
+
+## 3) 新增的统一价格校验入口函数
+
+**`ensure_usable_price(value, description: str = "line") -> float`** —— 定义在 `src/ledger/money.py`（第 55 行附近）。
+
+它集中判定并统一抛项目自己的 `ledger.errors.ValidationError`：
+
+- `None` / 空白字符串 → `missing price for {description}`
+- 非数值文本 → `invalid price for {description}: {value!r}`
+- `NaN`（含 `"nan"` / `"NaN"`）→ `missing price for {description}`
+- `inf` / `-inf` → `non-finite price for {description}: {value!r}`
+- 正常值 → 原样返回 `float`
+
+导入边界（`parse_price` / `parse_price_checked`）与结算兜底（`settle_invoice` / `settle_line` / `settle_invoice_checked`）都改为调用它，不再各自重复判断。

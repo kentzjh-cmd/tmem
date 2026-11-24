@@ -1,0 +1,2228 @@
+{
+  "dataset": "carrier-ablation-phase1b",
+  "generated_at": "2026-11-24T13:46:46+00:00",
+  "source_root": "/home/kent/abl2/raw",
+  "dest_root": "research/carrier-ablation/results/raw",
+  "sessions": [
+    {
+      "id": "A1/rep1/free",
+      "scene": "free",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": "A1",
+      "rep": 1,
+      "variant": "free",
+      "exit_code": 0,
+      "elapsed_sec": 30.5,
+      "isolation": "docker:tmem-abl:iso (mount allow-list)",
+      "files": {
+        "scene.json": {
+          "bytes": 2148,
+          "sha256": "6aa4536f732a357f4ff4bc9e6bfe055929621d416f4beb0c9b5bd4937eac0c14"
+        },
+        "stderr.log": {
+          "bytes": 13472,
+          "sha256": "cb69cb17c6733fafb70af291c806011d81cad4c991287cbca869c78953bdbc97"
+        },
+        "stdout.log": {
+          "bytes": 4308,
+          "sha256": "48ba3912e2152518087863cf979701186df23d31e9eddfc1b78a54a22aa784e4"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 64555,
+          "sha256": "5eeac6013209a0b314acae0c4a573a9f8d13571b59c6ac65318174ced278a11b"
+        }
+      },
+      "trajectory": {
+        "events": 68,
+        "tool_calls": [
+          "glob",
+          "glob",
+          "tmem_search",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand"
+        ],
+        "tmem_tool_calls": [
+          "tmem_search",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand"
+        ],
+        "user_messages": 5,
+        "assistant_messages": 9,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 9,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 9,
+          "step/start": 9,
+          "system/message": 1,
+          "tool/call": 11,
+          "tool/result": 11,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 5
+        },
+        "transcript_sha256": "5eeac6013209a0b314acae0c4a573a9f8d13571b59c6ac65318174ced278a11b",
+        "workspace_root": "/work",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "A1/rep1/zero",
+      "scene": "zero",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": "A1",
+      "rep": 1,
+      "variant": "zero",
+      "exit_code": 0,
+      "elapsed_sec": 14.5,
+      "isolation": "docker:tmem-abl:iso (mount allow-list)",
+      "files": {
+        "scene.json": {
+          "bytes": 2150,
+          "sha256": "f5f2e5904542c5998e7426844140f335bc3592e91a8e5f0f44ebb3fc3e267b56"
+        },
+        "stderr.log": {
+          "bytes": 3404,
+          "sha256": "7eaec72f785f9bf4665635037f85cc0c9b3be8931c05af3d031f57871131257b"
+        },
+        "stdout.log": {
+          "bytes": 2574,
+          "sha256": "463c9efd28d9e9d56d82ec902e6e16c2026e77aab574b191626047513bdcb838"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 19210,
+          "sha256": "844718170a8e97069ed47680bd003c2e94589d9786515c666c6656057f308260"
+        }
+      },
+      "trajectory": {
+        "events": 22,
+        "tool_calls": [],
+        "tmem_tool_calls": [],
+        "user_messages": 5,
+        "assistant_messages": 1,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 1,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 1,
+          "step/start": 1,
+          "system/message": 1,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 5
+        },
+        "transcript_sha256": "844718170a8e97069ed47680bd003c2e94589d9786515c666c6656057f308260",
+        "workspace_root": "/work",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "A1/rep2/free",
+      "scene": "free",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": "A1",
+      "rep": 2,
+      "variant": "free",
+      "exit_code": 0,
+      "elapsed_sec": 22.0,
+      "isolation": "docker:tmem-abl:iso (mount allow-list)",
+      "files": {
+        "scene.json": {
+          "bytes": 2147,
+          "sha256": "36f49924956fb88d9e34b24499b176741dade88ef77ccd74e93d0857a4123d2c"
+        },
+        "stderr.log": {
+          "bytes": 7633,
+          "sha256": "49b56a1ba58a8941dd9cc56378bc0a641881cdf97ef7de0f8a844a14166a7eda"
+        },
+        "stdout.log": {
+          "bytes": 4074,
+          "sha256": "c0bb505182b84da4420d2288392b8c40086498f23f88fdda0c18ee74d6c70e67"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 51352,
+          "sha256": "4c611461f6dafb8a78b9d7c934bcb36209e42a0a76f614789bb4ee48c28ef621"
+        }
+      },
+      "trajectory": {
+        "events": 59,
+        "tool_calls": [
+          "glob",
+          "glob",
+          "tmem_search",
+          "tmem_expand",
+          "tmem_expand",
+          "glob",
+          "tmem_expand",
+          "read",
+          "read",
+          "tmem_expand",
+          "tmem_expand"
+        ],
+        "tmem_tool_calls": [
+          "tmem_search",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand"
+        ],
+        "user_messages": 5,
+        "assistant_messages": 6,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 6,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 6,
+          "step/start": 6,
+          "system/message": 1,
+          "tool/call": 11,
+          "tool/result": 11,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 5
+        },
+        "transcript_sha256": "4c611461f6dafb8a78b9d7c934bcb36209e42a0a76f614789bb4ee48c28ef621",
+        "workspace_root": "/work",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "A1/rep2/zero",
+      "scene": "zero",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": "A1",
+      "rep": 2,
+      "variant": "zero",
+      "exit_code": 0,
+      "elapsed_sec": 17.1,
+      "isolation": "docker:tmem-abl:iso (mount allow-list)",
+      "files": {
+        "scene.json": {
+          "bytes": 2150,
+          "sha256": "f45389035023145d91a8c8eb18e5a4cfb56f05676315c59c433667d598eb37bf"
+        },
+        "stderr.log": {
+          "bytes": 3477,
+          "sha256": "45b101bd4069fd03b4bccf31038a63e1353fd5475daf6db946ddd46ca49e0c5f"
+        },
+        "stdout.log": {
+          "bytes": 2406,
+          "sha256": "9d8963f362bbc96754ba1b31b64ff3cf40eb0357a43160bca1e347290a48414e"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 19187,
+          "sha256": "4d59442924b3771a404fc58f41fd94902977a797b161be1738249b70b526b952"
+        }
+      },
+      "trajectory": {
+        "events": 22,
+        "tool_calls": [],
+        "tmem_tool_calls": [],
+        "user_messages": 5,
+        "assistant_messages": 1,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 1,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 1,
+          "step/start": 1,
+          "system/message": 1,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 5
+        },
+        "transcript_sha256": "4d59442924b3771a404fc58f41fd94902977a797b161be1738249b70b526b952",
+        "workspace_root": "/work",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "A1/rep3/free",
+      "scene": "free",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": "A1",
+      "rep": 3,
+      "variant": "free",
+      "exit_code": 0,
+      "elapsed_sec": 25.2,
+      "isolation": "docker:tmem-abl:iso (mount allow-list)",
+      "files": {
+        "scene.json": {
+          "bytes": 2147,
+          "sha256": "5f803478450b54313a10da5bb963f175e7f7583ff106e291a4ecc4b3a14774f8"
+        },
+        "stderr.log": {
+          "bytes": 7559,
+          "sha256": "b7bfbae2d89ddc20a3df4655cb460ab75b60fb6c11356885b17ee87c041313d7"
+        },
+        "stdout.log": {
+          "bytes": 4139,
+          "sha256": "634b94d2902b7601425924015c9568468d46213dfe2fbafa888266f64775554d"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 52661,
+          "sha256": "a0a993eb9ddffa56a2e19ee72f1e0866755f0b9c89d7162c496e29ad579ce179"
+        }
+      },
+      "trajectory": {
+        "events": 56,
+        "tool_calls": [
+          "tmem_expand",
+          "glob",
+          "tmem_expand",
+          "tmem_search",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand"
+        ],
+        "tmem_tool_calls": [
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_search",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand"
+        ],
+        "user_messages": 5,
+        "assistant_messages": 7,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 7,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 7,
+          "step/start": 7,
+          "system/message": 1,
+          "tool/call": 8,
+          "tool/result": 8,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 5
+        },
+        "transcript_sha256": "a0a993eb9ddffa56a2e19ee72f1e0866755f0b9c89d7162c496e29ad579ce179",
+        "workspace_root": "/work",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "A1/rep3/zero",
+      "scene": "zero",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": "A1",
+      "rep": 3,
+      "variant": "zero",
+      "exit_code": 0,
+      "elapsed_sec": 15.9,
+      "isolation": "docker:tmem-abl:iso (mount allow-list)",
+      "files": {
+        "scene.json": {
+          "bytes": 2150,
+          "sha256": "ee9e538a652d1fd74ec92ee84786978794d5ca51f85d4c7952547d8387237f96"
+        },
+        "stderr.log": {
+          "bytes": 4869,
+          "sha256": "cb3a9b3f7d019792d95e2938b4f9c941ea0bfb2a1736883b192c2bb01b9e1e60"
+        },
+        "stdout.log": {
+          "bytes": 2458,
+          "sha256": "c16fe0dbdf902c3faac12b8161f02b75e6018d3938989cfe4672035688518d03"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 19717,
+          "sha256": "3cb27588ea383fe86c2c9671a2e28a2949a1a711b2013e3067429accf79870ab"
+        }
+      },
+      "trajectory": {
+        "events": 22,
+        "tool_calls": [],
+        "tmem_tool_calls": [],
+        "user_messages": 5,
+        "assistant_messages": 1,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 1,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 1,
+          "step/start": 1,
+          "system/message": 1,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 5
+        },
+        "transcript_sha256": "3cb27588ea383fe86c2c9671a2e28a2949a1a711b2013e3067429accf79870ab",
+        "workspace_root": "/work",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "A2/rep1/free",
+      "scene": "free",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": "A2",
+      "rep": 1,
+      "variant": "free",
+      "exit_code": 0,
+      "elapsed_sec": 27.7,
+      "isolation": "docker:tmem-abl:iso (mount allow-list)",
+      "files": {
+        "scene.json": {
+          "bytes": 2213,
+          "sha256": "581d05472da1354383f0b16ee6d9fdceea1a956799c04e8155db12e64dc111db"
+        },
+        "stderr.log": {
+          "bytes": 9393,
+          "sha256": "f8e46f72b98d01b1b70b04f0c60772d745dc93d76fa7fd42f6bf075c3b32cfba"
+        },
+        "stdout.log": {
+          "bytes": 4153,
+          "sha256": "c08d23220212e1fee1d1f68f765add57e5db8bcbe7eeb88de6542ad54d680ea3"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 52017,
+          "sha256": "0f0362d0ca051c8792259a4de2af0f90ff7ad8e5412f6d72b45fdd5a9e3f66e6"
+        }
+      },
+      "trajectory": {
+        "events": 71,
+        "tool_calls": [
+          "glob",
+          "glob",
+          "tmem_search",
+          "tmem_search",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand"
+        ],
+        "tmem_tool_calls": [
+          "tmem_search",
+          "tmem_search",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand"
+        ],
+        "user_messages": 4,
+        "assistant_messages": 9,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 9,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 9,
+          "step/start": 9,
+          "system/message": 1,
+          "tool/call": 13,
+          "tool/result": 13,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 4
+        },
+        "transcript_sha256": "0f0362d0ca051c8792259a4de2af0f90ff7ad8e5412f6d72b45fdd5a9e3f66e6",
+        "workspace_root": "/work",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "A2/rep1/zero",
+      "scene": "zero",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": "A2",
+      "rep": 1,
+      "variant": "zero",
+      "exit_code": 0,
+      "elapsed_sec": 51.7,
+      "isolation": "docker:tmem-abl:iso (mount allow-list)",
+      "files": {
+        "scene.json": {
+          "bytes": 2217,
+          "sha256": "8b7986ccfd46cb286ef484993b951d818e55128ae6c546eb8b20b2640735ec1b"
+        },
+        "stderr.log": {
+          "bytes": 13827,
+          "sha256": "78929487cc54238937613aee8ca4da57456323aae61b41c2f795783cf6d865b0"
+        },
+        "stdout.log": {
+          "bytes": 2799,
+          "sha256": "43690986bacd65ddbbf2179755e07b73ceccdb3f10aa2fb91be656d828637a17"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 46447,
+          "sha256": "64cc8de9db8cd0087798a38aa57a0410c9d5153a890d56db78b8c98dd7342f55"
+        }
+      },
+      "trajectory": {
+        "events": 52,
+        "tool_calls": [
+          "skill",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand"
+        ],
+        "tmem_tool_calls": [
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand"
+        ],
+        "user_messages": 4,
+        "assistant_messages": 6,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 6,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 6,
+          "step/start": 6,
+          "system/message": 1,
+          "tool/call": 8,
+          "tool/result": 8,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 4
+        },
+        "transcript_sha256": "64cc8de9db8cd0087798a38aa57a0410c9d5153a890d56db78b8c98dd7342f55",
+        "workspace_root": "/work",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "A2/rep2/free",
+      "scene": "free",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": "A2",
+      "rep": 2,
+      "variant": "free",
+      "exit_code": 0,
+      "elapsed_sec": 42.7,
+      "isolation": "docker:tmem-abl:iso (mount allow-list)",
+      "files": {
+        "scene.json": {
+          "bytes": 2213,
+          "sha256": "5bf923f7dc00a8c6ea989742bf46139acdbdef042a35040245bb7a2585d51383"
+        },
+        "stderr.log": {
+          "bytes": 7393,
+          "sha256": "f94bdd3d136b4a690bf3fe6ebc518f0a1eb8acb2401d2700f7974d3585653b00"
+        },
+        "stdout.log": {
+          "bytes": 3687,
+          "sha256": "41a05ceca91d2e598a993db105f461fc53a7265e7f8ecd7fc0fad63fc1e4ef36"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 48299,
+          "sha256": "3d5ea089942d7573fc49fdb5b4f57a14c678c6130dce73029399788a3fe36042"
+        }
+      },
+      "trajectory": {
+        "events": 63,
+        "tool_calls": [
+          "glob",
+          "tmem_search",
+          "tmem_expand",
+          "tmem_expand",
+          "glob",
+          "tmem_expand",
+          "read",
+          "tmem_expand",
+          "grep",
+          "glob",
+          "read",
+          "tmem_expand"
+        ],
+        "tmem_tool_calls": [
+          "tmem_search",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand"
+        ],
+        "user_messages": 4,
+        "assistant_messages": 7,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 7,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 7,
+          "step/start": 7,
+          "system/message": 1,
+          "tool/call": 12,
+          "tool/result": 12,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 4
+        },
+        "transcript_sha256": "3d5ea089942d7573fc49fdb5b4f57a14c678c6130dce73029399788a3fe36042",
+        "workspace_root": "/work",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "A2/rep2/zero",
+      "scene": "zero",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": "A2",
+      "rep": 2,
+      "variant": "zero",
+      "exit_code": 0,
+      "elapsed_sec": 35.2,
+      "isolation": "docker:tmem-abl:iso (mount allow-list)",
+      "files": {
+        "scene.json": {
+          "bytes": 2216,
+          "sha256": "6f0f7b7e1d7c448e6191e267135b6675d2b9a3a2005a646471245bb54692036e"
+        },
+        "stderr.log": {
+          "bytes": 8839,
+          "sha256": "5ab5c2b945a63c77bf3c31c7b5e24ac6b712e7ce9dcec91b83a0fd9023f1c14f"
+        },
+        "stdout.log": {
+          "bytes": 3765,
+          "sha256": "b1863f07946609d045c42d22fdcf503db50214703550616bedac839f402a633f"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 48838,
+          "sha256": "01e2f832818fd25d9b4c344fc5f755b1915693a3435490726520eec77b87bddb"
+        }
+      },
+      "trajectory": {
+        "events": 57,
+        "tool_calls": [
+          "tmem_search",
+          "tmem_search",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand"
+        ],
+        "tmem_tool_calls": [
+          "tmem_search",
+          "tmem_search",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand"
+        ],
+        "user_messages": 4,
+        "assistant_messages": 7,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 7,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 7,
+          "step/start": 7,
+          "system/message": 1,
+          "tool/call": 9,
+          "tool/result": 9,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 4
+        },
+        "transcript_sha256": "01e2f832818fd25d9b4c344fc5f755b1915693a3435490726520eec77b87bddb",
+        "workspace_root": "/work",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "A2/rep3/free",
+      "scene": "free",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": "A2",
+      "rep": 3,
+      "variant": "free",
+      "exit_code": 0,
+      "elapsed_sec": 28.6,
+      "isolation": "docker:tmem-abl:iso (mount allow-list)",
+      "files": {
+        "scene.json": {
+          "bytes": 2214,
+          "sha256": "3111b88a70136fc26a3c1b0b03dfce5fd88b6777b85191713eb693cd0af4bd18"
+        },
+        "stderr.log": {
+          "bytes": 10434,
+          "sha256": "6c4bb49ba71a8388a2c589b7613dcfd8350a7e11dc8b375ca9b197d7dd1a13be"
+        },
+        "stdout.log": {
+          "bytes": 4439,
+          "sha256": "d577189ddd0066400f3bbf2fb5b6b9066e86fe72d17e544781ca6298c6a4cfe7"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 55859,
+          "sha256": "9b5c25e58b3c2ff5a0ab43be228a2c5eab469de5347569198b46742cee46b86f"
+        }
+      },
+      "trajectory": {
+        "events": 71,
+        "tool_calls": [
+          "glob",
+          "glob",
+          "tmem_search",
+          "tmem_search",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "glob",
+          "glob",
+          "read",
+          "read"
+        ],
+        "tmem_tool_calls": [
+          "tmem_search",
+          "tmem_search",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand"
+        ],
+        "user_messages": 4,
+        "assistant_messages": 9,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 9,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 9,
+          "step/start": 9,
+          "system/message": 1,
+          "tool/call": 13,
+          "tool/result": 13,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 4
+        },
+        "transcript_sha256": "9b5c25e58b3c2ff5a0ab43be228a2c5eab469de5347569198b46742cee46b86f",
+        "workspace_root": "/work",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "A2/rep3/zero",
+      "scene": "zero",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": "A2",
+      "rep": 3,
+      "variant": "zero",
+      "exit_code": 0,
+      "elapsed_sec": 54.2,
+      "isolation": "docker:tmem-abl:iso (mount allow-list)",
+      "files": {
+        "scene.json": {
+          "bytes": 2217,
+          "sha256": "3e34f50e051e07421d52deb8f2885fc1206c08fb997bccfbbb98cfb66baacc92"
+        },
+        "stderr.log": {
+          "bytes": 12381,
+          "sha256": "973d70c19d6e2752a84d663cc9b763d02f813844dee4bbc1fbf93f686a1d8cf3"
+        },
+        "stdout.log": {
+          "bytes": 3495,
+          "sha256": "b72bfa60686d0ff48c19605b806507ccec22c133760fdbc75013e6cc3c93fd45"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 59543,
+          "sha256": "a276c0f977b0f8e297dd4d9d6a73544640cf1fb4d976855b3f9e51a950dd1c45"
+        }
+      },
+      "trajectory": {
+        "events": 56,
+        "tool_calls": [
+          "skill",
+          "tmem_search",
+          "tmem_search",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand"
+        ],
+        "tmem_tool_calls": [
+          "tmem_search",
+          "tmem_search",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand"
+        ],
+        "user_messages": 4,
+        "assistant_messages": 6,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 6,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 6,
+          "step/start": 6,
+          "system/message": 1,
+          "tool/call": 10,
+          "tool/result": 10,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 4
+        },
+        "transcript_sha256": "a276c0f977b0f8e297dd4d9d6a73544640cf1fb4d976855b3f9e51a950dd1c45",
+        "workspace_root": "/work",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "B1/rep1/free",
+      "scene": "free",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": "B1",
+      "rep": 1,
+      "variant": "free",
+      "exit_code": 0,
+      "elapsed_sec": 25.4,
+      "isolation": "docker:tmem-abl:iso (mount allow-list)",
+      "files": {
+        "scene.json": {
+          "bytes": 2153,
+          "sha256": "d59818d54584bae09b3347d7ede68a500bac6b7222f1d264b8ba170af2d440b1"
+        },
+        "stderr.log": {
+          "bytes": 5058,
+          "sha256": "a7b97e6812d3410985a576cc6c8369d40c38b8342f9dc71ea256b31cec49f285"
+        },
+        "stdout.log": {
+          "bytes": 2385,
+          "sha256": "f4166a191650f3f448683ba1194c1a172630b4595b4e7cd65f9439b49ac2f8b0"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 32252,
+          "sha256": "b6657343058932509c73c0c5be874fde69cdc20023cc4cb65374438dde52cece"
+        }
+      },
+      "trajectory": {
+        "events": 49,
+        "tool_calls": [
+          "read",
+          "glob",
+          "glob",
+          "read",
+          "grep",
+          "glob",
+          "glob",
+          "read"
+        ],
+        "tmem_tool_calls": [],
+        "user_messages": 4,
+        "assistant_messages": 5,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 5,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 5,
+          "step/start": 5,
+          "system/message": 1,
+          "tool/call": 8,
+          "tool/result": 8,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 4
+        },
+        "transcript_sha256": "b6657343058932509c73c0c5be874fde69cdc20023cc4cb65374438dde52cece",
+        "workspace_root": "/work",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "B1/rep1/zero",
+      "scene": "zero",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": "B1",
+      "rep": 1,
+      "variant": "zero",
+      "exit_code": 0,
+      "elapsed_sec": 32.8,
+      "isolation": "docker:tmem-abl:iso (mount allow-list)",
+      "files": {
+        "scene.json": {
+          "bytes": 2156,
+          "sha256": "f821585ef52b4c9832c8732617659f1ed14df5c7b8c158ac436d9003266505cf"
+        },
+        "stderr.log": {
+          "bytes": 2900,
+          "sha256": "3bf9814059b05764dae0c84dc92c392472b10cc087c449534ed98bd70a95fa34"
+        },
+        "stdout.log": {
+          "bytes": 3378,
+          "sha256": "2a8a87371cd49a5ba1096d0c140217133f290b449140d031b94a1d89d2e41e82"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 19971,
+          "sha256": "f0ea3d293872f6bc8258991f76caa5205c5096a6ee835e8f5a6e4d4d576fb600"
+        }
+      },
+      "trajectory": {
+        "events": 21,
+        "tool_calls": [],
+        "tmem_tool_calls": [],
+        "user_messages": 4,
+        "assistant_messages": 1,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 1,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 1,
+          "step/start": 1,
+          "system/message": 1,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 4
+        },
+        "transcript_sha256": "f0ea3d293872f6bc8258991f76caa5205c5096a6ee835e8f5a6e4d4d576fb600",
+        "workspace_root": "/work",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "B1/rep2/free",
+      "scene": "free",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": "B1",
+      "rep": 2,
+      "variant": "free",
+      "exit_code": 0,
+      "elapsed_sec": 30.1,
+      "isolation": "docker:tmem-abl:iso (mount allow-list)",
+      "files": {
+        "scene.json": {
+          "bytes": 2153,
+          "sha256": "0b08a0aed1a7a0567ca962186f257c6228736981b3f9da1cde9165e4022c0745"
+        },
+        "stderr.log": {
+          "bytes": 6556,
+          "sha256": "67c2418beb6e6fa3e56d015c7650f056adf4fe2ae53d3f9b19f6deab6deab2ac"
+        },
+        "stdout.log": {
+          "bytes": 3324,
+          "sha256": "6094277c1857c7b9c3f81791ddf148825b11e4fc725a0615bcbb01ea19df5cf0"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 38117,
+          "sha256": "8d305b3928bb01bb3cf003253e4cdb1b13986d45728c918dd1624eedd2fa799e"
+        }
+      },
+      "trajectory": {
+        "events": 54,
+        "tool_calls": [
+          "glob",
+          "glob",
+          "read",
+          "read",
+          "read",
+          "read",
+          "glob",
+          "read",
+          "grep"
+        ],
+        "tmem_tool_calls": [],
+        "user_messages": 4,
+        "assistant_messages": 6,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 6,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 6,
+          "step/start": 6,
+          "system/message": 1,
+          "tool/call": 9,
+          "tool/result": 9,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 4
+        },
+        "transcript_sha256": "8d305b3928bb01bb3cf003253e4cdb1b13986d45728c918dd1624eedd2fa799e",
+        "workspace_root": "/work",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "B1/rep2/zero",
+      "scene": "zero",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": "B1",
+      "rep": 2,
+      "variant": "zero",
+      "exit_code": 0,
+      "elapsed_sec": 10.2,
+      "isolation": "docker:tmem-abl:iso (mount allow-list)",
+      "files": {
+        "scene.json": {
+          "bytes": 2156,
+          "sha256": "7522ace58b27a2a266d993a91fb698d82406f463cc3cca0dd244b64cab448b64"
+        },
+        "stderr.log": {
+          "bytes": 1515,
+          "sha256": "2b7040805c28709b6c5574fa75922bd46f1186a2400d60746f5c18a75c729a99"
+        },
+        "stdout.log": {
+          "bytes": 2188,
+          "sha256": "79304ce7853f150eb0e8376a0a322d59fdb5922d2b725e5e61c1bd1f12cf3384"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 18094,
+          "sha256": "4f47903bec7c9a8e3daba11253e231a6ebb14863a9c9219bdde7744ece91128d"
+        }
+      },
+      "trajectory": {
+        "events": 21,
+        "tool_calls": [],
+        "tmem_tool_calls": [],
+        "user_messages": 4,
+        "assistant_messages": 1,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 1,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 1,
+          "step/start": 1,
+          "system/message": 1,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 4
+        },
+        "transcript_sha256": "4f47903bec7c9a8e3daba11253e231a6ebb14863a9c9219bdde7744ece91128d",
+        "workspace_root": "/work",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "B1/rep3/free",
+      "scene": "free",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": "B1",
+      "rep": 3,
+      "variant": "free",
+      "exit_code": 0,
+      "elapsed_sec": 30.4,
+      "isolation": "docker:tmem-abl:iso (mount allow-list)",
+      "files": {
+        "scene.json": {
+          "bytes": 2153,
+          "sha256": "48b29998827f4898d35744b1e689dbf571c625e145a72d3d68bcbe90ed725383"
+        },
+        "stderr.log": {
+          "bytes": 6453,
+          "sha256": "08361aa7e29661670ee83a58b67d2f12b9196d17d506764011fb53e37672395f"
+        },
+        "stdout.log": {
+          "bytes": 2638,
+          "sha256": "f638c6db757731ba3999a5cc44e3042c13cd4c484eafa0ac041f179cddd93e30"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 42318,
+          "sha256": "9996bd8efb2b79cd461abda825b83d803f86900ca8e354f1fafed3beaaf7f8ae"
+        }
+      },
+      "trajectory": {
+        "events": 70,
+        "tool_calls": [
+          "glob",
+          "glob",
+          "read",
+          "glob",
+          "glob",
+          "read",
+          "read",
+          "read",
+          "grep",
+          "read",
+          "read",
+          "read",
+          "glob",
+          "glob"
+        ],
+        "tmem_tool_calls": [],
+        "user_messages": 4,
+        "assistant_messages": 8,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 8,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 8,
+          "step/start": 8,
+          "system/message": 1,
+          "tool/call": 14,
+          "tool/result": 14,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 4
+        },
+        "transcript_sha256": "9996bd8efb2b79cd461abda825b83d803f86900ca8e354f1fafed3beaaf7f8ae",
+        "workspace_root": "/work",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "B1/rep3/zero",
+      "scene": "zero",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": "B1",
+      "rep": 3,
+      "variant": "zero",
+      "exit_code": 0,
+      "elapsed_sec": 10.0,
+      "isolation": "docker:tmem-abl:iso (mount allow-list)",
+      "files": {
+        "scene.json": {
+          "bytes": 2156,
+          "sha256": "e67e76efccafdb423721a70ba516f78f1ef0d6e40b112ea87c23ccd58e6aaba0"
+        },
+        "stderr.log": {
+          "bytes": 2530,
+          "sha256": "e3aac4bfaad64f395e7f37645a9060528eef631cad0ed79ff8552d127cfa3690"
+        },
+        "stdout.log": {
+          "bytes": 2087,
+          "sha256": "a8cce8f48f668b65fa22de335d784bc540f9b3ca4352e9fd3842ac30317f3019"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 18460,
+          "sha256": "d2e52705c1e4567f810368df1369cf8ed4664198f0677e5831fef94af06eb4ab"
+        }
+      },
+      "trajectory": {
+        "events": 21,
+        "tool_calls": [],
+        "tmem_tool_calls": [],
+        "user_messages": 4,
+        "assistant_messages": 1,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 1,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 1,
+          "step/start": 1,
+          "system/message": 1,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 4
+        },
+        "transcript_sha256": "d2e52705c1e4567f810368df1369cf8ed4664198f0677e5831fef94af06eb4ab",
+        "workspace_root": "/work",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "B2/rep1/free",
+      "scene": "free",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": "B2",
+      "rep": 1,
+      "variant": "free",
+      "exit_code": 0,
+      "elapsed_sec": 26.1,
+      "isolation": "docker:tmem-abl:iso (mount allow-list)",
+      "files": {
+        "scene.json": {
+          "bytes": 2124,
+          "sha256": "35ef258ad6fe90453b90dabcff488025803689002498e49ff7bcb809b9795ae6"
+        },
+        "stderr.log": {
+          "bytes": 8781,
+          "sha256": "fd6c4e9dc6b3cbd2b673d14105961d7e6bdd03e11d47313e67b4acb95edd5198"
+        },
+        "stdout.log": {
+          "bytes": 2696,
+          "sha256": "146886665e6e149562cc6753d0e4ea1d79c08c6f02062afb8b66ad3af847dcd3"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 46511,
+          "sha256": "da356ffc97e5b75febff2bba101aff8719fc71f4c0bd3e2da5282a8bf3d4e14c"
+        }
+      },
+      "trajectory": {
+        "events": 74,
+        "tool_calls": [
+          "glob",
+          "glob",
+          "read",
+          "grep",
+          "read",
+          "read",
+          "read",
+          "grep",
+          "glob",
+          "read",
+          "read",
+          "glob",
+          "glob",
+          "read",
+          "read"
+        ],
+        "tmem_tool_calls": [],
+        "user_messages": 3,
+        "assistant_messages": 9,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 9,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 9,
+          "step/start": 9,
+          "system/message": 1,
+          "tool/call": 15,
+          "tool/result": 15,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 3
+        },
+        "transcript_sha256": "da356ffc97e5b75febff2bba101aff8719fc71f4c0bd3e2da5282a8bf3d4e14c",
+        "workspace_root": "/work",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "B2/rep1/zero",
+      "scene": "zero",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": "B2",
+      "rep": 1,
+      "variant": "zero",
+      "exit_code": 0,
+      "elapsed_sec": 16.3,
+      "isolation": "docker:tmem-abl:iso (mount allow-list)",
+      "files": {
+        "scene.json": {
+          "bytes": 2127,
+          "sha256": "a3bff56885d5189039eb521b15662fd6d2e68c48c3ab26a0022ab8f3879cb122"
+        },
+        "stderr.log": {
+          "bytes": 3525,
+          "sha256": "a819e4d377042723c174875af2535b0799dab9ab0cfca6b96f922a8902742bd8"
+        },
+        "stdout.log": {
+          "bytes": 2182,
+          "sha256": "a6554826bcc20e2dde1e4448b32bb0d130279c7da92b35c26b6690794eae7fdd"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 19203,
+          "sha256": "58af3ba7817aa364864c643918c36905f70cf2bf05f7f680e87a82b0a396df37"
+        }
+      },
+      "trajectory": {
+        "events": 25,
+        "tool_calls": [
+          "list_agents"
+        ],
+        "tmem_tool_calls": [],
+        "user_messages": 3,
+        "assistant_messages": 2,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 2,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 2,
+          "step/start": 2,
+          "system/message": 1,
+          "tool/call": 1,
+          "tool/result": 1,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 3
+        },
+        "transcript_sha256": "58af3ba7817aa364864c643918c36905f70cf2bf05f7f680e87a82b0a396df37",
+        "workspace_root": "/work",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "B2/rep2/free",
+      "scene": "free",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": "B2",
+      "rep": 2,
+      "variant": "free",
+      "exit_code": 0,
+      "elapsed_sec": 22.9,
+      "isolation": "docker:tmem-abl:iso (mount allow-list)",
+      "files": {
+        "scene.json": {
+          "bytes": 2124,
+          "sha256": "0d07be0009232de28ef01277dc9011a7714402c2b651930caf3a06df32371a64"
+        },
+        "stderr.log": {
+          "bytes": 7351,
+          "sha256": "23deac8d157b1c88478357aae1329010ab520ab4f86b186d2df6d7e3d78537b0"
+        },
+        "stdout.log": {
+          "bytes": 3397,
+          "sha256": "6118d32c497294cd1ed87fcd57ba8e1f04717c38209c978061b238845329565f"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 40501,
+          "sha256": "906ed88b4a81f0ee5a02b1c283220082a327acc9806881d5d94c5fbc29b00c91"
+        }
+      },
+      "trajectory": {
+        "events": 64,
+        "tool_calls": [
+          "glob",
+          "glob",
+          "read",
+          "grep",
+          "read",
+          "read",
+          "read",
+          "glob",
+          "read",
+          "glob",
+          "glob",
+          "grep",
+          "grep"
+        ],
+        "tmem_tool_calls": [],
+        "user_messages": 3,
+        "assistant_messages": 7,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 7,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 7,
+          "step/start": 7,
+          "system/message": 1,
+          "tool/call": 13,
+          "tool/result": 13,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 3
+        },
+        "transcript_sha256": "906ed88b4a81f0ee5a02b1c283220082a327acc9806881d5d94c5fbc29b00c91",
+        "workspace_root": "/work",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "B2/rep2/zero",
+      "scene": "zero",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": "B2",
+      "rep": 2,
+      "variant": "zero",
+      "exit_code": 0,
+      "elapsed_sec": 12.7,
+      "isolation": "docker:tmem-abl:iso (mount allow-list)",
+      "files": {
+        "scene.json": {
+          "bytes": 2127,
+          "sha256": "014308a0a2156597d7dcc07824ea2d51a4ebf10b23c17ef8b4d45284d2b2ca2c"
+        },
+        "stderr.log": {
+          "bytes": 3074,
+          "sha256": "0a0c60f9d20b66997fe38f38c43e5618b0856cfcf596ebc1e2a6eda6d43a546d"
+        },
+        "stdout.log": {
+          "bytes": 1907,
+          "sha256": "0fa87697f5aabf623434641158c509733473ad4ed4012861c0de06e4f18ed4fa"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 18908,
+          "sha256": "74e8ac04b913b3fda16c202431d3b1d7e943e123b78de333d3f19030dd9cd917"
+        }
+      },
+      "trajectory": {
+        "events": 27,
+        "tool_calls": [
+          "list_agents",
+          "get_goal"
+        ],
+        "tmem_tool_calls": [],
+        "user_messages": 3,
+        "assistant_messages": 2,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 2,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 2,
+          "step/start": 2,
+          "system/message": 1,
+          "tool/call": 2,
+          "tool/result": 2,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 3
+        },
+        "transcript_sha256": "74e8ac04b913b3fda16c202431d3b1d7e943e123b78de333d3f19030dd9cd917",
+        "workspace_root": "/work",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "B2/rep3/free",
+      "scene": "free",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": "B2",
+      "rep": 3,
+      "variant": "free",
+      "exit_code": 0,
+      "elapsed_sec": 35.0,
+      "isolation": "docker:tmem-abl:iso (mount allow-list)",
+      "files": {
+        "scene.json": {
+          "bytes": 2124,
+          "sha256": "cbd2502fa5e87f8d991730500cc3606440717d115a0de2b5e982f391dee5f61f"
+        },
+        "stderr.log": {
+          "bytes": 6428,
+          "sha256": "f75aafa38a69109889b2f2085d94812756fcfaa9bff3ba16adc7be625f0af364"
+        },
+        "stdout.log": {
+          "bytes": 2866,
+          "sha256": "51b80216594c085e25e0503a0abbdc9e8ab0ae54e69e1065a810e3138f9f0c5d"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 34803,
+          "sha256": "909845f8a5c43b1f0d41615cba01645cc232321b9466497216b9978b90a3e519"
+        }
+      },
+      "trajectory": {
+        "events": 53,
+        "tool_calls": [
+          "glob",
+          "glob",
+          "read",
+          "read",
+          "glob",
+          "read",
+          "read",
+          "grep",
+          "glob"
+        ],
+        "tmem_tool_calls": [],
+        "user_messages": 3,
+        "assistant_messages": 6,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 6,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 6,
+          "step/start": 6,
+          "system/message": 1,
+          "tool/call": 9,
+          "tool/result": 9,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 3
+        },
+        "transcript_sha256": "909845f8a5c43b1f0d41615cba01645cc232321b9466497216b9978b90a3e519",
+        "workspace_root": "/work",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "B2/rep3/zero",
+      "scene": "zero",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": "B2",
+      "rep": 3,
+      "variant": "zero",
+      "exit_code": 0,
+      "elapsed_sec": 11.9,
+      "isolation": "docker:tmem-abl:iso (mount allow-list)",
+      "files": {
+        "scene.json": {
+          "bytes": 2127,
+          "sha256": "066e33613ed1f951609b43bad497206111663c0ff8fd24b60d8577b909d446a7"
+        },
+        "stderr.log": {
+          "bytes": 2871,
+          "sha256": "f010a4fe32ab22a110e5256591d4add42f21d8a349c74877b3827901599e0b1f"
+        },
+        "stdout.log": {
+          "bytes": 2372,
+          "sha256": "37d2afa4352d8e72805e3c063a2dfd801b1e18feb1cd4c130014e4e286f97f99"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 17769,
+          "sha256": "de50a897f615bcf952f067dd077e7cced95a1992b89b5c294a5acc71d26a8ba5"
+        }
+      },
+      "trajectory": {
+        "events": 20,
+        "tool_calls": [],
+        "tmem_tool_calls": [],
+        "user_messages": 3,
+        "assistant_messages": 1,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 1,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 1,
+          "step/start": 1,
+          "system/message": 1,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 3
+        },
+        "transcript_sha256": "de50a897f615bcf952f067dd077e7cced95a1992b89b5c294a5acc71d26a8ba5",
+        "workspace_root": "/work",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "C/rep1/free",
+      "scene": "free",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": "C",
+      "rep": 1,
+      "variant": "free",
+      "exit_code": 0,
+      "elapsed_sec": 49.1,
+      "isolation": "docker:tmem-abl:iso (mount allow-list)",
+      "files": {
+        "scene.json": {
+          "bytes": 2118,
+          "sha256": "0754c64b1dd443499ba0c8c45698f87199898ef1a4633aeda406bac2ff5619d8"
+        },
+        "stderr.log": {
+          "bytes": 18769,
+          "sha256": "0747b9a789d6a1067bb23808b24dc3c9921a3aa88d7136c2f20fb72881ae7d07"
+        },
+        "stdout.log": {
+          "bytes": 3599,
+          "sha256": "e14c5e7f6b7e3c22def2ab977faf01b1bf2b18f56e052a548645cf2180c746b0"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 66351,
+          "sha256": "31e5dc9003905cfdc61af64006bfb81d9bb977f3e429a04079b1c33ffe4be79f"
+        }
+      },
+      "trajectory": {
+        "events": 106,
+        "tool_calls": [
+          "glob",
+          "glob",
+          "glob",
+          "glob",
+          "glob",
+          "glob",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "grep",
+          "glob",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "grep",
+          "read",
+          "glob",
+          "glob",
+          "glob",
+          "read"
+        ],
+        "tmem_tool_calls": [],
+        "user_messages": 3,
+        "assistant_messages": 13,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 13,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 13,
+          "step/start": 13,
+          "system/message": 1,
+          "tool/call": 25,
+          "tool/result": 25,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 3
+        },
+        "transcript_sha256": "31e5dc9003905cfdc61af64006bfb81d9bb977f3e429a04079b1c33ffe4be79f",
+        "workspace_root": "/work",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "C/rep1/zero",
+      "scene": "zero",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": "C",
+      "rep": 1,
+      "variant": "zero",
+      "exit_code": 0,
+      "elapsed_sec": 15.4,
+      "isolation": "docker:tmem-abl:iso (mount allow-list)",
+      "files": {
+        "scene.json": {
+          "bytes": 2120,
+          "sha256": "fdfef07d90dbfdafcefd43e94a179625f57e8394d7ca6f8c33b8ecd6c8f3cd6c"
+        },
+        "stderr.log": {
+          "bytes": 4632,
+          "sha256": "d1cc565ef9cd5664b7adcbe31e479e6e0c42c18a3585d6ba460594749ba6751b"
+        },
+        "stdout.log": {
+          "bytes": 2063,
+          "sha256": "48fbb0fbe136c9ac0835209edb825727d6a7902d8b371c8416639247f4e2500c"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 21781,
+          "sha256": "dc6ac6cc85195c2acb7f2a6f6a3ae2db111c02013084cba67a5224e53992f420"
+        }
+      },
+      "trajectory": {
+        "events": 32,
+        "tool_calls": [
+          "list_agents",
+          "get_goal",
+          "job_list"
+        ],
+        "tmem_tool_calls": [],
+        "user_messages": 3,
+        "assistant_messages": 3,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 3,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 3,
+          "step/start": 3,
+          "system/message": 1,
+          "tool/call": 3,
+          "tool/result": 3,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 3
+        },
+        "transcript_sha256": "dc6ac6cc85195c2acb7f2a6f6a3ae2db111c02013084cba67a5224e53992f420",
+        "workspace_root": "/work",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "C/rep2/free",
+      "scene": "free",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": "C",
+      "rep": 2,
+      "variant": "free",
+      "exit_code": 0,
+      "elapsed_sec": 69.2,
+      "isolation": "docker:tmem-abl:iso (mount allow-list)",
+      "files": {
+        "scene.json": {
+          "bytes": 2118,
+          "sha256": "7263c79d1f21788d678f58269562cb70a7940593edd66150cb63a52a20da6da7"
+        },
+        "stderr.log": {
+          "bytes": 31947,
+          "sha256": "da8ae6d03dc339191c0cf7c9b6220dcf294314356f47b79805af35b14a4db49a"
+        },
+        "stdout.log": {
+          "bytes": 4235,
+          "sha256": "abd24450bfd3164a2254ef3d1500d65eeef46888e648e3ac3604f9aa31d5f852"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 92899,
+          "sha256": "96098c8327992aefc533c372b209d54a814cc80d2c53627ea981999bcfff9ae5"
+        }
+      },
+      "trajectory": {
+        "events": 145,
+        "tool_calls": [
+          "glob",
+          "glob",
+          "glob",
+          "glob",
+          "glob",
+          "read",
+          "glob",
+          "glob",
+          "glob",
+          "grep",
+          "grep",
+          "read",
+          "read",
+          "read",
+          "read",
+          "grep",
+          "read",
+          "glob",
+          "glob",
+          "glob",
+          "glob",
+          "glob",
+          "glob",
+          "grep",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "grep",
+          "read",
+          "grep",
+          "read",
+          "read",
+          "glob",
+          "glob",
+          "glob"
+        ],
+        "tmem_tool_calls": [],
+        "user_messages": 3,
+        "assistant_messages": 18,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 18,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 18,
+          "step/start": 18,
+          "system/message": 1,
+          "tool/call": 37,
+          "tool/result": 37,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 3
+        },
+        "transcript_sha256": "96098c8327992aefc533c372b209d54a814cc80d2c53627ea981999bcfff9ae5",
+        "workspace_root": "/work",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "C/rep2/zero",
+      "scene": "zero",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": "C",
+      "rep": 2,
+      "variant": "zero",
+      "exit_code": 0,
+      "elapsed_sec": 12.8,
+      "isolation": "docker:tmem-abl:iso (mount allow-list)",
+      "files": {
+        "scene.json": {
+          "bytes": 2120,
+          "sha256": "dbfc89b778f40014a0615272a62cd859dad3e78a13d93c02cc23fcf0ca0adeda"
+        },
+        "stderr.log": {
+          "bytes": 1498,
+          "sha256": "470e024c17a104b85bf11a61cf643efb4123b74efc665054c77dd40957871ebf"
+        },
+        "stdout.log": {
+          "bytes": 1692,
+          "sha256": "e15cc34531d840e63607d30bd22e362a46af81fa86deb4451d6f70f58515e72a"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 15770,
+          "sha256": "2e227aa5d66203bda4b22b879e45fc5125da1bb590b23b5080e756be59410e78"
+        }
+      },
+      "trajectory": {
+        "events": 20,
+        "tool_calls": [],
+        "tmem_tool_calls": [],
+        "user_messages": 3,
+        "assistant_messages": 1,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 1,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 1,
+          "step/start": 1,
+          "system/message": 1,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 3
+        },
+        "transcript_sha256": "2e227aa5d66203bda4b22b879e45fc5125da1bb590b23b5080e756be59410e78",
+        "workspace_root": "/work",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "C/rep3/free",
+      "scene": "free",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": "C",
+      "rep": 3,
+      "variant": "free",
+      "exit_code": 0,
+      "elapsed_sec": 192.5,
+      "isolation": "docker:tmem-abl:iso (mount allow-list)",
+      "files": {
+        "scene.json": {
+          "bytes": 2120,
+          "sha256": "0ebaeaa4f3d86da9650b4ef77975e6dabb7ec5316d7eaea81eb56bca70c53835"
+        },
+        "stderr.log": {
+          "bytes": 103579,
+          "sha256": "bfd1208028ce318c3fd3a843af3a634cdf9e6e7370746ba1e1af6b7ac4d45cd6"
+        },
+        "stdout.log": {
+          "bytes": 4242,
+          "sha256": "747393e513f68e5c9910cfa0a2a072b383a1d432c3d63376eb83abfb5e91f4b4"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 220333,
+          "sha256": "16ab2b28b75a7e6d5c2cc347d050111c2a7de24fffed8889ee21e6bec948ecef"
+        }
+      },
+      "trajectory": {
+        "events": 323,
+        "tool_calls": [
+          "glob",
+          "glob",
+          "bash",
+          "glob",
+          "glob",
+          "read",
+          "glob",
+          "glob",
+          "glob",
+          "glob",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "glob",
+          "glob",
+          "grep",
+          "grep",
+          "glob",
+          "glob",
+          "glob",
+          "grep",
+          "read",
+          "bash",
+          "grep",
+          "grep",
+          "grep",
+          "grep",
+          "read",
+          "read",
+          "read",
+          "read",
+          "grep",
+          "bash",
+          "glob",
+          "bash",
+          "bash",
+          "read",
+          "bash",
+          "read",
+          "read",
+          "read",
+          "read",
+          "bash",
+          "bash",
+          "bash",
+          "bash",
+          "read",
+          "bash",
+          "bash",
+          "bash",
+          "read",
+          "bash",
+          "bash",
+          "bash",
+          "bash",
+          "bash",
+          "grep",
+          "read",
+          "grep",
+          "bash",
+          "bash",
+          "read",
+          "grep",
+          "read",
+          "bash"
+        ],
+        "tmem_tool_calls": [],
+        "user_messages": 3,
+        "assistant_messages": 42,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 42,
+          "job/registered": 21,
+          "job/settled": 21,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 42,
+          "step/start": 42,
+          "system/message": 1,
+          "tool/call": 69,
+          "tool/result": 69,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 3
+        },
+        "transcript_sha256": "16ab2b28b75a7e6d5c2cc347d050111c2a7de24fffed8889ee21e6bec948ecef",
+        "workspace_root": "/work",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "C/rep3/zero",
+      "scene": "zero",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": "C",
+      "rep": 3,
+      "variant": "zero",
+      "exit_code": 0,
+      "elapsed_sec": 12.6,
+      "isolation": "docker:tmem-abl:iso (mount allow-list)",
+      "files": {
+        "scene.json": {
+          "bytes": 2120,
+          "sha256": "5b35ad20f44321ac701a11c1b320a78e2a7c10d1b469f91837220d83d14691f3"
+        },
+        "stderr.log": {
+          "bytes": 2478,
+          "sha256": "e279e594c19c76a2f14a3d3244dabe16c19a270edb92e049f1299f5f70fbd696"
+        },
+        "stdout.log": {
+          "bytes": 2041,
+          "sha256": "329a3df3313f83b963487ed037b12369ec23f38610359807861cd0a7a4230f44"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 18590,
+          "sha256": "0f37d8f8ccad87d74b9327ead9811cccb17e938a7ee3a1760186bcf576d1dcf9"
+        }
+      },
+      "trajectory": {
+        "events": 27,
+        "tool_calls": [
+          "get_goal",
+          "list_agents"
+        ],
+        "tmem_tool_calls": [],
+        "user_messages": 3,
+        "assistant_messages": 2,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 2,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 2,
+          "step/start": 2,
+          "system/message": 1,
+          "tool/call": 2,
+          "tool/result": 2,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 3
+        },
+        "transcript_sha256": "0f37d8f8ccad87d74b9327ead9811cccb17e938a7ee3a1760186bcf576d1dcf9",
+        "workspace_root": "/work",
+        "edited_files": []
+      }
+    }
+  ]
+}

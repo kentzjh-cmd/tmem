@@ -1,0 +1,16 @@
+{
+  "workspace": "/home/kent/e2e/r2/ledger-svc",
+  "repeat_capture_exit": 1,
+  "repeat_capture_status": skipped,
+  "traces_before": 9,
+  "traces_after_repeat": 9,
+  "episodes_before": 11,
+  "episodes_after_repeat": 11,
+  "full_capture_exit": 1,
+  "full_capture_status": skipped,
+  "traces_after_full": 9,
+  "episodes_after_full": 11,
+  "raw_before": 9,
+  "expand_latency_ms": 106,
+  "memories_md_lines": 65
+}

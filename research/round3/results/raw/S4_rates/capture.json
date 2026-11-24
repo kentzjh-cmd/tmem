@@ -1,0 +1,21 @@
+{
+  "status": "compiled",
+  "agent": "dsh",
+  "scope": "project",
+  "episode_id": "ep_4ac89c3167",
+  "project_trace_id": "tr_cd4048c4b1",
+  "raw_trace_path": "raw/tr_cd4048c4b1.raw.json",
+  "problem_intent": "headless 结算取汇率时，缓存里没有这个币对就会抛 KeyError。请改成查不到就回落到默认汇率表，并补测试。",
+  "touched_files": [
+    "CONVENTIONS.md",
+    "README.md",
+    "tests/test_cli.py",
+    "tests/test_rates.py",
+    "tests/test_settlement.py"
+  ],
+  "is_trivial": false,
+  "confidence": 0.55,
+  "raw_steps": 47,
+  "sliced_steps": 12,
+  "compression_ratio": "47 -> 12"
+}

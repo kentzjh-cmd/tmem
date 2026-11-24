@@ -1,0 +1,52 @@
+已按“只读笔记文件、不执行任何命令”的方式查完项目里的 `MEMORIES.md`、`CONVENTIONS.md`、`README.md`、`.git/logs/HEAD`（reflog）、`.pytest_cache/` 与当前源码。先说两个前提（会影响下面结论的可信度）：
+
+- `MEMORIES.md` 里那条 trace（`tr_0edd35e965`）指向的 `.tmem/traces/tr_0edd35e965.json` **在仓库里并不存在**（`.tmem/` 目录缺失），只有被 tmem 截断的 Tier 0 摘要；长字段都以 `...` 截断。
+- 不允许执行命令 ⇒ 无法用 `git log -S` 之类的命令做二次确认，只能读 reflog 的提交标题 + 源码比对。
+
+---
+
+## 1) 依次改了哪些文件、什么顺序
+
+修法是「沿校验层补齐」，不碰换算层的 `NaN` 特判，也不改金额量纲（`CONVENTIONS.md:75-76`）。顺序可由 `MEMORIES.md:26-27` 的 repair chain + `CONVENTIONS.md:67` 的「修复位置」列 + 当前源码调用点三方对齐：
+
+| 顺序 | 文件 | 改了什么（当前代码实证） |
+|---|---|---|
+| 1 | `src/ledger/money.py` | 新增 `MISSING_CELL_PLACEHOLDER="nan"`、`_amount_state()`、`is_missing_amount()`、`require_usable_amount()` —— 唯一的金额可用性校验入口，缺失/非有限值抛 `ledger.errors.ValidationError`，且**原样返回入参**不做 float 转换（`money.py:88-103`） |
+| 2 | `src/ledger/settlement.py` | `settle_invoice`（`:28`）与 `settle_line`（`:68`）在换算**之前**先 `require_usable_amount(line.unit_price, ...)`，杜绝 `NaN` 流进 `Decimal` 求和 |
+| 3 | `src/ledger/import_rows.py` | 导入主路径接线：`parse_price` 现在 `return parse_price_checked(raw, description)`（`import_rows.py:19`），`parse_price_checked` 改为抛 `ValidationError`（`:50-53`）—— 这是让 `nan` 在**导入时**就被拒的关键一步 |
+| 4 | `src/ledger/invoicing.py` | `build_invoice` 只拒绝「根本不是数字」的价格（`None`、非数字串 → `ValidationError`，`invoicing.py:52-59`）；`nan` 这类「是数字但不可用」的**故意留给结算层**，以保住 `test_settle_invoice_rejects_missing_price` 的语义契约 |
+| 5 | `tests/test_settlement.py` | 补/改用例守住契约（`test_settle_invoice_rejects_a_missing_price`、`test_settle_invoice_uses_the_project_validation_error`、`test_settle_invoice_settles_the_valid_lines_of_a_rejected_invoice` 等） |
+
+随后是文档同步：`CONVENTIONS.md` §2.3「已修复（按记录更新）」+ §1.1 落点表、`README.md:15` 的缺失价格约定。
+
+旁证：`MEMORIES.md:26` 记录 ValueError 这条链是 `edit src/ledger/money.py (_amount_state, format_money, is_missing_amount) -> edit src/ledger/settlement.py (settle_in…)`，`MEMORIES.md:27` 记录后续 TypeError 那条链是 `edit src/ledger/invoicing.py (build_invoice) -> edit tests/test_settlement.py (test_settle_invoice_rejects_a_missing_…)`——与上表的 1→2→3→4→5 顺序一致（字段尾部被 tmem 截断）。另外 `src/ledger/api.py`、`src/ledger/cli.py` **没有**被改（全文无 `nan`/校验调用），只在 `CONVENTIONS.md:27-28` 作为约定落点被记录。
+
+---
+
+## 2) 修完用什么命令验证
+
+- **复现（Failed Command）**：`python3 -m pytest -v 2>&1`（`MEMORIES.md:26-27`）
+- **定点验证（Verification Command）**：`python3 -m pytest tests/test_settlement.py::test_settle_invoice_returns_integer_minor_units tests/test_settlement.py::test_settle_invoice_rejects_missing_price …`
+  （`MEMORIES.md:18/26/27` 的该字段尾部被 tmem 截断成 `tests/test_settlement.py:...`；第二个 node id 应为 `test_settle_invoice_rejects_missing_price`，与 `CONVENTIONS.md:67` 的基线用例名一致）
+- **按 §1.2 的硬性下限**，收尾时至少要复跑 `tests/test_settlement.py::test_settle_invoice_returns_integer_minor_units` 与 `tests/test_settlement.py::test_settle_line_returns_minor_units`，确认结算结果仍是 `int` 最小单位
+- **全量 + 基线比对**：`python3 -m pytest -v`（仓库根目录，`pyproject.toml` 已配 `pythonpath=["src"]`/`testpaths=["tests"]`）
+  - 证据：`.pytest_cache/v/cache/lastfailed` 现在只剩 **2 条**已知失败 —— `tests/test_pagination.py::test_pagination_does_not_lose_invoices`、`tests/test_rates.py::test_get_cached_rate_falls_back_to_rate_table`，即 `CONVENTIONS.md:48-49` 的基线两条；NaN 那条已从失败列表消失，说明基线没有悄悄漂移。
+  - `.pytest_cache/v/cache/nodeids` 显示那一次全量共收集 **65** 条用例（基线是 61 条：2 failed + 59 passed），差值来自本次新增的用例。
+  - 注意一个残留差异：nodeids 里还有 `test_settle_invoice_rejects_a_missing_price` 和 `test_settle_invoice_settles_the_valid_lines_of_a_rejected_invoice`，而当前工作区 `tests/test_settlement.py` 里没有这两个（只保留了 `test_settle_invoice_rejects_missing_price`）——即 pytest 缓存记录的是**修复会话当时的测试文件**，与当前工作区不完全一致。
+
+---
+
+## 3) `parse_price_checked` 是哪次提交引入的
+
+**`54e1833476781dc61751173b7a88a76160fc28ae` —— `feat(import): reject empty price cells`**
+
+依据（只读 reflog `.git/logs/HEAD`，未执行任何 git 命令）：
+- 导入相关的三次提交依次是：`84eedd1` *feat(import): parse invoice rows from exported spreadsheets*（建 `import_rows.py` 与普通 `parse_price`）→ `2245adf` *feat(import): build invoices from exported rows*（`build_invoice_from_rows`）→ **`54e1833` *feat(import): reject empty price cells***。
+- `parse_price_checked` 的语义（docstring：“Parse a price cell and reject the empty-cell placeholder.”）与该提交标题 `reject empty price cells` 完全对应，而前一次提交只是「解析行」不含校验。
+- `CONVENTIONS.md:74` 印证了它「已存在但没接线」的状态：“`import_rows.parse_price_checked` 能拒绝占位符但抛 `ValueError`，而且导入主路径根本没走它”——即**先有校验函数、后接线**；修复后才由 `import_rows.py:19` 让 `parse_price` 转发给它。
+
+⚠️ 两点如实说明：① 由于不能执行命令，这条结论是「reflog 提交标题 + 函数语义/文档字符串比对」的推断，没有 `git log -S "parse_price_checked"` 的直接实证；② `MEMORIES.md` 引用的 Tier 1/Tier 2 trace 文件缺失，若 `tmem inspect tr_0edd35e965 --level diff` 可用，可给出逐文件 diff 的权威顺序。另外顺带一提：reflog 最后一条是 `merge feature/rates-cache`（`035aa40b`，与 `CONVENTIONS.md:40` 的基线 commit 一致），**本次修复尚未提交**，是工作区里的未提交改动。
+
+---
+
+💡 *是否需要将本次有效执行路径沉淀为记忆？（输入 `/tmem` 或 `/remember [备注]` 保存）*

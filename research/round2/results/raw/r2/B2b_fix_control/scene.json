@@ -1,0 +1,23 @@
+{
+  "scene": "B2b_fix_control",
+  "workspace": "control",
+  "workspace_path": "/home/kent/e2e/r2/ledger-svc-control",
+  "intent": "H6' 对照臂：与 S2 同任务的无插件先前会话，使 B 臂具备与 A 臂等价的'先前会话'",
+  "model": true,
+  "dsh_home": "/home/kent/.dsh",
+  "exit_code": 0,
+  "elapsed_sec": 386.7,
+  "stdout_bytes": 1905,
+  "stderr_bytes": 86068,
+  "command": "dsh --profile headless headless <task>",
+  "transcript_path": "/home/kent/.dsh/sessions/--home-kent-e2e-r2-ledger-svc-control--/session-4e2e29b2-fb00-4cfb-a186-65d714d44215/session.v4.jsonl.zstd",
+  "transcript_stats": {
+    "bytes": 293829,
+    "node_single_frame_bytes": 191,
+    "node_single_frame_lines": 1,
+    "zstd_dc_bytes": 1009134,
+    "zstd_dc_lines": 396,
+    "is_multiframe": true
+  },
+  "capture_skipped": "scene flag: control arm must not create a tmem store"
+}

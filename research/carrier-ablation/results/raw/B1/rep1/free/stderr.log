@@ -1,0 +1,44 @@
+dsh: reasoning:
+The user asks me to answer three questions based on project memory, without running any commands. I need to read MEMORY.md (and possibly .tmem/ files) — but "不要运行任何命令" means don't run shell commands. Reading files with the read tool should be fine? Hmm — "你可以查阅本项目可用的项目记忆来回答问题，但不要运行任何命令。" The read tool is not a command (it's a tool for reading files). I think reading files via the read tool is acceptable and expected. The instruction is about not running commands (bash). So I'll use read/grep/glob tools but no bash.
+
+Let me read MEMORY.md.
+dsh: reasoning:
+The MEMORY.md contains the answer. Let me also check .tmem/ for more detail, maybe more precise naming of the function `ensure_usable_price`. The memory mentions `ensure_usable_price()` in money.py. Let me check the source file to confirm (reading source is fine — the instruction says don't run commands; reading files is not running commands). Actually, to be careful: "你可以查阅本项目可用的项目记忆来回答问题" — consult project memory. Reading source files to verify the function name is arguably fine but the memory already states it. Let me check .tmem directory via glob and read relevant entries for completeness.
+
+Let me glob .tmem files and read money.py to confirm the function name.
+dsh: reasoning:
+Interesting — the current `src/ledger/money.py` does NOT contain `ensure_usable_price()`. So the source appears to be at a state before the fix (or the fix was never applied / was reverted). The memory records the intended fix. The question asks about the historical decision record, so I should answer based on the memory record — that's what the user asks ("你可以查阅本项目可用的项目记忆来回答问题").
+
+But note the discrepancy: the memory says the fix introduced `ensure_usable_price()` in `src/ledger/money.py`, but the current money.py doesn't have it. Let me verify by grepping for `ensure_usable_price` across the workspace — I can use the grep tool (not a command).
+
+Also check whether `.tmem` exists — glob returned nothing. Let me check the directory listing via glob of `*` and `.*`.
+
+Let me grep for ensure_usable_price and for missing price.
+dsh: reasoning:
+So the working tree currently does NOT contain the applied fix (no `ensure_usable_price`, no ValidationError usage in settlement). The memory record describes the historical fix. The user asks three questions based on memory. I should answer from the memory, and note the discrepancy honestly — the memory records `ensure_usable_price()` as the unified guard entry point in `src/ledger/money.py`, but the current source doesn't contain it (the fix isn't in the working tree).
+
+Wait — should I check the .tmem directory? glob of `**/*` didn't show `.tmem` (hidden dirs may be excluded, though glob says "including hidden and ignored files"). Let me try glob `.tmem/**` explicitly and also check for `.tmem` as directory. The earlier glob `.tmem/**/*` found nothing. Let's try pattern `**/.tmem/*`.
+
+Also check `.dsh/md-carrier.patch.yml` — not needed.
+
+Let me do a quick check for .tmem presence using glob with different patterns.
+
+Also, the user said don't run commands. The read/glob/grep tools are file inspection tools, not commands — acceptable.
+
+Let me check .tmem once more.
+dsh: reasoning:
+Confirmed: the working tree is at the pre-fix state for that change; the memory record holds the historical decision. Also `.tmem/` doesn't exist in this workspace (only MEMORY.md carrier).
+
+Now answer the three questions:
+
+1) File modification order for the nan/ValueError fix: `src/ledger/money.py` → `src/ledger/import_rows.py` → `src/ledger/settlement.py` (per MEMORY.md line 29). Also involved files: `src/ledger/invoicing.py`, `tests/test_import_rows.py`, `tests/test_settlement.py`, `MEMORY.md`.
+
+Wait — "按修复顺序" lists money.py → import_rows.py → settlement.py. The 涉及文件 list includes invoicing.py and tests. I should present the fix order as recorded, and mention the related files (invoicing.py, tests) as involved but not in the ordered fix list.
+
+2) Verification commands: `PYTHONPATH=src python3 -m pytest -q 2>&1` (full suite) and per-file: `PYTHONPATH=src python3 -m pytest "$f" -q 2>&1`; plus collect-only checks: `PYTHONPATH=src python3 -m pytest --collect-only -q 2>&1 && PYTHONPATH=src python3 -m pytest tests/test_import_rows.py --collect-only -q 2>&1 && PYTHONPATH=src python3 -m pytest tests/test_settlement.py --collect-only -q 2>&1`.
+
+3) The unified guard function name: `ensure_usable_price()` in `src/ledger/money.py`.
+
+Also note the caveat about current workspace state: `ensure_usable_price` isn't in the current `src/ledger/money.py`, and `parse_price_checked`/`settlement` still raise plain `ValueError` — so the memory record describes the historical fix, which isn't present in this working tree (no `.tmem/` here either; only `MEMORY.md`).
+
+I'll answer concisely with citations to MEMORY.md lines.

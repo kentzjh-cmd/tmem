@@ -1,0 +1,64 @@
+dsh: reasoning:
+The user asks me to consult project memory (MEMORY.md or .tmem/) but not run any commands. I can use read/glob/grep tools — those are file tools, not commands. The instruction says "不要运行任何命令" (don't run any commands), so I should use read/glob/grep tools rather than bash.
+
+Let me look for MEMORY.md and .tmem/.
+dsh: reasoning:
+ReadMEMORY.md.
+dsh: reasoning:
+The memory records the fix for the NaN price import bug (line 24-38). It gives:
+1) Files modified in fix order: `src/ledger/money.py` → `src/ledger/import_rows.py` → `src/ledger/settlement.py`
+2) Verification command: `PYTHONPATH=src python3 -m pytest -q 2>&1` and `PYTHONPATH=src python3 -m pytest "$f" -q 2>&1` (plus collect-only)
+3) The new "unified validation price usable" entry function name: `ensure_usable_price()` — mentioned at line 37: "`parse_price()` 改走 `ensure_usable_price()`".
+
+Let me verify by checking the actual source files to be sure about the function name. Use grep (a tool, not a command). The user said don't run commands; grep tool is a file tool, should be fine. But to be safe, using read/grep tools is appropriate for consulting the project.
+
+Let me grep for ensure_usable_price.
+dsh: reasoning:
+Interesting: the current money.py does NOT contain `ensure_usable_price`. So the working tree appears to be at a state before the fix (or the fix was reverted). The memory records the planned/attempted fix. The grep found `ensure_usable_price` only in MEMORY.md.
+
+Let me check import_rows.py and settlement.py to see the current state, and check git status? No — can't run commands. Let me read the files.
+
+Also let me check if there's a .tmem directory (glob found nothing). Let me also check for MEMORIES.md and MEM.md.
+
+Let me read import_rows.py and settlement.py.
+dsh: reasoning:
+The working tree is in the pre-fix state: money.py has no `ensure_usable_price`, import_rows.py still has `parse_price` raw float parse and `parse_price_checked` raising ValueError, settlement.py `settle_invoice_checked` raising ValueError.
+
+But the MEMORY.md records the intended/attempted fix under the episode "headless 导入的表格里价格单元格为空时会被写成 nan..." — the memory says the fix files in order were src/ledger/money.py → src/ledger/import_rows.py → src/ledger/settlement.py, and the decision point says "Root cause is fully mapped. Now let me implement the fix, starting with a shared guard in `money.py`".
+
+Hmm — but the memory trace lines also indicate the actual implementation may have been only partially recorded. The question asks:
+1) Files modified in order: src/ledger/money.py → src/ledger/import_rows.py → src/ledger/settlement.py
+2) Verification command: `PYTHONPATH=src python3 -m pytest -q 2>&1` and `PYTHONPATH=src python3 -m pytest "$f" -q 2>&1` (and the collect-only variants)
+3) The new unified price-validation entry function name: `ensure_usable_price()` (in money.py)
+
+Wait — but is there a `ledger.errors.ValidationError`? The error signature mentions `ledger.errors.ValidationError: missing price for hosting` and `ValidationError: missing price for line`. Let me check errors.py and invoicing.py to see if ValidationError exists. Also check the tests directory for the referenced tests.
+
+Also note MEMORY.md line 30 "涉及文件" lists MEMORY.md、src/ledger/import_rows.py、src/ledger/invoicing.py、src/ledger/money.py、src/ledger/settlement.py、tests/test_import_rows.py、tests/test_settlement.py. The "改动文件（按修复顺序）" is the authoritative ordering: money.py → import_rows.py → settlement.py.
+
+Let me check errors.py and the tests to give a complete answer.
+
+Also, is the current repo state actually pre-fix? The memory might reflect a session whose changes were later reverted (the workspace may have been reset). But the question asks what happened in that fix session, based on memory. I should note the discrepancy: the current working tree doesn't contain `ensure_usable_price` — so the memory records the plan/attempt, but the code isn't in that state now. Actually, wait — I should check more carefully. Maybe there's a different `ensure_usable_price` elsewhere. Grep found only MEMORY.md. So indeed the code isn't present.
+
+Hmm, but maybe the fix was recorded in memory as "决策要点" of an episode in the tmem structured library, and .tmem/ doesn't exist here. Let me double-check for a .tmem directory (glob for hidden dirs). glob pattern ".tmem/**" found no files. Let me try glob ".tmem" or ".tmem/*".
+
+Let me check errors.py and tests, plus check for hidden directories.
+dsh: reasoning:
+The memory is the authoritative source. Let me note the current tree state: `ensure_usable_price` doesn't exist in code, and `tests/test_import_rows.py` doesn't exist — meaning the fix described in memory is not currently reflected in the working tree (the workspace appears to be at the pre-fix baseline for that particular issue). I should answer the three questions from memory, and add a brief note about this discrepancy.
+
+Let me quickly check tests/test_settlement.py to see whether it contains a test referencing ensure_usable_price or ValidationError for missing price — grep for "missing price" acrossrepo.
+dsh: reasoning:
+The current tree has a failing test (tests/test_settlement.py expects ValidationError but code raises ValueError) — consistent with the "3 failed, 18 passed" baseline mentioned in memory? Actually the memory for the NaN episode listed error signatures including "Error: invalid arguments..." and "ValueError: could not convert string to float: ''". The baseline of "3 failed, 18 passed" was in the earlier memory episode.
+
+Anyway, the answer:
+
+1) Files in fix order: `src/ledger/money.py` → `src/ledger/import_rows.py` → `src/ledger/settlement.py` (plus the newly added tests `tests/test_import_rows.py` and `tests/test_settlement.py`, and finally the memory file `MEMORY.md`).
+2) Verification: `PYTHONPATH=src python3 -m pytest -q 2>&1` and `PYTHONPATH=src python3 -m pytest "$f" -q 2>&1` (per-file reruns), plus `--collect-only` sanity checks on the suite and on `tests/test_import_rows.py` / `tests/test_settlement.py`.
+3) New unified entry function: `ensure_usable_price()` — placed in `src/ledger/money.py` as the shared guard; `parse_price()` in import_rows.py routes through it, and `parse_price_checked()` delegates to it; settlement's `settle_invoice()`/`settle_line()` validate first, and `settle_invoice_checked()` raises `ValidationError` instead of `ValueError`.
+
+Also note the caveat: the current working tree is at the pre-fix state — `ensure_usable_price` doesn't exist in `src/ledger/money.py`, `parse_price_checked`/`settle_invoice_checked` still raise `ValueError`, and `tests/test_import_rows.py` is absent; `tests/test_settlement.py:38` already expects `ValidationError`, so that test currently fails. This is worth mentioning.
+
+I should present the answers clearly. The memory was read via file tools only — no commands run. Good.
+
+Also note the decision points: root cause — exporter writes empty numeric cell as literal text `nan` (documented in import_rows.py docstring); import boundary at `src/ledger/import_rows.py:13`; settlement boundary at `src/ledger/settlement.py:25,65,91`.
+
+Let me write the answer in Chinese since the user wrote in Chinese.

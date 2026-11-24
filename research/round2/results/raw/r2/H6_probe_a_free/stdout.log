@@ -1,0 +1,44 @@
+已查阅项目笔记（`MEMORIES.md`、`README.md`、`AGENTS.md`、`.tmem/traces/*.json` 与 `.tmem/raw/*.raw.json`），未执行任何命令。回答如下：
+
+---
+
+## 1) 修改的文件与顺序
+
+主修复对应 trace [`tr_4ca8e49b6d`](.tmem/traces/tr_4ca8e49b6d.json)（session `7e9d69e9` / `aa05996b`），按 L0 关键路径的实际动手顺序：
+
+| # | 文件 | 改了什么 |
+|---|---|---|
+| 1 | `src/ledger/money.py` | 新增统一判定 `is_missing_amount()` / `is_finite_amount()`，以及唯一守卫 `require_usable_amount()`（+ `format_money`） |
+| 2 | `src/ledger/import_rows.py` | `parse_price` 改走 `require_usable_amount`、抛 `ledger.errors.ValidationError`；新增 `parse_quantity`；`parse_rows` / `rows_to_tuples` 走同一条校验路径 |
+| 3 | `src/ledger/settlement.py` | 新增 `_require_usable_price`，`settle_invoice` / `settle_line` / `settle_invoice_checked` 在算术前先守卫 |
+| 4 | `tests/test_import_rows.py` | 单元格级回归（缺价/缺量/inf/非数字/错误文案） |
+| 5 | `tests/test_import_rows_headless.py` | 新增：headless 导入→结算端到端回归 |
+| 6 | `README.md` | 写「缺失价格（NaN）处理约定」与测试基线 |
+| 7 | `AGENTS.md` | 同步项目约定（唯一守卫 `money.require_usable_amount`、禁止裸 `ValueError`） |
+
+记忆里另有一条 L2 因果修复链记录的是报错后的收敛动作：`money.py → settlement.py(_require_usable_price, settle_invoice) → settlement.py(settle_line)`。
+
+**后续补丁**（另一条 trace [`tr_45e96c3da8`](.tmem/traces/tr_45e96c3da8.json)，因为 `bulk.settle_batch_rows` 绕过 `build_invoice`、绕过前面两侧守卫）顺序为：`src/ledger/bulk.py`（`_row_label` / `_row_unit_price` / `settle_batch_rows`）→ `tests/test_bulk.py` → `AGENTS.md` → `README.md`。
+
+---
+
+## 2) 验证命令
+
+- 主修复收尾：`PYTHONPATH=src python3 -m pytest -v tests/test_import_rows.py tests/test_import_rows_headless.py tests/test_settlement.py 2>&1`（第 286 步），随后最终验证 `PYTHONPATH=src python3 -m pytest -q 2>&1`（第 299 步）。
+- L2 记录的验证对：`PYTHONPATH=src python3 -m pytest 2>&1 && PYTHONPATH=src python3 -m pytest --collect-only -q 2>&1`。
+- 批量侧补丁：`PYTHONPATH=src python3 -m pytest -q 2>&1` → `PYTHONPATH=src python3 -m pytest -v 2>&1`，结果 **95 项 / 95 通过 / 0 失败**。
+- 全程统一使用 `PYTHONPATH=src python3 -m pytest`（本机无 `python` 命令），且**未改动「金额以整数最小单位存储」约定**（`invoicing.build_invoice` 故意不校验 NaN，缺价必须在结算阶段被拒）。
+
+---
+
+## 3) `parse_price_checked` 的引入提交
+
+**commit `a33c3c8`（`feat(import): reject empty price cells`）**。
+
+依据有两处：trace `tr_4ca8e49b6d` 的 `problem_intent` 明确写道「import_rows.parse_price 无校验（commit a33c3c8 加的 parse_price_checked 是死代码、抛裸 ValueError 且未被 parse_rows/rows_to_tuples 调用）」；其 raw trace 里保存的 `git log --oneline -12` 输出中也确有 `a33c3c8 feat(import): reject empty price cells`（位于 `ed81151 feat(rates): look up cached rate pairs` 之后、`fb1b0fe feat(invoicing): expose invoice line count` 之前）。
+
+现状补充：修复后 `src/ledger/import_rows.py:77` 的 `parse_price_checked` 仍在，但已退化为 `parse_price` 的薄封装（不再抛裸 `ValueError`），且生产代码依然没有任何地方调用它——只有 `tests/test_import_rows.py` 在引它。
+
+---
+
+💡 *是否需要将本次有效执行路径沉淀为记忆？（输入 `/tmem` 或 `/remember [备注]` 保存）*

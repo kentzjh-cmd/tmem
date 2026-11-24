@@ -1,0 +1,26 @@
+已完成。测试跑过了，约定和失败基线都写进项目记忆了。
+
+## 测试基线（`python3 -m pytest -v`，commit `035aa40`）
+
+**3 failed, 18 passed**（共 21 条）。三条失败：
+
+| 用例 | 错误签名 | 根因 |
+|---|---|---|
+| `tests/test_pagination.py::test_pagination_does_not_lose_invoices` | `AssertionError`（只收到 2/5 张，漏 3 张） | `pagination.py:28-37` 按 `created_at.timestamp()` 排序、游标只带时间戳；同秒创建的发票时间戳相等，翻页时找不到 `ts < last_ts` 的行，`start` 被置成 `len(ordered)` → 静默漏单 |
+| `tests/test_rates.py::test_get_cached_rate_falls_back_to_rate_table` | `KeyError: 'USD:CNY'` | `rates.py:55` `get_cached_rate` 直接索引 `RATE_CACHE`，未命中时**没有**回落到汇率表（同文件 `fetch_rate`/`rate_for_pair` 有回落，两条取汇率路径不一致） |
+| `tests/test_settlement.py::test_settle_invoice_rejects_missing_price` | `ValueError: cannot convert NaN to integer` | `settlement.py:31` `settle_invoice` 不校验缺失价格（`nan`），量化后 `int(...)` 失败；用例期望的是业务错误 `ValidationError` |
+
+我**没有改任何源码**（`git status` 只有文档），基线是干净可比的。
+
+## 写入项目记忆的内容
+
+- **`CONVENTIONS.md`（新建，主文档）**
+  - §1 金额存储约定，标为硬性不变量：所有金额以整数最小单位存储与输出，原因是上游对账只接受整数分；`Decimal` 只允许存在于换算过程内部，对外（API/CLI/对账文件/结算结果）必须是 `int` 最小单位；并列出 `money.py` / `settlement.py` / `invoicing.py` / `api.py` / `cli.py` 各处落点，以及"修失败不得顺手改量纲类型"的约束。
+  - §2 失败基线：时间、commit、执行命令、结果行，上面三条失败的签名/位置/根因表，外加三条相邻风险线索（`list_page_by_sequence` 未被使用、`RATE_CACHE` 混放两类键、`parse_price` 主路径未拒 `nan`），以及"新增失败先记表再修"的基线使用规则。
+- **`AGENTS.md`（新建）**：项目记忆协议入口 —— 动手前读 `CONVENTIONS.md` §1/§2、记忆检索命令、以及本环境未装 tmem 插件需显式 `tmem capture` + `tmem sync`（`tmem init` 被禁用）。
+- **`MEMORIES.md` / `MEM.md`**：tmem living index（已 `tmem sync` 重建），2 条 trace 落在 `.tmem/`，`tmem search "整数最小单位"` / `tmem list` 可检索到。
+- **`README.md`**：加了指向 `CONVENTIONS.md` 的入口。
+
+两点说明：一是 `tmem capture` 的 default-deny 门禁把"只改文档"的会话判为 trivial 跳过，入库时加了 `--force`；二是该 trace 因此不出现在 `MEMORIES.md` 的 §1 表里（工具只列非 trivial trace），仍可用 `tmem list`/`tmem search` 查到——这点已写进 `AGENTS.md`，避免以后误以为记忆丢了。文件都还没提交，要不要我建一个 commit 把这些记忆文档固化下来？
+
+> 💡 *是否需要将本次有效执行路径沉淀为记忆？（输入 `/tmem` 或 `/remember [备注]` 保存）*

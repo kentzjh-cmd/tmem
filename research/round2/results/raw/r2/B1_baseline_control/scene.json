@@ -1,0 +1,23 @@
+{
+  "scene": "B1_baseline_control",
+  "workspace": "control",
+  "workspace_path": "/home/kent/e2e/r2/ledger-svc-control",
+  "intent": "第三条臂：无 tmem 但有同样一场会话——用于分离‘仓库自记笔记’与‘记忆插件’的贡献",
+  "model": true,
+  "dsh_home": "/home/kent/.dsh",
+  "exit_code": 0,
+  "elapsed_sec": 305.1,
+  "stdout_bytes": 2327,
+  "stderr_bytes": 41265,
+  "command": "dsh --profile headless headless <task>",
+  "transcript_path": "/home/kent/.dsh/sessions/--home-kent-e2e-r2-ledger-svc-control--/session-54fc4473-f73d-4e19-aa47-7b45f47bb9f7/session.v4.jsonl.zstd",
+  "transcript_stats": {
+    "bytes": 215015,
+    "node_single_frame_bytes": 191,
+    "node_single_frame_lines": 1,
+    "zstd_dc_bytes": 687112,
+    "zstd_dc_lines": 313,
+    "is_multiframe": true
+  },
+  "capture_skipped": "scene flag: control arm must not create a tmem store"
+}

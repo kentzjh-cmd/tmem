@@ -1,0 +1,732 @@
+{
+  "protocol": {
+    "project": "ledger-svc",
+    "version": 1,
+    "protocol": "independent-e2e-v1",
+    "visibility": "agent-invisible (stored under _harness/oracle/)",
+    "pre_registered": true
+  },
+  "environment": {
+    "dsh_version": "0.2.2-rc.5",
+    "tmem_version": "0.4.1",
+    "tmem_commit": "f03cdd2",
+    "model_calls_expected": 8,
+    "note": "credential value never leaves ~/.dsh/.credentials.yaml; injected as env only"
+  },
+  "gates": [
+    {
+      "gate": "G1",
+      "hypothesis": "H1",
+      "name": "真实会话可编译出非空轨迹",
+      "metric": "capture_success_rate",
+      "value": 0.833,
+      "threshold": ">= 0.85",
+      "pass": false,
+      "detail": {
+        "S1_baseline": "compiled",
+        "S2_nan_repair": "compiled",
+        "S3_pagination": "compiled",
+        "S4_rates": "compiled",
+        "S5_recall": "skipped",
+        "S6_l2_transfer": "compiled"
+      }
+    },
+    {
+      "gate": "G2",
+      "hypothesis": "H1",
+      "name": "真实 transcript 为多帧拼接容器",
+      "metric": "multiframe_coverage",
+      "value": 1.0,
+      "threshold": ">= 0.80",
+      "pass": true,
+      "detail": {
+        "S1_baseline": {
+          "bytes": 395838,
+          "node_single_frame_bytes": 180,
+          "zstd_dc_bytes": 1296737,
+          "is_multiframe": true
+        },
+        "S2_nan_repair": {
+          "bytes": 333436,
+          "node_single_frame_bytes": 180,
+          "zstd_dc_bytes": 1170659,
+          "is_multiframe": true
+        },
+        "S3_pagination": {
+          "bytes": 203322,
+          "node_single_frame_bytes": 180,
+          "zstd_dc_bytes": 720584,
+          "is_multiframe": true
+        },
+        "S4_rates": {
+          "bytes": 197963,
+          "node_single_frame_bytes": 180,
+          "zstd_dc_bytes": 697550,
+          "is_multiframe": true
+        },
+        "S5_recall": {
+          "bytes": 25167,
+          "node_single_frame_bytes": 180,
+          "zstd_dc_bytes": 74936,
+          "is_multiframe": true
+        },
+        "S6_l2_transfer": {
+          "bytes": 310501,
+          "node_single_frame_bytes": 180,
+          "zstd_dc_bytes": 1134499,
+          "is_multiframe": true
+        }
+      }
+    },
+    {
+      "gate": "G3",
+      "hypothesis": "H2",
+      "name": "轨迹归因的文件与该场真实编辑一致（真值取自 DSH transcript 的 edit/write 事件）",
+      "metric": "session_edit_recall / session_scope_precision",
+      "value": {
+        "recall": 1.0,
+        "precision": 0.824
+      },
+      "threshold": "recall >= 0.80 and precision >= 0.50",
+      "pass": true,
+      "detail": {
+        "S1_baseline": {
+          "session_edited_files": [
+            "AGENTS.md",
+            "README.md"
+          ],
+          "tmem_touched_files": [
+            "AGENTS.md",
+            "MEMORIES.md",
+            "README.md"
+          ],
+          "hit": [
+            "AGENTS.md",
+            "README.md"
+          ],
+          "missed": [],
+          "recall": 1.0,
+          "session_scope_precision": 0.667
+        },
+        "S2_nan_repair": {
+          "session_edited_files": [
+            "AGENTS.md",
+            "README.md",
+            "src/ledger/import_rows.py",
+            "src/ledger/money.py",
+            "src/ledger/settlement.py",
+            "tests/test_import_rows.py",
+            "tests/test_settlement.py"
+          ],
+          "tmem_touched_files": [
+            "AGENTS.md",
+            "MEMORIES.md",
+            "README.md",
+            "src/ledger/import_rows.py",
+            "src/ledger/money.py",
+            "src/ledger/settlement.py",
+            "tests/test_import_rows.py",
+            "tests/test_settlement.py"
+          ],
+          "hit": [
+            "AGENTS.md",
+            "README.md",
+            "src/ledger/import_rows.py",
+            "src/ledger/money.py",
+            "src/ledger/settlement.py",
+            "tests/test_import_rows.py",
+            "tests/test_settlement.py"
+          ],
+          "missed": [],
+          "recall": 1.0,
+          "session_scope_precision": 0.875
+        },
+        "S3_pagination": {
+          "session_edited_files": [
+            "AGENTS.md",
+            "README.md",
+            "src/ledger/pagination.py",
+            "tests/test_pagination.py"
+          ],
+          "tmem_touched_files": [
+            "AGENTS.md",
+            "MEMORIES.md",
+            "README.md",
+            "src/ledger/import_rows.py",
+            "src/ledger/money.py",
+            "src/ledger/settlement.py",
+            "tests/test_import_rows.py",
+            "tests/test_settlement.py",
+            "src/ledger/pagination.py",
+            "tests/test_pagination.py"
+          ],
+          "hit": [
+            "AGENTS.md",
+            "README.md",
+            "src/ledger/pagination.py",
+            "tests/test_pagination.py"
+          ],
+          "missed": [],
+          "recall": 1.0,
+          "session_scope_precision": 0.4
+        },
+        "S4_rates": {
+          "session_edited_files": [
+            "AGENTS.md",
+            "README.md",
+            "src/ledger/rates.py",
+            "tests/test_rates.py",
+            "tests/test_settlement.py"
+          ],
+          "tmem_touched_files": [
+            "AGENTS.md",
+            "README.md",
+            "src/ledger/rates.py",
+            "tests/test_rates.py",
+            "tests/test_settlement.py"
+          ],
+          "hit": [
+            "AGENTS.md",
+            "README.md",
+            "src/ledger/rates.py",
+            "tests/test_rates.py",
+            "tests/test_settlement.py"
+          ],
+          "missed": [],
+          "recall": 1.0,
+          "session_scope_precision": 1.0
+        },
+        "S5_recall": {
+          "session_edited_files": [],
+          "tmem_touched_files": [],
+          "recall": null,
+          "note": "session performed no file edit (no ground truth to compare)"
+        },
+        "S6_l2_transfer": {
+          "session_edited_files": [
+            "AGENTS.md",
+            "README.md",
+            "src/ledger/import_rows.py",
+            "src/ledger/invoicing.py",
+            "src/ledger/money.py",
+            "src/ledger/settlement.py",
+            "tests/test_import_rows.py",
+            "tests/test_invoicing.py",
+            "tests/test_settlement.py"
+          ],
+          "tmem_touched_files": [
+            "AGENTS.md",
+            "README.md",
+            "src/ledger/import_rows.py",
+            "src/ledger/invoicing.py",
+            "src/ledger/money.py",
+            "src/ledger/settlement.py",
+            "tests/test_import_rows.py",
+            "tests/test_invoicing.py",
+            "tests/test_settlement.py"
+          ],
+          "hit": [
+            "AGENTS.md",
+            "README.md",
+            "src/ledger/import_rows.py",
+            "src/ledger/invoicing.py",
+            "src/ledger/money.py",
+            "src/ledger/settlement.py",
+            "tests/test_import_rows.py",
+            "tests/test_invoicing.py",
+            "tests/test_settlement.py"
+          ],
+          "missed": [],
+          "recall": 1.0,
+          "session_scope_precision": 1.0
+        },
+        "S6b_l2_transfer_controlled": {
+          "session_edited_files": [
+            "AGENTS.md",
+            "README.md",
+            "src/ledger/bulk.py",
+            "tests/test_bulk.py"
+          ],
+          "tmem_touched_files": [
+            "AGENTS.md",
+            "README.md",
+            "src/ledger/bulk.py",
+            "tests/test_bulk.py"
+          ],
+          "hit": [
+            "AGENTS.md",
+            "README.md",
+            "src/ledger/bulk.py",
+            "tests/test_bulk.py"
+          ],
+          "missed": [],
+          "recall": 1.0,
+          "session_scope_precision": 1.0
+        }
+      }
+    },
+    {
+      "gate": "G4",
+      "hypothesis": "H3",
+      "name": "失败运行的错误签名被捕获",
+      "metric": "error_signature_recall",
+      "value": 1.0,
+      "threshold": ">= 0.66",
+      "pass": true,
+      "detail": {
+        "signatures": {
+          "D1": "ValueError",
+          "D2": "KeyError",
+          "D3": "AssertionError"
+        },
+        "found": {
+          "D1": true,
+          "D2": true,
+          "D3": true
+        }
+      }
+    },
+    {
+      "gate": "G5",
+      "hypothesis": "H4",
+      "name": "共变引擎还原耦合结构且无误报",
+      "metric": "pair_recall/precision",
+      "value": {
+        "recall": 1.0,
+        "precision": 1.0
+      },
+      "threshold": "recall >= 0.80 and precision >= 0.80",
+      "pass": true,
+      "detail": {
+        "detected": [
+          {
+            "a": "src/ledger/settlement.py",
+            "b": "tests/test_settlement.py",
+            "count": 7,
+            "confidence": 0.778
+          },
+          {
+            "a": "src/ledger/rates.py",
+            "b": "src/ledger/settlement.py",
+            "count": 5,
+            "confidence": 0.714
+          },
+          {
+            "a": "src/ledger/invoicing.py",
+            "b": "src/ledger/settlement.py",
+            "count": 3,
+            "confidence": 0.5
+          },
+          {
+            "a": "src/ledger/pagination.py",
+            "b": "tests/test_pagination.py",
+            "count": 2,
+            "confidence": 1
+          },
+          {
+            "a": "src/ledger/api.py",
+            "b": "src/ledger/cli.py",
+            "count": 2,
+            "confidence": 0.667
+          },
+          {
+            "a": "src/ledger/import_rows.py",
+            "b": "src/ledger/invoicing.py",
+            "count": 2,
+            "confidence": 0.667
+          }
+        ],
+        "missed": [],
+        "false_positives": []
+      }
+    },
+    {
+      "gate": "G6",
+      "hypothesis": "H5",
+      "name": "先前会话的知识可被检索命中（lookup 路径 / search 路径分别计）",
+      "metric": "fact_recall_at_lookup / fact_recall_at_search",
+      "value": {
+        "lookup": 0.875,
+        "search": 0.625
+      },
+      "threshold": ">= 0.70 (主判据：lookup；search 作为对照）",
+      "pass": true,
+      "detail": {
+        "F01": {
+          "question": "运行这个项目的单元测试用什么命令",
+          "lookup_hit": true,
+          "search_hit": true
+        },
+        "F02": {
+          "question": "汇率表定义在哪个文件",
+          "lookup_hit": true,
+          "search_hit": true
+        },
+        "F03": {
+          "question": "项目默认结算币种是什么",
+          "lookup_hit": true,
+          "search_hit": false
+        },
+        "F04": {
+          "question": "金额用什么舍入策略",
+          "lookup_hit": true,
+          "search_hit": false
+        },
+        "F05": {
+          "question": "幂等键是怎么算出来的",
+          "lookup_hit": false,
+          "search_hit": false
+        },
+        "F06": {
+          "question": "分页游标里存了什么",
+          "lookup_hit": true,
+          "search_hit": true
+        },
+        "F07": {
+          "question": "结算金额最终返回的是什么单位",
+          "lookup_hit": true,
+          "search_hit": true
+        },
+        "F08": {
+          "question": "导入表格的价格是怎么解析的",
+          "lookup_hit": true,
+          "search_hit": true
+        }
+      }
+    },
+    {
+      "gate": "G7",
+      "hypothesis": "H6",
+      "name": "记忆被模型消费（闭环最后一跳）：A vs B vs C",
+      "metric": "keypoint_hit_rate(memory-only questions)",
+      "value": {
+        "A_loose": 1.0,
+        "B_loose": 1.0,
+        "C_loose": 1.0,
+        "delta_A_C_loose": 0.0,
+        "A_strict": 1.0,
+        "B_strict": 1.0,
+        "C_strict": 0.0,
+        "delta_A_C_strict": 1.0,
+        "delta_A_B_strict": 0.0
+      },
+      "threshold": "A >= 0.60 and (A - C) >= 0.30",
+      "pass": false,
+      "detail": {
+        "A_exp_plugin_memory|loose": {
+          "Q01": {
+            "ask": "这个项目为什么所有金额都用整数最小单位存储？",
+            "answerable_without_memory": false,
+            "used_keypoints": [
+              "对账",
+              "上游"
+            ],
+            "matched_keypoints": [
+              "对账",
+              "上游"
+            ],
+            "hit": true
+          },
+          "Q02": {
+            "ask": "导入表格里价格为 nan 时，项目约定应该怎么处理？",
+            "answerable_without_memory": false,
+            "used_keypoints": [
+              "ValidationError",
+              "拒绝",
+              "校验",
+              "报错"
+            ],
+            "matched_keypoints": [
+              "ValidationError",
+              "拒绝",
+              "校验"
+            ],
+            "hit": true
+          },
+          "Q03": {
+            "ask": "结算金额的舍入策略是什么？",
+            "answerable_without_memory": true,
+            "used_keypoints": [
+              "ROUND_HALF_UP",
+              "half up",
+              "四舍五入"
+            ],
+            "matched_keypoints": [],
+            "hit": false
+          }
+        },
+        "B_control_no_plugin_with_session|loose": {
+          "Q01": {
+            "ask": "这个项目为什么所有金额都用整数最小单位存储？",
+            "answerable_without_memory": false,
+            "used_keypoints": [
+              "对账",
+              "上游"
+            ],
+            "matched_keypoints": [
+              "对账",
+              "上游"
+            ],
+            "hit": true
+          },
+          "Q02": {
+            "ask": "导入表格里价格为 nan 时，项目约定应该怎么处理？",
+            "answerable_without_memory": false,
+            "used_keypoints": [
+              "ValidationError",
+              "拒绝",
+              "校验",
+              "报错"
+            ],
+            "matched_keypoints": [
+              "ValidationError",
+              "拒绝",
+              "校验"
+            ],
+            "hit": true
+          },
+          "Q03": {
+            "ask": "结算金额的舍入策略是什么？",
+            "answerable_without_memory": true,
+            "used_keypoints": [
+              "ROUND_HALF_UP",
+              "half up",
+              "四舍五入"
+            ],
+            "matched_keypoints": [
+              "ROUND_HALF_UP",
+              "四舍五入"
+            ],
+            "hit": true
+          }
+        },
+        "C_control_no_session|loose": {
+          "Q01": {
+            "ask": "这个项目为什么所有金额都用整数最小单位存储？",
+            "answerable_without_memory": false,
+            "used_keypoints": [
+              "对账",
+              "上游"
+            ],
+            "matched_keypoints": [
+              "对账"
+            ],
+            "hit": true
+          },
+          "Q02": {
+            "ask": "导入表格里价格为 nan 时，项目约定应该怎么处理？",
+            "answerable_without_memory": false,
+            "used_keypoints": [
+              "ValidationError",
+              "拒绝",
+              "校验",
+              "报错"
+            ],
+            "matched_keypoints": [
+              "拒绝",
+              "校验",
+              "报错"
+            ],
+            "hit": true
+          },
+          "Q03": {
+            "ask": "结算金额的舍入策略是什么？",
+            "answerable_without_memory": true,
+            "used_keypoints": [
+              "ROUND_HALF_UP",
+              "half up",
+              "四舍五入"
+            ],
+            "matched_keypoints": [
+              "ROUND_HALF_UP",
+              "四舍五入"
+            ],
+            "hit": true
+          }
+        },
+        "A_exp_plugin_memory|strict": {
+          "Q01": {
+            "ask": "这个项目为什么所有金额都用整数最小单位存储？",
+            "answerable_without_memory": false,
+            "used_keypoints": [
+              "上游对账系统",
+              "只接受整数分"
+            ],
+            "matched_keypoints": [
+              "上游对账系统"
+            ],
+            "hit": true
+          },
+          "Q02": {
+            "ask": "导入表格里价格为 nan 时，项目约定应该怎么处理？",
+            "answerable_without_memory": false,
+            "used_keypoints": [
+              "ValidationError"
+            ],
+            "matched_keypoints": [
+              "ValidationError"
+            ],
+            "hit": true
+          },
+          "Q03": {
+            "ask": "结算金额的舍入策略是什么？",
+            "answerable_without_memory": true,
+            "used_keypoints": [
+              "ROUND_HALF_UP",
+              "HALF_UP",
+              "四舍五入"
+            ],
+            "matched_keypoints": [
+              "HALF_UP"
+            ],
+            "hit": true
+          }
+        },
+        "B_control_no_plugin_with_session|strict": {
+          "Q01": {
+            "ask": "这个项目为什么所有金额都用整数最小单位存储？",
+            "answerable_without_memory": false,
+            "used_keypoints": [
+              "上游对账系统",
+              "只接受整数分"
+            ],
+            "matched_keypoints": [
+              "上游对账系统",
+              "只接受整数分"
+            ],
+            "hit": true
+          },
+          "Q02": {
+            "ask": "导入表格里价格为 nan 时，项目约定应该怎么处理？",
+            "answerable_without_memory": false,
+            "used_keypoints": [
+              "ValidationError"
+            ],
+            "matched_keypoints": [
+              "ValidationError"
+            ],
+            "hit": true
+          },
+          "Q03": {
+            "ask": "结算金额的舍入策略是什么？",
+            "answerable_without_memory": true,
+            "used_keypoints": [
+              "ROUND_HALF_UP",
+              "HALF_UP",
+              "四舍五入"
+            ],
+            "matched_keypoints": [
+              "ROUND_HALF_UP",
+              "HALF_UP",
+              "四舍五入"
+            ],
+            "hit": true
+          }
+        },
+        "C_control_no_session|strict": {
+          "Q01": {
+            "ask": "这个项目为什么所有金额都用整数最小单位存储？",
+            "answerable_without_memory": false,
+            "used_keypoints": [
+              "上游对账系统",
+              "只接受整数分"
+            ],
+            "matched_keypoints": [],
+            "hit": false
+          },
+          "Q02": {
+            "ask": "导入表格里价格为 nan 时，项目约定应该怎么处理？",
+            "answerable_without_memory": false,
+            "used_keypoints": [
+              "ValidationError"
+            ],
+            "matched_keypoints": [],
+            "hit": false
+          },
+          "Q03": {
+            "ask": "结算金额的舍入策略是什么？",
+            "answerable_without_memory": true,
+            "used_keypoints": [
+              "ROUND_HALF_UP",
+              "HALF_UP",
+              "四舍五入"
+            ],
+            "matched_keypoints": [
+              "ROUND_HALF_UP",
+              "HALF_UP",
+              "四舍五入"
+            ],
+            "hit": true
+          }
+        }
+      }
+    },
+    {
+      "gate": "G8",
+      "hypothesis": "H7",
+      "name": "同类错误签名在新位置复现时复用历史修复",
+      "metric": "memory_block_injected AND fix_adopted",
+      "value": {
+        "memory_block_injected": true,
+        "injected_block_carries_prior_repair": true,
+        "fix_pattern_present_in_new_location": true,
+        "l2_injected_telemetry_events": 0,
+        "l1_cochange_hints": 6,
+        "l1_outcomes": 6
+      },
+      "threshold": "injected AND block carries repair AND fix adopted (telemetry reported separately)",
+      "pass": true,
+      "detail": {
+        "injected_block_head": "<tmem_speculative_memory>\\nDeterministic execution traces matched from prior verified sessions:\\n\\n[Trace tr_4c1d4e9195 | Session(s): session-9ad2bd46-4ae9-47b9-a2f0-fdd6ebcb1527 | Scope: PROJECT | Tier: L0_FULL | Confidence: 0.90]\\n- Historical Intent: 约定(不可变): 缺失价格(空单元格被导出器写成文本 nan)必须用项目自己的 ledger.errors.ValidationError 显式拒绝, 不得抛裸 ValueError/KeyError(api.handle 只捕获 LedgerError 子类)。根因链: (1) import_rows.parse_price 只做 float(raw) 不校验, 模块 docstring 声称的校验函数 parse_price_checked 是死代码且抛裸 ValueError; (2) 真正入口 parse_rows/rows_to_tuples 调未校验的 parse_price, N\\n- Semantic Summary: Now capturing the trace into project memory: | Key symbols: _row, ensure_valid_price, format_money, is_missing_price, parse_price, parse_price_checked | Behavior: read 9 file(s) -> edited 7 file(s) -> repaired 1 error(s) -> verified (`tmem capture --agent dsh --force --intent \\\"约定(不可变): 缺失价格(空单元格被导出器写成文本 nan)必须用项目自己的 ledger.errors.ValidationError 显式\\n- Root Cause: Error 'ValueError' resolved by 'edit src/ledger/money.py (ensure_valid_price, format_money, is_missing_price) -> edit src/ledger/import_rows.py (parse_price, parse_price_checked, parse_rows) -> edit src/ledger/settlement.py (settle_invoice)'\\n- Verified L0 ",
+        "telemetry_events": [
+          "l1_cochange_hinted",
+          "l1_outcome",
+          "l1_cochange_hinted",
+          "l1_outcome",
+          "l1_cochange_hinted",
+          "l1_outcome",
+          "l1_cochange_hinted",
+          "l1_outcome",
+          "l1_cochange_hinted",
+          "l1_outcome",
+          "l1_cochange_hinted",
+          "l1_outcome"
+        ]
+      }
+    },
+    {
+      "gate": "G9",
+      "hypothesis": "环境隔离",
+      "name": "零污染与无凭据泄漏",
+      "metric": "repo_tracked_dirty / new_dsh_files / credential_leaks",
+      "value": {
+        "repo_tracked_dirty": [],
+        "authorized_local_fixes": [
+          "tmem/store.mjs"
+        ],
+        "repo_untracked": 7,
+        "new_dsh_files": [],
+        "credential_leaks": [],
+        "session_elapsed_sec": [
+          361.3,
+          328.3,
+          157.5,
+          137.8,
+          18.2,
+          345.3
+        ]
+      },
+      "threshold": "no tracked changes, no new DSH config files, no credential leak",
+      "pass": true,
+      "detail": {}
+    }
+  ],
+  "summary": {
+    "passed": 7,
+    "total": 9,
+    "failed_gates": [
+      "G1",
+      "G7"
+    ]
+  }
+}

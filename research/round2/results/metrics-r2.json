@@ -1,0 +1,1341 @@
+{
+  "protocol": {
+    "project": "ledger-svc",
+    "version": 1,
+    "protocol": "independent-e2e-v1",
+    "visibility": "agent-invisible (stored under _harness/oracle/)",
+    "pre_registered": true
+  },
+  "environment": {
+    "dsh_version": "0.2.2-rc.5",
+    "tmem_version": "0.4.1",
+    "tmem_commit": "f03cdd2",
+    "model_calls_expected": 8,
+    "note": "credential value never leaves ~/.dsh/.credentials.yaml; injected as env only"
+  },
+  "gates": [
+    {
+      "gate": "G1",
+      "hypothesis": "H1",
+      "name": "真实会话可编译出非空轨迹",
+      "metric": "session_capture_rate",
+      "value": 0.833,
+      "threshold": ">= 0.85",
+      "pass": false,
+      "detail": {
+        "S1_baseline": {
+          "final_capture_status": "compiled",
+          "final_capture_reason": null,
+          "session_captured": true,
+          "session_attributed_files": [
+            ".tmem/env_facts.json",
+            "AGENTS.md",
+            "MEMORIES.md",
+            "README.md"
+          ],
+          "session_edited_files": [
+            "AGENTS.md",
+            "README.md"
+          ],
+          "note": ""
+        },
+        "S2_nan_repair": {
+          "final_capture_status": "skipped",
+          "final_capture_reason": "no_effective_actions",
+          "session_captured": true,
+          "session_attributed_files": [
+            "AGENTS.md",
+            "README.md",
+            "src/ledger/import_rows.py",
+            "src/ledger/money.py",
+            "src/ledger/settlement.py",
+            "tests/test_import_rows.py",
+            "tests/test_settlement.py"
+          ],
+          "session_edited_files": [
+            "AGENTS.md",
+            "README.md",
+            "src/ledger/import_rows.py",
+            "src/ledger/money.py",
+            "src/ledger/settlement.py",
+            "tests/test_import_rows.py",
+            "tests/test_settlement.py"
+          ],
+          "note": "session captured by the hook; the final incremental capture had nothing left to record"
+        },
+        "S3_pagination": {
+          "final_capture_status": "compiled",
+          "final_capture_reason": null,
+          "session_captured": true,
+          "session_attributed_files": [
+            "AGENTS.md",
+            "README.md",
+            "src/ledger/pagination.py",
+            "tests/test_pagination.py"
+          ],
+          "session_edited_files": [
+            "AGENTS.md",
+            "README.md",
+            "src/ledger/pagination.py",
+            "tests/test_pagination.py"
+          ],
+          "note": ""
+        },
+        "S4_rates": {
+          "final_capture_status": "compiled",
+          "final_capture_reason": null,
+          "session_captured": true,
+          "session_attributed_files": [
+            "AGENTS.md",
+            "README.md",
+            "src/ledger/rates.py",
+            "tests/test_cli.py",
+            "tests/test_rates.py",
+            "tests/test_settlement.py"
+          ],
+          "session_edited_files": [
+            "AGENTS.md",
+            "README.md",
+            "src/ledger/rates.py",
+            "tests/test_cli.py",
+            "tests/test_rates.py",
+            "tests/test_settlement.py"
+          ],
+          "note": ""
+        },
+        "S5_recall": {
+          "final_capture_status": "skipped",
+          "final_capture_reason": "no_effective_actions",
+          "session_captured": false,
+          "session_attributed_files": [],
+          "session_edited_files": [],
+          "note": ""
+        },
+        "S6_l2_transfer": {
+          "final_capture_status": "compiled",
+          "final_capture_reason": null,
+          "session_captured": true,
+          "session_attributed_files": [
+            ".dsh/plugins/tmem-dsh-plugin.mjs",
+            ".dsh/skills/tmem/SKILL.md",
+            ".dsh/tmem.patch.yml",
+            "AGENTS.md",
+            "MEM.md",
+            "MEMORIES.md",
+            "README.md",
+            "src/ledger/bulk.py",
+            "src/ledger/import_rows.py",
+            "src/ledger/money.py",
+            "src/ledger/pagination.py",
+            "src/ledger/rates.py",
+            "src/ledger/settlement.py",
+            "tests/test_bulk.py",
+            "tests/test_cli.py",
+            "tests/test_import_rows.py",
+            "tests/test_import_rows_headless.py",
+            "tests/test_pagination.py",
+            "tests/test_rates.py",
+            "tests/test_settlement.py"
+          ],
+          "session_edited_files": [
+            "AGENTS.md",
+            "README.md",
+            "src/ledger/import_rows.py",
+            "src/ledger/money.py",
+            "src/ledger/settlement.py",
+            "tests/test_import_rows.py",
+            "tests/test_import_rows_headless.py"
+          ],
+          "note": ""
+        }
+      },
+      "working_scenes_only": {
+        "captured": 5,
+        "working_scenes": 5,
+        "rate": 1.0,
+        "note": "预注册分母含一场纯问答会话（S5，无文件改动、无命令执行），该场不存在可编译的执行轨迹；此处置信的是同一预注册阈值下的分解值，不改变判定口径"
+      },
+      "legacy_single_capture_status_rate": 0.667,
+      "scoring_note": "口径修订（Round 2）：主判据改为会话级——只要该 DSH 会话产出过至少一条 episode/trace 即算捕获成功。原因是捕获是增量的，末次捕获返回 `skipped / no_effective_actions` 可能只表示『本次增量已无新内容可记』，而非『没捕获到』。legacy_single_capture_status_rate 保留原口径。"
+    },
+    {
+      "gate": "G2",
+      "hypothesis": "H1",
+      "name": "真实 transcript 为多帧拼接容器",
+      "metric": "multiframe_coverage",
+      "value": 1.0,
+      "threshold": ">= 0.80",
+      "pass": true,
+      "detail": {
+        "S1_baseline": {
+          "bytes": 214170,
+          "node_single_frame_bytes": 183,
+          "zstd_dc_bytes": 731604,
+          "is_multiframe": true
+        },
+        "S2_nan_repair": {
+          "bytes": 170223,
+          "node_single_frame_bytes": 183,
+          "zstd_dc_bytes": 709640,
+          "is_multiframe": true
+        },
+        "S3_pagination": {
+          "bytes": 140930,
+          "node_single_frame_bytes": 183,
+          "zstd_dc_bytes": 542457,
+          "is_multiframe": true
+        },
+        "S4_rates": {
+          "bytes": 189839,
+          "node_single_frame_bytes": 183,
+          "zstd_dc_bytes": 687626,
+          "is_multiframe": true
+        },
+        "S5_recall": {
+          "bytes": 42088,
+          "node_single_frame_bytes": 183,
+          "zstd_dc_bytes": 134306,
+          "is_multiframe": true
+        },
+        "S6_l2_transfer": {
+          "bytes": 259504,
+          "node_single_frame_bytes": 183,
+          "zstd_dc_bytes": 952544,
+          "is_multiframe": true
+        }
+      }
+    },
+    {
+      "gate": "G3",
+      "hypothesis": "H2",
+      "name": "轨迹归因的文件与该场真实编辑一致（真值取自 DSH transcript 的 edit/write 事件）",
+      "metric": "session_edit_recall / session_scope_precision",
+      "value": {
+        "recall": 1.0,
+        "precision": 0.846
+      },
+      "threshold": "recall >= 0.80 and precision >= 0.50",
+      "pass": true,
+      "detail": {
+        "S1_baseline": {
+          "session_edited_files": [
+            "AGENTS.md",
+            "README.md"
+          ],
+          "hit": [
+            "AGENTS.md",
+            "README.md"
+          ],
+          "missed": [],
+          "recall": 1.0,
+          "session_scope_precision": 0.667,
+          "episode_union": {
+            "touched_files": [
+              ".tmem/env_facts.json",
+              "AGENTS.md",
+              "MEMORIES.md",
+              "README.md"
+            ],
+            "scored_touched_files": [
+              "AGENTS.md",
+              "MEMORIES.md",
+              "README.md"
+            ],
+            "hit": [
+              "AGENTS.md",
+              "README.md"
+            ],
+            "missed": [],
+            "recall": 1.0,
+            "session_scope_precision": 0.667
+          },
+          "trace_union": {
+            "touched_files": [
+              "AGENTS.md",
+              "MEMORIES.md",
+              "README.md"
+            ],
+            "scored_touched_files": [
+              "AGENTS.md",
+              "MEMORIES.md",
+              "README.md"
+            ],
+            "hit": [
+              "AGENTS.md",
+              "README.md"
+            ],
+            "missed": [],
+            "recall": 1.0,
+            "session_scope_precision": 0.667
+          },
+          "single_capture_only": {
+            "touched_files": [
+              "README.md"
+            ],
+            "scored_touched_files": [
+              "README.md"
+            ],
+            "hit": [
+              "README.md"
+            ],
+            "missed": [
+              "AGENTS.md"
+            ],
+            "recall": 0.5,
+            "session_scope_precision": 1.0
+          }
+        },
+        "S2_nan_repair": {
+          "session_edited_files": [
+            "AGENTS.md",
+            "README.md",
+            "src/ledger/import_rows.py",
+            "src/ledger/money.py",
+            "src/ledger/settlement.py",
+            "tests/test_import_rows.py",
+            "tests/test_settlement.py"
+          ],
+          "hit": [
+            "AGENTS.md",
+            "README.md",
+            "src/ledger/import_rows.py",
+            "src/ledger/money.py",
+            "src/ledger/settlement.py",
+            "tests/test_import_rows.py",
+            "tests/test_settlement.py"
+          ],
+          "missed": [],
+          "recall": 1.0,
+          "session_scope_precision": 1.0,
+          "episode_union": {
+            "touched_files": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/import_rows.py",
+              "src/ledger/money.py",
+              "src/ledger/settlement.py",
+              "tests/test_import_rows.py",
+              "tests/test_settlement.py"
+            ],
+            "scored_touched_files": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/import_rows.py",
+              "src/ledger/money.py",
+              "src/ledger/settlement.py",
+              "tests/test_import_rows.py",
+              "tests/test_settlement.py"
+            ],
+            "hit": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/import_rows.py",
+              "src/ledger/money.py",
+              "src/ledger/settlement.py",
+              "tests/test_import_rows.py",
+              "tests/test_settlement.py"
+            ],
+            "missed": [],
+            "recall": 1.0,
+            "session_scope_precision": 1.0
+          },
+          "trace_union": {
+            "touched_files": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/import_rows.py",
+              "src/ledger/money.py",
+              "src/ledger/settlement.py",
+              "tests/test_import_rows.py",
+              "tests/test_import_rows_headless.py",
+              "tests/test_settlement.py"
+            ],
+            "scored_touched_files": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/import_rows.py",
+              "src/ledger/money.py",
+              "src/ledger/settlement.py",
+              "tests/test_import_rows.py",
+              "tests/test_import_rows_headless.py",
+              "tests/test_settlement.py"
+            ],
+            "hit": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/import_rows.py",
+              "src/ledger/money.py",
+              "src/ledger/settlement.py",
+              "tests/test_import_rows.py",
+              "tests/test_settlement.py"
+            ],
+            "missed": [],
+            "recall": 1.0,
+            "session_scope_precision": 0.875
+          },
+          "single_capture_only": {
+            "touched_files": [],
+            "scored_touched_files": [],
+            "hit": [],
+            "missed": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/import_rows.py",
+              "src/ledger/money.py",
+              "src/ledger/settlement.py",
+              "tests/test_import_rows.py",
+              "tests/test_settlement.py"
+            ],
+            "recall": 0.0,
+            "session_scope_precision": 0.0
+          }
+        },
+        "S3_pagination": {
+          "session_edited_files": [
+            "AGENTS.md",
+            "README.md",
+            "src/ledger/pagination.py",
+            "tests/test_pagination.py"
+          ],
+          "hit": [
+            "AGENTS.md",
+            "README.md",
+            "src/ledger/pagination.py",
+            "tests/test_pagination.py"
+          ],
+          "missed": [],
+          "recall": 1.0,
+          "session_scope_precision": 1.0,
+          "episode_union": {
+            "touched_files": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/pagination.py",
+              "tests/test_pagination.py"
+            ],
+            "scored_touched_files": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/pagination.py",
+              "tests/test_pagination.py"
+            ],
+            "hit": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/pagination.py",
+              "tests/test_pagination.py"
+            ],
+            "missed": [],
+            "recall": 1.0,
+            "session_scope_precision": 1.0
+          },
+          "trace_union": {
+            "touched_files": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/pagination.py",
+              "tests/test_pagination.py"
+            ],
+            "scored_touched_files": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/pagination.py",
+              "tests/test_pagination.py"
+            ],
+            "hit": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/pagination.py",
+              "tests/test_pagination.py"
+            ],
+            "missed": [],
+            "recall": 1.0,
+            "session_scope_precision": 1.0
+          },
+          "single_capture_only": {
+            "touched_files": [],
+            "scored_touched_files": [],
+            "hit": [],
+            "missed": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/pagination.py",
+              "tests/test_pagination.py"
+            ],
+            "recall": 0.0,
+            "session_scope_precision": 0.0
+          }
+        },
+        "S4_rates": {
+          "session_edited_files": [
+            "AGENTS.md",
+            "README.md",
+            "src/ledger/rates.py",
+            "tests/test_cli.py",
+            "tests/test_rates.py",
+            "tests/test_settlement.py"
+          ],
+          "hit": [
+            "AGENTS.md",
+            "README.md",
+            "src/ledger/rates.py",
+            "tests/test_cli.py",
+            "tests/test_rates.py",
+            "tests/test_settlement.py"
+          ],
+          "missed": [],
+          "recall": 1.0,
+          "session_scope_precision": 1.0,
+          "episode_union": {
+            "touched_files": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/rates.py",
+              "tests/test_cli.py",
+              "tests/test_rates.py",
+              "tests/test_settlement.py"
+            ],
+            "scored_touched_files": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/rates.py",
+              "tests/test_cli.py",
+              "tests/test_rates.py",
+              "tests/test_settlement.py"
+            ],
+            "hit": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/rates.py",
+              "tests/test_cli.py",
+              "tests/test_rates.py",
+              "tests/test_settlement.py"
+            ],
+            "missed": [],
+            "recall": 1.0,
+            "session_scope_precision": 1.0
+          },
+          "trace_union": {
+            "touched_files": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/rates.py",
+              "tests/test_cli.py",
+              "tests/test_rates.py",
+              "tests/test_settlement.py"
+            ],
+            "scored_touched_files": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/rates.py",
+              "tests/test_cli.py",
+              "tests/test_rates.py",
+              "tests/test_settlement.py"
+            ],
+            "hit": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/rates.py",
+              "tests/test_cli.py",
+              "tests/test_rates.py",
+              "tests/test_settlement.py"
+            ],
+            "missed": [],
+            "recall": 1.0,
+            "session_scope_precision": 1.0
+          },
+          "single_capture_only": {
+            "touched_files": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/rates.py",
+              "tests/test_cli.py",
+              "tests/test_rates.py",
+              "tests/test_settlement.py"
+            ],
+            "scored_touched_files": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/rates.py",
+              "tests/test_cli.py",
+              "tests/test_rates.py",
+              "tests/test_settlement.py"
+            ],
+            "hit": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/rates.py",
+              "tests/test_cli.py",
+              "tests/test_rates.py",
+              "tests/test_settlement.py"
+            ],
+            "missed": [],
+            "recall": 1.0,
+            "session_scope_precision": 1.0
+          }
+        },
+        "S5_recall": {
+          "session_edited_files": [],
+          "episode_union": {
+            "touched_files": []
+          },
+          "recall": null,
+          "note": "session performed no file edit (no ground truth to compare)"
+        },
+        "S6_l2_transfer": {
+          "session_edited_files": [
+            "AGENTS.md",
+            "README.md",
+            "src/ledger/import_rows.py",
+            "src/ledger/money.py",
+            "src/ledger/settlement.py",
+            "tests/test_import_rows.py",
+            "tests/test_import_rows_headless.py"
+          ],
+          "hit": [
+            "AGENTS.md",
+            "README.md",
+            "src/ledger/import_rows.py",
+            "src/ledger/money.py",
+            "src/ledger/settlement.py",
+            "tests/test_import_rows.py",
+            "tests/test_import_rows_headless.py"
+          ],
+          "missed": [],
+          "recall": 1.0,
+          "session_scope_precision": 0.412,
+          "episode_union": {
+            "touched_files": [
+              ".dsh/plugins/tmem-dsh-plugin.mjs",
+              ".dsh/skills/tmem/SKILL.md",
+              ".dsh/tmem.patch.yml",
+              "AGENTS.md",
+              "MEM.md",
+              "MEMORIES.md",
+              "README.md",
+              "src/ledger/bulk.py",
+              "src/ledger/import_rows.py",
+              "src/ledger/money.py",
+              "src/ledger/pagination.py",
+              "src/ledger/rates.py",
+              "src/ledger/settlement.py",
+              "tests/test_bulk.py",
+              "tests/test_cli.py",
+              "tests/test_import_rows.py",
+              "tests/test_import_rows_headless.py",
+              "tests/test_pagination.py",
+              "tests/test_rates.py",
+              "tests/test_settlement.py"
+            ],
+            "scored_touched_files": [
+              "AGENTS.md",
+              "MEM.md",
+              "MEMORIES.md",
+              "README.md",
+              "src/ledger/bulk.py",
+              "src/ledger/import_rows.py",
+              "src/ledger/money.py",
+              "src/ledger/pagination.py",
+              "src/ledger/rates.py",
+              "src/ledger/settlement.py",
+              "tests/test_bulk.py",
+              "tests/test_cli.py",
+              "tests/test_import_rows.py",
+              "tests/test_import_rows_headless.py",
+              "tests/test_pagination.py",
+              "tests/test_rates.py",
+              "tests/test_settlement.py"
+            ],
+            "hit": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/import_rows.py",
+              "src/ledger/money.py",
+              "src/ledger/settlement.py",
+              "tests/test_import_rows.py",
+              "tests/test_import_rows_headless.py"
+            ],
+            "missed": [],
+            "recall": 1.0,
+            "session_scope_precision": 0.412
+          },
+          "trace_union": {
+            "touched_files": [
+              ".dsh/plugins/tmem-dsh-plugin.mjs",
+              ".dsh/skills/tmem/SKILL.md",
+              ".dsh/tmem.patch.yml",
+              "AGENTS.md",
+              "MEM.md",
+              "MEMORIES.md",
+              "README.md",
+              "src/ledger/bulk.py",
+              "src/ledger/import_rows.py",
+              "src/ledger/money.py",
+              "src/ledger/pagination.py",
+              "src/ledger/rates.py",
+              "src/ledger/settlement.py",
+              "tests/test_bulk.py",
+              "tests/test_cli.py",
+              "tests/test_import_rows.py",
+              "tests/test_import_rows_headless.py",
+              "tests/test_pagination.py",
+              "tests/test_rates.py",
+              "tests/test_settlement.py"
+            ],
+            "scored_touched_files": [
+              "AGENTS.md",
+              "MEM.md",
+              "MEMORIES.md",
+              "README.md",
+              "src/ledger/bulk.py",
+              "src/ledger/import_rows.py",
+              "src/ledger/money.py",
+              "src/ledger/pagination.py",
+              "src/ledger/rates.py",
+              "src/ledger/settlement.py",
+              "tests/test_bulk.py",
+              "tests/test_cli.py",
+              "tests/test_import_rows.py",
+              "tests/test_import_rows_headless.py",
+              "tests/test_pagination.py",
+              "tests/test_rates.py",
+              "tests/test_settlement.py"
+            ],
+            "hit": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/import_rows.py",
+              "src/ledger/money.py",
+              "src/ledger/settlement.py",
+              "tests/test_import_rows.py",
+              "tests/test_import_rows_headless.py"
+            ],
+            "missed": [],
+            "recall": 1.0,
+            "session_scope_precision": 0.412
+          },
+          "single_capture_only": {
+            "touched_files": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/import_rows.py",
+              "src/ledger/money.py",
+              "src/ledger/settlement.py",
+              "tests/test_import_rows.py",
+              "tests/test_settlement.py",
+              "tests/test_import_rows_headless.py"
+            ],
+            "scored_touched_files": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/import_rows.py",
+              "src/ledger/money.py",
+              "src/ledger/settlement.py",
+              "tests/test_import_rows.py",
+              "tests/test_settlement.py",
+              "tests/test_import_rows_headless.py"
+            ],
+            "hit": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/import_rows.py",
+              "src/ledger/money.py",
+              "src/ledger/settlement.py",
+              "tests/test_import_rows.py",
+              "tests/test_import_rows_headless.py"
+            ],
+            "missed": [],
+            "recall": 1.0,
+            "session_scope_precision": 0.875
+          }
+        },
+        "S6b_l2_transfer_controlled": {
+          "session_edited_files": [
+            "AGENTS.md",
+            "README.md",
+            "src/ledger/bulk.py",
+            "tests/test_bulk.py"
+          ],
+          "hit": [
+            "AGENTS.md",
+            "README.md",
+            "src/ledger/bulk.py",
+            "tests/test_bulk.py"
+          ],
+          "missed": [],
+          "recall": 1.0,
+          "session_scope_precision": 1.0,
+          "episode_union": {
+            "touched_files": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/bulk.py",
+              "tests/test_bulk.py"
+            ],
+            "scored_touched_files": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/bulk.py",
+              "tests/test_bulk.py"
+            ],
+            "hit": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/bulk.py",
+              "tests/test_bulk.py"
+            ],
+            "missed": [],
+            "recall": 1.0,
+            "session_scope_precision": 1.0
+          },
+          "trace_union": {
+            "touched_files": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/bulk.py",
+              "tests/test_bulk.py"
+            ],
+            "scored_touched_files": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/bulk.py",
+              "tests/test_bulk.py"
+            ],
+            "hit": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/bulk.py",
+              "tests/test_bulk.py"
+            ],
+            "missed": [],
+            "recall": 1.0,
+            "session_scope_precision": 1.0
+          },
+          "single_capture_only": {
+            "touched_files": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/bulk.py",
+              "tests/test_bulk.py"
+            ],
+            "scored_touched_files": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/bulk.py",
+              "tests/test_bulk.py"
+            ],
+            "hit": [
+              "AGENTS.md",
+              "README.md",
+              "src/ledger/bulk.py",
+              "tests/test_bulk.py"
+            ],
+            "missed": [],
+            "recall": 1.0,
+            "session_scope_precision": 1.0
+          }
+        }
+      },
+      "aggregation_scopes": {
+        "episode_union": {
+          "recall": 1.0,
+          "precision": 0.846
+        },
+        "trace_union": {
+          "recall": 1.0,
+          "precision": 0.826
+        },
+        "single_capture_only": {
+          "recall": 0.583,
+          "precision": 0.646
+        }
+      },
+      "scoring_note": "口径修订（Round 2）：主判据改为 episode_union —— 该 DSH 会话全部捕获事件（episode，每次捕获一条、从不跨会话合并）的 touched_files 并集。原始口径（只取最后一次手动 `tmem capture`）与 trace_union 一并保留在 aggregation_scopes 中供对照。插件内部路径（.tmem/**、.dsh/**）不计入真值与精度分母。"
+    },
+    {
+      "gate": "G4",
+      "hypothesis": "H3",
+      "name": "失败运行的错误签名被捕获",
+      "metric": "error_signature_recall",
+      "value": 1.0,
+      "threshold": ">= 0.66",
+      "pass": true,
+      "detail": {
+        "signatures": {
+          "D1": "ValueError",
+          "D2": "KeyError",
+          "D3": "AssertionError"
+        },
+        "found": {
+          "D1": true,
+          "D2": true,
+          "D3": true
+        }
+      }
+    },
+    {
+      "gate": "G5",
+      "hypothesis": "H4",
+      "name": "共变引擎还原耦合结构且无误报",
+      "metric": "pair_recall/precision",
+      "value": {
+        "recall": 1.0,
+        "precision": 1.0
+      },
+      "threshold": "recall >= 0.80 and precision >= 0.80",
+      "pass": true,
+      "detail": {
+        "detected": [
+          {
+            "a": "src/ledger/settlement.py",
+            "b": "tests/test_settlement.py",
+            "count": 7,
+            "confidence": 0.778
+          },
+          {
+            "a": "src/ledger/rates.py",
+            "b": "src/ledger/settlement.py",
+            "count": 5,
+            "confidence": 0.714
+          },
+          {
+            "a": "src/ledger/invoicing.py",
+            "b": "src/ledger/settlement.py",
+            "count": 3,
+            "confidence": 0.5
+          },
+          {
+            "a": "src/ledger/pagination.py",
+            "b": "tests/test_pagination.py",
+            "count": 2,
+            "confidence": 1
+          },
+          {
+            "a": "src/ledger/api.py",
+            "b": "src/ledger/cli.py",
+            "count": 2,
+            "confidence": 0.667
+          },
+          {
+            "a": "src/ledger/import_rows.py",
+            "b": "src/ledger/invoicing.py",
+            "count": 2,
+            "confidence": 0.667
+          }
+        ],
+        "missed": [],
+        "false_positives": []
+      }
+    },
+    {
+      "gate": "G6",
+      "hypothesis": "H5",
+      "name": "先前会话的知识可被检索命中（lookup 路径 / search 路径分别计）",
+      "metric": "fact_recall_at_lookup / fact_recall_at_search",
+      "value": {
+        "lookup": 0.625,
+        "search": 0.75
+      },
+      "threshold": ">= 0.70 (主判据：lookup；search 作为对照）",
+      "pass": false,
+      "detail": {
+        "F01": {
+          "question": "运行这个项目的单元测试用什么命令",
+          "lookup_hit": false,
+          "search_hit": true
+        },
+        "F02": {
+          "question": "汇率表定义在哪个文件",
+          "lookup_hit": true,
+          "search_hit": true
+        },
+        "F03": {
+          "question": "项目默认结算币种是什么",
+          "lookup_hit": true,
+          "search_hit": true
+        },
+        "F04": {
+          "question": "金额用什么舍入策略",
+          "lookup_hit": false,
+          "search_hit": false
+        },
+        "F05": {
+          "question": "幂等键是怎么算出来的",
+          "lookup_hit": false,
+          "search_hit": false
+        },
+        "F06": {
+          "question": "分页游标里存了什么",
+          "lookup_hit": true,
+          "search_hit": true
+        },
+        "F07": {
+          "question": "结算金额最终返回的是什么单位",
+          "lookup_hit": true,
+          "search_hit": true
+        },
+        "F08": {
+          "question": "导入表格的价格是怎么解析的",
+          "lookup_hit": true,
+          "search_hit": true
+        }
+      }
+    },
+    {
+      "gate": "G7",
+      "hypothesis": "H6",
+      "name": "记忆被模型消费（闭环最后一跳）：A vs B vs C",
+      "metric": "keypoint_hit_rate(memory-only questions)",
+      "value": {
+        "A_loose": 1.0,
+        "B_loose": 1.0,
+        "C_loose": 1.0,
+        "delta_A_C_loose": 0.0,
+        "A_strict": 1.0,
+        "B_strict": 1.0,
+        "C_strict": 0.0,
+        "delta_A_C_strict": 1.0,
+        "delta_A_B_strict": 0.0
+      },
+      "threshold": "A >= 0.60 and (A - C) >= 0.30",
+      "pass": false,
+      "detail": {
+        "A_exp_plugin_memory|loose": {
+          "Q01": {
+            "ask": "这个项目为什么所有金额都用整数最小单位存储？",
+            "answerable_without_memory": false,
+            "used_keypoints": [
+              "对账",
+              "上游"
+            ],
+            "matched_keypoints": [
+              "对账",
+              "上游"
+            ],
+            "hit": true
+          },
+          "Q02": {
+            "ask": "导入表格里价格为 nan 时，项目约定应该怎么处理？",
+            "answerable_without_memory": false,
+            "used_keypoints": [
+              "ValidationError",
+              "拒绝",
+              "校验",
+              "报错"
+            ],
+            "matched_keypoints": [
+              "ValidationError",
+              "拒绝",
+              "校验",
+              "报错"
+            ],
+            "hit": true
+          },
+          "Q03": {
+            "ask": "结算金额的舍入策略是什么？",
+            "answerable_without_memory": true,
+            "used_keypoints": [
+              "ROUND_HALF_UP",
+              "half up",
+              "四舍五入"
+            ],
+            "matched_keypoints": [
+              "ROUND_HALF_UP",
+              "四舍五入"
+            ],
+            "hit": true
+          }
+        },
+        "B_control_no_plugin_with_session|loose": {
+          "Q01": {
+            "ask": "这个项目为什么所有金额都用整数最小单位存储？",
+            "answerable_without_memory": false,
+            "used_keypoints": [
+              "对账",
+              "上游"
+            ],
+            "matched_keypoints": [
+              "对账",
+              "上游"
+            ],
+            "hit": true
+          },
+          "Q02": {
+            "ask": "导入表格里价格为 nan 时，项目约定应该怎么处理？",
+            "answerable_without_memory": false,
+            "used_keypoints": [
+              "ValidationError",
+              "拒绝",
+              "校验",
+              "报错"
+            ],
+            "matched_keypoints": [
+              "ValidationError",
+              "拒绝",
+              "校验"
+            ],
+            "hit": true
+          },
+          "Q03": {
+            "ask": "结算金额的舍入策略是什么？",
+            "answerable_without_memory": true,
+            "used_keypoints": [
+              "ROUND_HALF_UP",
+              "half up",
+              "四舍五入"
+            ],
+            "matched_keypoints": [
+              "ROUND_HALF_UP",
+              "四舍五入"
+            ],
+            "hit": true
+          }
+        },
+        "C_control_no_session|loose": {
+          "Q01": {
+            "ask": "这个项目为什么所有金额都用整数最小单位存储？",
+            "answerable_without_memory": false,
+            "used_keypoints": [
+              "对账",
+              "上游"
+            ],
+            "matched_keypoints": [
+              "对账"
+            ],
+            "hit": true
+          },
+          "Q02": {
+            "ask": "导入表格里价格为 nan 时，项目约定应该怎么处理？",
+            "answerable_without_memory": false,
+            "used_keypoints": [
+              "ValidationError",
+              "拒绝",
+              "校验",
+              "报错"
+            ],
+            "matched_keypoints": [
+              "拒绝",
+              "校验"
+            ],
+            "hit": true
+          },
+          "Q03": {
+            "ask": "结算金额的舍入策略是什么？",
+            "answerable_without_memory": true,
+            "used_keypoints": [
+              "ROUND_HALF_UP",
+              "half up",
+              "四舍五入"
+            ],
+            "matched_keypoints": [
+              "ROUND_HALF_UP",
+              "四舍五入"
+            ],
+            "hit": true
+          }
+        },
+        "A_exp_plugin_memory|strict": {
+          "Q01": {
+            "ask": "这个项目为什么所有金额都用整数最小单位存储？",
+            "answerable_without_memory": false,
+            "used_keypoints": [
+              "上游对账系统",
+              "只接受整数分"
+            ],
+            "matched_keypoints": [
+              "上游对账系统",
+              "只接受整数分"
+            ],
+            "hit": true
+          },
+          "Q02": {
+            "ask": "导入表格里价格为 nan 时，项目约定应该怎么处理？",
+            "answerable_without_memory": false,
+            "used_keypoints": [
+              "ValidationError"
+            ],
+            "matched_keypoints": [
+              "ValidationError"
+            ],
+            "hit": true
+          },
+          "Q03": {
+            "ask": "结算金额的舍入策略是什么？",
+            "answerable_without_memory": true,
+            "used_keypoints": [
+              "ROUND_HALF_UP",
+              "HALF_UP",
+              "四舍五入"
+            ],
+            "matched_keypoints": [
+              "ROUND_HALF_UP",
+              "HALF_UP",
+              "四舍五入"
+            ],
+            "hit": true
+          }
+        },
+        "B_control_no_plugin_with_session|strict": {
+          "Q01": {
+            "ask": "这个项目为什么所有金额都用整数最小单位存储？",
+            "answerable_without_memory": false,
+            "used_keypoints": [
+              "上游对账系统",
+              "只接受整数分"
+            ],
+            "matched_keypoints": [
+              "上游对账系统",
+              "只接受整数分"
+            ],
+            "hit": true
+          },
+          "Q02": {
+            "ask": "导入表格里价格为 nan 时，项目约定应该怎么处理？",
+            "answerable_without_memory": false,
+            "used_keypoints": [
+              "ValidationError"
+            ],
+            "matched_keypoints": [
+              "ValidationError"
+            ],
+            "hit": true
+          },
+          "Q03": {
+            "ask": "结算金额的舍入策略是什么？",
+            "answerable_without_memory": true,
+            "used_keypoints": [
+              "ROUND_HALF_UP",
+              "HALF_UP",
+              "四舍五入"
+            ],
+            "matched_keypoints": [
+              "ROUND_HALF_UP",
+              "HALF_UP",
+              "四舍五入"
+            ],
+            "hit": true
+          }
+        },
+        "C_control_no_session|strict": {
+          "Q01": {
+            "ask": "这个项目为什么所有金额都用整数最小单位存储？",
+            "answerable_without_memory": false,
+            "used_keypoints": [
+              "上游对账系统",
+              "只接受整数分"
+            ],
+            "matched_keypoints": [],
+            "hit": false
+          },
+          "Q02": {
+            "ask": "导入表格里价格为 nan 时，项目约定应该怎么处理？",
+            "answerable_without_memory": false,
+            "used_keypoints": [
+              "ValidationError"
+            ],
+            "matched_keypoints": [],
+            "hit": false
+          },
+          "Q03": {
+            "ask": "结算金额的舍入策略是什么？",
+            "answerable_without_memory": true,
+            "used_keypoints": [
+              "ROUND_HALF_UP",
+              "HALF_UP",
+              "四舍五入"
+            ],
+            "matched_keypoints": [
+              "ROUND_HALF_UP",
+              "HALF_UP",
+              "四舍五入"
+            ],
+            "hit": true
+          }
+        }
+      }
+    },
+    {
+      "gate": "G8",
+      "hypothesis": "H7",
+      "name": "同类错误签名在新位置复现时复用历史修复",
+      "metric": "memory_block_injected AND fix_adopted",
+      "value": {
+        "memory_block_injected": true,
+        "injected_block_carries_prior_repair": true,
+        "fix_pattern_present_in_new_location": true,
+        "l2_injected_telemetry_events": 12,
+        "l1_cochange_hints": 5,
+        "l1_outcomes": 5
+      },
+      "threshold": "injected AND block carries repair AND fix adopted (telemetry reported separately)",
+      "pass": true,
+      "detail": {
+        "injected_block_head": "<tmem_speculative_memory>\\nDeterministic execution traces matched from prior verified sessions:\\n\\n[Trace tr_4ca8e49b6d | Session(s): session-7e9d69e9-6aec-4492-b54a-8c3dd95f63c1, session-aa05996b-d9ee-4f8a-90d3-3d579b1cbf3a | Scope: PROJECT | Tier: L0_FULL | Confidence: 0.98]\\n- Historical Intent: 缺价(NaN)根因与修复: 导出器把空价格单元格写成字面量 nan，float('nan') 不报错而是静默变 NaN；import_rows.parse_price 无校验(commit a33c3c8 加的 parse_price_checked 是死代码、抛裸 ValueError 且未被 parse_rows/rows_to_tuples 调用)，settlement.settle_invoice 不校验 -> NaN 经 Decimal()→quantize()→int() 才炸成 ValueError: cannot convert NaN to integer，而 Validat\\n- Semantic Summary: Now capturing the investigation conclusion into project memory: | Key symbols: _require_usable_price, format_money, is_finite_amount, is_missing_amount, parse_price, parse_price_checked | Behavior: read 9 file(s) -> edited 7 file(s) -> repaired 1 error(s) -> verified (`tmem capture --agent dsh --full-session --force --intent \\\"缺价(NaN)根因与修复: 导出器把空价格单\\n- Root Cause: Error 'ValueError' resolved by 'edit src/ledger/money.py (format_money, is_finite_amount, is_missing_amount) -> edit src/ledger/settlement.py (_require_usable_price, settle_invoice) -> edit src/ledger/settlement",
+        "telemetry_events": [
+          "l2_injected",
+          "l2_injected",
+          "l1_cochange_hinted",
+          "l1_outcome",
+          "l1_cochange_hinted",
+          "l1_outcome",
+          "l2_injected",
+          "l2_injected",
+          "l1_cochange_hinted",
+          "l1_cochange_hinted",
+          "l1_outcome",
+          "l1_outcome",
+          "l2_injected",
+          "l2_injected",
+          "l1_cochange_hinted",
+          "l1_outcome",
+          "l2_injected",
+          "l2_injected",
+          "l2_injected",
+          "l2_injected",
+          "l2_injected",
+          "l2_injected"
+        ]
+      }
+    },
+    {
+      "gate": "G9",
+      "hypothesis": "环境隔离",
+      "name": "零污染与无凭据泄漏",
+      "metric": "repo_tracked_dirty / new_dsh_files / credential_leaks",
+      "value": {
+        "repo_tracked_dirty": [],
+        "authorized_local_fixes": [
+          "tmem/adapters/dsh.mjs",
+          "tmem/dsh_plugin.mjs",
+          "tmem/hooks/dsh.mjs",
+          "tmem/slicer.mjs",
+          "tmem/store.mjs",
+          "tmem/telemetry.mjs"
+        ],
+        "repo_untracked": 10,
+        "new_dsh_files": [],
+        "credential_leaks": [],
+        "session_elapsed_sec": [
+          202.6,
+          137.6,
+          178.8,
+          142.5,
+          37.9,
+          242.7
+        ]
+      },
+      "threshold": "no tracked changes, no new DSH config files, no credential leak",
+      "pass": true,
+      "detail": {}
+    }
+  ],
+  "summary": {
+    "passed": 6,
+    "total": 9,
+    "failed_gates": [
+      "G1",
+      "G6",
+      "G7"
+    ]
+  }
+}

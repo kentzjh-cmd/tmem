@@ -1,0 +1,36 @@
+dsh: reasoning:
+The user asks me to answer three questions based only on my current context, without reading files or running commands. Let me check the context provided.
+
+From the decision record:
+
+1) Files modified in order for the NaN price fix: `src/ledger/money.py` → `src/ledger/import_rows.py` → `src/ledger/settlement.py`
+
+2) Verification command: `PYTHONPATH=src python3 -m pytest -q 2>&1 && PYTHONPATH=src python3 -m pytest "$f" -q 2>&1`, and also the collect-only commands. Let me be careful. The listed "验证命令" is:
+- `do PYTHONPATH=src python3 -m pytest -q 2>&1 && PYTHONPATH=src python3 -m pytest "$f" -q 2>&1`
+  - `PYTHONPATH=src python3 -m pytest --collect-only -q 2>&1 && PYTHONPATH=src python3 -m pytest tests/test_import_rows.py --collect-only -q 2>&1 && PYTHONPATH=src python3 -m pytest tests/test_settlement.py --collect-only -q 2>&1`
+
+Hmm, the first one has a weird "do " prefix and "$f" variable. The second is the collect-only with specific test files.
+
+The 出错/验证命令 is `PYTHONPATH=src python3 -m pytest -q 2>&1`.
+
+So the answer for #2: the main verification was `PYTHONPATH=src python3 -m pytest -q 2>&1` (full suite), plus per-file runs and collect-only checks for tests/test_import_rows.py and tests/test_settlement.py.
+
+3) The unified "validate price usable" entry point function name: `ensure_usable_price()` in `src/ledger/money.py`. That's mentioned: "`parse_price()` 改走 `ensure_usable_price()`".
+
+So the answer is `ensure_usable_price()`.
+
+Let me answer concisely in Chinese. No file reads, no commands.
+
+Let me be accurate about the details:
+
+Q1: Order: src/ledger/money.py → src/ledger/import_rows.py → src/ledger/settlement.py. Also test files added: tests/test_import_rows.py, tests/test_settlement.py (涉及文件 list includes src/ledger/invoicing.py too — hmm, invoicing.py is listed in 涉及文件 but the 改动文件 list only has the three. invoicing.py might have been read/inspected but not changed. I should mention it carefully — the 改动文件（按修复顺序） lists three files only. invoicing.py appears in 涉及文件 (files involved), likely inspected. I can mention it as inspected but the actual change order is the three.
+
+Q2: Verification command(s).
+
+Q3: `ensure_usable_price()`.
+
+Also mention the exception type: `ledger.errors.ValidationError`.
+
+I should note the guard was placed in money.py as shared guard, parse_price() delegates, settle_invoice_checked() changed from ValueError to ValidationError.
+
+Let me writethe answer.

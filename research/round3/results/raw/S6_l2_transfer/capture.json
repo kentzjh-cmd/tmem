@@ -1,0 +1,25 @@
+{
+  "status": "compiled",
+  "agent": "dsh",
+  "scope": "project",
+  "episode_id": "ep_e588a52967",
+  "project_trace_id": "tr_2f0c32fc0f",
+  "raw_trace_path": "raw/tr_2f0c32fc0f.raw.json",
+  "problem_intent": "headless src/ledger/import_rows.py 的 parse_price 也要拒绝 nan 价格，否则同样会崩。请实现并让测试通过。",
+  "touched_files": [
+    "CONVENTIONS.md",
+    "README.md",
+    "src/ledger/cli.py",
+    "src/ledger/import_rows.py",
+    "src/ledger/invoicing.py",
+    "src/ledger/money.py",
+    "src/ledger/settlement.py",
+    "tests/test_cli.py",
+    "tests/test_import_rows.py"
+  ],
+  "is_trivial": false,
+  "confidence": 0.55,
+  "raw_steps": 21,
+  "sliced_steps": 1,
+  "compression_ratio": "21 -> 1"
+}

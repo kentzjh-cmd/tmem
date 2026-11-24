@@ -1,0 +1,15 @@
+{
+  "status": "compiled",
+  "agent": "dsh",
+  "scope": "project",
+  "episode_id": "ep_e370bf48a6",
+  "project_trace_id": "tr_caf5988f35",
+  "raw_trace_path": "raw/tr_caf5988f35.raw.json",
+  "problem_intent": "Modify ",
+  "touched_files": [],
+  "is_trivial": true,
+  "confidence": 0.4,
+  "raw_steps": 5,
+  "sliced_steps": 1,
+  "compression_ratio": "5 -> 1"
+}

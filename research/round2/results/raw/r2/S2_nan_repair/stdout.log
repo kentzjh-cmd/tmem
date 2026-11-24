@@ -1,0 +1,36 @@
+已完成。排查结论如下。
+
+## 根因（两处独立缺口，形成一条静默链路）
+
+**1. 导入侧没有校验（nan 的产生地）**
+表格导出器把空价格单元格写成字面量 `nan`，而 `float("nan")` **不报错**，静默变成 NaN 价格。
+`import_rows.parse_price` 原本就是裸的 `float(raw)`，没有任何校验。
+
+关键发现：commit `a33c3c8 feat(import): reject empty price cells` 已经加过一个 `parse_price_checked`，但它是**死代码**——`parse_rows` / `rows_to_tuples` 实际调用的是 `parse_price`；而且它抛的是裸 `ValueError`，不是项目的 `ValidationError`。
+
+**2. 结算侧没有校验（报错地）**
+`settlement.settle_invoice` 不校验单价，NaN 一路流经 `Decimal()` → `quantize()` → `int()`，最终炸成 `ValueError: cannot convert NaN to integer`——报错点离真正的问题源头隔了好几层，且 `ValidationError` 不是 `ValueError` 子类，所以调用方拿到的根本不是可识别的业务异常。
+`settle_invoice_checked` 虽有 NaN 检查，但它不是被测函数，且同样抛裸 `ValueError`；`settle_line` 有完全相同的缺陷。
+
+## 修复
+
+- `src/ledger/money.py`：新增统一判定 `is_missing_amount()`（`None`/空串/`NaN`）与 `is_finite_amount()`（`inf`）。
+- `src/ledger/import_rows.py`：`parse_price` 用 `ledger.errors.ValidationError` 拒绝坏单元格（`nan`/空/`None` → `missing price for <行描述>`；非数字/`inf` → `invalid price`），错误信息带行描述，可定位到具体行。
+- `src/ledger/settlement.py`：新增 `_require_usable_price`，在 `settle_invoice` / `settle_line` / `settle_invoice_checked` 的算术之前拒绝缺价，抛 `ValidationError`。
+
+一个刻意的取舍：`invoicing.build_invoice` **仍然接受** NaN。缺价必须在结算阶段被拒绝——若构建阶段就抛错，`test_settle_invoice_rejects_missing_price` 会在 `pytest.raises` 之外失败。已把该约束写进文档。
+
+## 测试
+
+新增 `tests/test_import_rows.py`（14 项）+ `tests/test_settlement.py` 扩展（7 项），共 21 项新用例，覆盖导入侧与结算侧拒绝、错误信息带行描述、异常类型断言为项目 `ValidationError`（且不是裸 `ValueError`）、以及合法价格结算结果不变的回归守卫。
+
+## 基线变化
+
+`PYTHONPATH=src python3 -m pytest`：**21 项 18 通过 / 3 失败 → 42 项 40 通过 / 2 失败**。
+目标失败 `test_settle_invoice_rejects_missing_price` 已修复；剩余 2 项（`test_pagination_does_not_lose_invoices`、`test_get_cached_rate_falls_back_to_rate_table`）是既有且与本次问题无关的失败，未纳入本次范围。**金额整数最小单位约定未做任何改动**，CLI 与结算金额均已复验。
+
+## 项目记忆
+
+已捕获 trace `tr_4ca8e49b6d`（episode `ep_737da275c5`），并执行 `tmem sync` 重建 `MEMORIES.md` 索引；`tmem search 缺价` 可检索到完整根因与修复路径。同时更新了 `README.md`（新增"缺失价格（NaN）处理约定"小节）与 `AGENTS.md`（基线 2 项、缺价约定标记为不可回退）。
+
+💡 *是否需要将本次有效执行路径沉淀为记忆？（输入 `/tmem` 或 `/remember [备注]` 保存）*

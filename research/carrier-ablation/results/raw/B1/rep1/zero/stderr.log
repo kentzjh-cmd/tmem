@@ -1,0 +1,38 @@
+dsh: reasoning:
+The user asks three questions based only on context. I must not read files or run commands. Let me answer from context.
+
+From the decision record:
+- 改动文件（按修复顺序）：src/ledger/money.py → src/ledger/import_rows.py → src/ledger/settlement.py
+- 验证命令：`do PYTHONPATH=src python3 -m pytest -q 2>&1 && PYTHONPATH=src python3 -m pytest "$f" -q 2>&1` and the collect-only command.
+- The unified validation entry function: `ensure_usable_price()` in money.py — mentioned in "决策要点：| 导入边界（根因） | `src/ledger/import_rows.py:13` | `parse_price()` 改走 `ensure_usable_price()`；`parse_rows()`/`rows_to_tuples()` 传入行描述；`parse_price_checked()` 改为委托 |"
+
+Also `parse_price_checked()` was changed to delegate. But the question asks about "统一校验价格是否可用" 的入口函数 — that's `ensure_usable_price()`.
+
+Also errors: ValidationError: missing price for hosting, ValidationError: missing price for line.
+
+Let me answer clearly and note that I'm answering from context only.
+
+Question 2: 验证命令 — the full-suite command plus per-file commands and the collect-only command.
+
+Let me write the answer in Chinese since the user writes in Chinese.
+
+I should be careful: the record shows the verification commands as:
+```
+`do PYTHONPATH=src python3 -m pytest -q 2>&1 && PYTHONPATH=src python3 -m pytest "$f" -q 2>&1`
+  - `PYTHONPATH=src python3 -m pytest --collect-only -q 2>&1 && PYTHONPATH=src python3 -m pytest tests/test_import_rows.py --collect-only -q 2>&1 && PYTHONPATH=src python3 -m pytest tests/test_settlement.py --collect-only -q 2>&1`
+```
+And "出错/验证命令：`PYTHONPATH=src python3 -m pytest -q 2>&1`"
+
+So the main one: `PYTHONPATH=src python3 -m pytest -q 2>&1` (全量), then per-file `PYTHONPATH=src python3 -m pytest "$f" -q 2>&1`, plus collect-only sanity check.
+
+Note the record also mentions a "do " prefix which appears to be a leftover from the harness — I'll note it as recorded.
+
+Also worth mentioning: MEMORY.md was also modified (排查结论记到项目记忆里) — the 涉及文件 list includes MEMORY.md, tests/test_import_rows.py, tests/test_settlement.py, src/ledger/invoicing.py. But the 改动文件（按修复顺序）is the three source files. The question asks specifically about fixing the NaN pitfall. I'll mention the source-fix order primarily and note the accompanying test/memory files.
+
+Actually the question: "你依次修改了哪几个文件、按什么顺序？" — Answer: money.py → import_rows.py → settlement.py. I'll add that the accompanying test files (tests/test_import_rows.py, tests/test_settlement.py) and MEMORY.md were also touched, but the three core fix files were in that order.
+
+Let me write it out.
+
+Also mention the exception type used: 项目自己的校验异常 = `ledger.errors.ValidationError`.
+
+Let me answer.

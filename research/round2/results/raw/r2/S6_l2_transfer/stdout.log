@@ -1,0 +1,19 @@
+Done. `PYTHONPATH=src python3 -m pytest` → **81 passed / 0 failed** (exit 0).
+
+## What I found
+
+`import_rows.parse_price` **already rejected `nan`** in the working tree (from the earlier session on this issue): `nan` / `NaN` / blank / `None` → `ValidationError("missing price for <行>")`, non-numeric / `inf` → `ValidationError("invalid price for <行>: <原值>")`. I verified it against every spelling, including a float `NaN`.
+
+But the **same exporter quirk still crashed the neighbouring column**: `int(row["quantity"])` raised a bare `ValueError: invalid literal for int() with base 10: 'nan'` — the very "同样会崩" failure mode you asked about, one column over.
+
+## What I implemented
+
+1. **`src/ledger/money.py`** — added `require_usable_amount(value, label, kind, detail)`: the **single guard** now shared by the import side and the settlement side, so both report a bad cell identically and never leak a bare `ValueError`.
+2. **`src/ledger/import_rows.py`** — `parse_price` now delegates to that guard; added **`parse_quantity`**, which rejects an empty/`nan`/non-integer quantity cell with `ValidationError` (`missing quantity for <行>` / `invalid quantity for <行>: <原值>`). `parse_rows` / `rows_to_tuples` use both, so the error names the offending row.
+3. **`src/ledger/settlement.py`** — `_require_usable_price` routes through the same guard; **messages and behaviour are byte-identical** to before (`missing price for hosting` / `invalid price for hosting`).
+4. **Tests** — extended `tests/test_import_rows.py` (float `NaN`, all `nan` spellings, quantity cases, "must not be a `ValueError`") and added `tests/test_import_rows_headless.py` (exported rows → `build_invoice_from_rows` → `settle_invoice` end-to-end, plus a guard that no NaN reaches the settlement arithmetic).
+5. **Docs** — `README.md` / `AGENTS.md`: documented the shared guard and the quantity-cell rule; baseline updated to 81/81.
+
+**Invariants respected:** amounts stay integer minor units (settlement still returns `int`; `Decimal` only as an intermediate), and `invoicing.build_invoice` still does *not* validate NaN — missing prices are rejected at import/settlement, as the project convention requires. Headless CLI smoke test: `settle --amount nan` now fails with `ValidationError: missing price for hosting` instead of `ValueError: cannot convert NaN to integer`.
+
+💡 *是否需要将本次有效执行路径沉淀为记忆？（输入 `/tmem` 或 `/remember [备注]` 保存）*

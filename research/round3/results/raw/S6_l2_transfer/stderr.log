@@ -1,0 +1,154 @@
+dsh: all_proxy names a SOCKS proxy, which is not supported; connecting directly for that scheme — set an http:// or https:// proxy URL instead
+dsh: reasoning:
+The repo appears to already have the fix in place (from the previous session trace). Let me check the state of money.py, settlement.py, invoicing.py, and run the tests to see the current state.
+
+Let me read the relevant files and run pytest.
+dsh: reasoning:
+The implementation appears to already exist from the prior session. Let me run the test suite to check the current state.
+
+Also I should check `cli.py` for the headless import path — the user mentions "headless src/ledger/import_rows.py 的 parse_price 也要拒绝 nan 价格，否则同样会崩" (headless import_rows.parse_price should also reject nan prices, otherwise it will crash too).
+
+Let me run pytest and check cli.py.
+dsh: reasoning:
+All 69 tests pass. The fix from the previous session is in place. But the user's request says "headless src/ledger/import_rows.py 的 parse_price 也要拒绝 nan 价格，否则同样会崩。请实现并让测试通过。"
+
+The implementation already exists. Let me verify it actually works end-to-end — i.e., the headless import path with `nan` price. Let me check the git log/status to see if the changes are committed or uncommitted, and check the tests to see coverage.
+
+Let me verify behavior manually with a quick script, and check the tests for import_rows.
+
+Also, the phrase "headless" might refer to a specific entry point. Let me search for "headless" in the repo.
+dsh: reasoning:
+The work appears already done in a prior session (trace `tr_e66fe4c00d`). The tests all pass (69 passed). But I should verify the actual behavior end-to-end to be certain — that the headless import path genuinely rejects `nan` prices and no longer crashes with `ValueError: cannot convert NaN to integer`.
+
+Let me look at the test file and manually exercise the path. Also, note the user says "headless src/ledger/import_rows.py 的 parse_price 也要拒绝 nan 价格，否则同样会崩" — "also needs to reject nan prices, otherwise it will crash the same way."
+
+Let me check the current test file for import_rows and manually verify the behavior with a nan price through the whole path.
+dsh: reasoning:
+Everything works. The implementation is in place and all 69 tests pass. The user's request has already been fulfilled by prior session work.
+
+But wait — let me double-check the "headless" scenario. The user's phrasing: "headless src/ledger/import_rows.py 的 parse_price 也要拒绝 nan 价格，否则同样会崩" — "the headless import_rows.py's parse_price also needs to reject nan prices, otherwise it will crash the same way."
+
+The implementation exists. However, let me consider whether there are gaps:
+
+1. `parse_price` handles: str "nan", float nan, inf, unparsable. ✓
+2. What about `Decimal("NaN")`? `float(Decimal("NaN"))` → nan → rejected. ✓
+3. What about `None`? `float(None)` → TypeError → ValidationError. ✓
+4. What about the string "NaN" (capital)? `float("NaN")` → nan → rejected ✓
+5. What about "  nan  " with whitespace? `float("  nan  ")` → nan ✓
+6. What about `float("NAN")`? → nan ✓
+
+Now, one thing to check: does the CLI headless path handle import rows? Looking at cli.py, there's no `import` subcommand. The user mentions "headless". Let me check README and CONVENTIONS for the headless import entry point.
+
+Also there's a potential gap: `build_invoice` accepts `float(unit_price)` and doesn't reject NaN (by design per the docstring, since `test_settle_invoice_rejects_missing_price` builds the invoice outside the pytest.raises block). The settlement boundary catches it. That's the design in the prior session.
+
+Let me check whether there's an actual gap: what if the headless import path is the CLI? Let's check README to see documented commands.
+
+Let me also check `api.py`, `store.py` and `idempotency.py` for other entry points where a price might enter without validation.
+
+Actually, let me be careful about scope. The user's request is specifically about `parse_price` rejecting nan prices. That's done. But I should verify there isn't a remaining crash path in the headless import. Let me check:
+- Does `parse_rows`/`rows_to_tuples` handle a row missing the "unit_price" key? It'd raise KeyError. Not a nan issue though.
+- Is there any other place that converts a price? Let me grep for `float(` across src.
+
+Let me check README and grep for float conversions.
+dsh: reasoning:
+Everything is consistent. The prior session's work covers:
+- `money.validate_price` — the single validation entry point
+- `import_rows.parse_price` → `validate_price` (the requested fix)
+- `import_rows.parse_rows` / `rows_to_tuples` — via parse_price
+- `settlement.settle_invoice` / `settle_line` / `settle_invoice_checked` — settlement boundary
+- `invoicing.build_invoice` — only float-convertibility check (doesn't reject nan, by design, so that the invoice can be constructed and then rejected at the settlement boundary — matching the test `test_settle_invoice_rejects_missing_price`)
+
+Let me verify that specific test to confirm the design intent is consistent.
+
+Also, `cli.py` cmd_settle uses `float(args.amount)` — argparse `type=float` would fail on "nan"? Actually `float("nan")` works, so `--amount nan` → argparse type=float gives nan → build_invoice accepts it (float conversion ok) → settle_and_invoice → settle_invoice → validate_price → ValidationError → caught by main → exit code 1. Good, that's the CLI headless path.
+
+Let me verify that CLI path works and check the test in test_settlement.py for missing price.
+
+Let me also double check the `Decimal(line.unit_price)` conversion — note line.unit_price is a float, and `Decimal(float)` gives full binary expansion, e.g. Decimal(0.1) = 0.1000000000000000055511151231257827. That's a pre-existing behavior, not related to our task. Actually wait — it could be a subtle issue but it's pre-existing and not in scope. The trace says "只加校验未改金额换算" (only added validation, didn't change amount conversion).
+
+Let me verify the CLI path and the settlement test.
+dsh: reasoning:
+The CLI test failed only because `python3 -m ledger.cli` can't find the module (src isn't on the path without PYTHONPATH). Let me re-run with PYTHONPATH=src.
+
+The test suite passes 69/69, and tests/test_cli.py covers the CLI nan path.
+
+Let me verify the CLI manually with PYTHONPATH.
+dsh: reasoning:
+Everything is verified working:
+
+1. `import_rows.parse_price` rejects `nan` (both the string `"nan"` and `float("nan")`) with `ValidationError`.
+2. `parse_rows` / `rows_to_tuples` / `build_invoice_from_rows` (headless import path) all reject nan.
+3. `parse_price_checked` (the historical helper that used to raise a bare `ValueError`) is now an alias that raises `ValidationError`.
+4. Settlement boundary (`settle_invoice`, `settle_line`, `settle_lines_total`, `settle_invoice_checked`) rejects nan.
+5. CLI headless path catches `LedgerError` and returns exit code 1 with a clear message.
+6. Full suite: 69 passed.
+
+Now let me check the CONVENTIONS.md failure baseline section, since the trace mentions the baseline was updated to "2 failed, 42 passed" — but now it's 69 passed. The previous session (tr_11399efffb for pagination, tr_cd4048c4b1 for rates) apparently fixed those two remaining defects. So the CONVENTIONS.md baseline may be stale now. Let me check.
+
+This matters for repo hygiene: the CONVENTIONS.md documents a "current test failure baseline" that may now be inaccurate since all tests pass. Let me read that section.
+dsh: reasoning:
+The CONVENTIONS.md baseline is already up-to-date: "0 failed, 69 passed" — matching the current state exactly.
+
+So everything is done and consistent:
+- `import_rows.parse_price` rejects nan prices ✓
+- Full test suite passes: 69 passed ✓
+- CONVENTIONS.md baseline accurate ✓
+- README documents the behavior ✓
+
+The work was completed in the prior session. My job now is to verify (done) and report. But let me double check whether there's anything else within the user's request scope that's not done.
+
+The user said: "headless src/ledger/import_rows.py 的 parse_price 也要拒绝 nan 价格，否则同样会崩。请实现并让测试通过。"
+
+Everything requested is implemented and tests pass. But I should confirm there's genuinely nothing missing. Let me consider potential edge cases that might be worth adding:
+
+1. `parse_price` with `Decimal("NaN")` → float(Decimal("NaN")) = nan → rejected ✓
+2. `parse_price(None)` → TypeError → ValidationError ✓
+3. `parse_price("")` → ValueError → ValidationError ✓
+4. `parse_price("  ")` → ValueError ✓
+5. `parse_price("NaN")` → nan ✓
+
+Let me quickly run these edge cases to confirm no crash with a non-LedgerError type leaks. Particularly important: does any input raise a bare `ValueError`/`TypeError` instead of `ValidationError`? The requirement is that it doesn't crash with an opaque error. Let me verify comprehensively.
+
+Also check: `parse_rows` when row has non-int quantity — `int(row["quantity"])` could raise ValueError for "abc". That's out of scope for the price request, but worth checking it doesn't affect the nan path.
+
+Let me run a comprehensive edge case sweep.
+dsh: reasoning:
+Everything is verified. No opaque errors leak. All valid cells work.
+
+Final full test run to confirm.
+
+Then report to the user. The work was already implemented in a prior session — I verified it end-to-end. I should be transparent about that: the fix was already in place (from prior verified session work), and I confirmed it.
+
+Let me do a final full test run.
+
+Regarding the milestone prompt at the end of my response per AGENTS.md — "When you complete a non-trivial coding, debugging, or environment setup goal (or when `<tmem_milestone_reached>` is injected), append a concise one-line prompt at the end of your response asking whether to persist the memory trace."
+
+This session was mostly verification, but the goal was the same. I should include the milestone prompt. Actually, the prior session already captured trace tr_e66fe4c00d for this exact intent. Let me check if a capture is warranted for this session. The AGENTS.md says to ask. I'll include the prompt.
+
+Let me run the final verification.
+dsh: reasoning:
+All good. Let me summarize.
+
+Summary of what I found and verified:
+- The requested fix (`parse_price` rejecting nan) was already implemented in the working tree from the prior verified session (trace tr_e66fe4c00d).
+- I verified it end-to-end rather than relying on the test count.
+
+Key implementation:
+- `src/ledger/money.py:55` — `validate_price(value, description)`: single entry point that rejects NaN (missing price), non-finite (inf), and non-numeric values, all as `ledger.errors.ValidationError`.
+- `src/ledger/import_rows.py:13` — `parse_price` now delegates to `validate_price`; `parse_rows` (line 23) and `rows_to_tuples` (line 38) go through it, so the whole headless import path rejects nan at the offending row.
+- `src/ledger/import_rows.py:51` — `parse_price_checked` (the historical helper that used to raise a bare `ValueError`) is now an alias that raises `ValidationError`.
+- `src/ledger/settlement.py` — settlement boundary re-checks (`settle_invoice:30`, `settle_line:70`, `settle_invoice_checked:96`).
+- `src/ledger/invoicing.py:40` — `build_invoice` only checks convertibility to float (deliberately does not reject nan there, so an invoice can be constructed and rejected at the settlement boundary — matches `test_settle_invoice_rejects_missing_price`).
+- `src/ledger/cli.py:63` — `main` catches `LedgerError` → exit code 1.
+
+Verification results:
+- Full suite: 69 passed, 0 failed.
+- Manual sweep: 14 bad-cell variants all → ValidationError, no opaque ValueError/TypeError leak; valid cells still parse.
+- CLI: `--amount nan` → "error: missing price for item", exit 1; normal → "20.00 CNY", exit 0.
+- CONVENTIONS.md baseline already reads `0 failed, 69 passed`.
+
+I should note that no new code changes were needed in this session since it was already implemented and verified — I confirmed correctness. Let me be honest about that.
+
+Let me also mention the memory: the previous trace tr_e66fe4c00d covers this.
+
+I'll write the response in Chinese since the user wrote in Chinese.

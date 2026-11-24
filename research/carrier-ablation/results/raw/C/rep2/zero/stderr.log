@@ -1,0 +1,22 @@
+dsh: reasoning:
+The user asks me to answer three questions based only on my current context. But my current context is essentially empty — this is the first turn of the conversation. There's no prior history of fixing a NaN price bug, no files modified, no verification commands, no function name.
+
+The AGENTS.md mentions MEMORY.md or .tmem/ as project memory carriers, but the user explicitly said not to read any files or run any commands.
+
+So I should honestly say that I don't have that information in my current context. I shouldn't fabricate. Let me check: is there anything in the conversation context? No. The system reminder shows AGENTS.md content and session info only.
+
+I should be truthful: I cannot answer these from my current context. I should explain that the information isn't in context, and that the project memory carriers (MEMORY.md / .tmem/) would be the place to look — but the user forbade reading files/commands, so I can't check them.
+
+I should not fabricate file names. Let me answer honestly and offer options: allow reading MEMORY.md/.tmem, or share the memory content.
+
+Also there's no goal active. I shouldn't create one.
+
+Let me write the answer in Chinese, matching the user's language.
+
+I'll be concise but clear.
+
+One nuance: should I check whether there's a MEMORY.md? No — the user explicitly said not to read files or run commands. So I comply.
+
+I could offer: if you allow me to read MEMORY.md (one file read), I can answer precisely.
+
+Let me writeit.

@@ -1,0 +1,85 @@
+dsh: reasoning:
+The user wants me to answer three questions based on project memory. I should read MEMORY.md or use tmem lookup — but "不要运行任何命令" (don't run any commands). So I should use read/grep tools instead of bash commands. Hmm, "不要运行任何命令" - I should use the read tool to read MEMORY.md, and the grep tool. The tmem lookup would require running a command... so I should avoid that and read files directly.
+
+Let me look at theworkspace.
+dsh: reasoning:
+MEMORY.md exists. Let me read it.
+dsh: reasoning:
+The memory file is terse. I need more details on the third question: the "统一校验价格是否可用" entry function name. The memory mentions `ensure_usable_price()` in money.py. Let me verify by reading the actual source files (read-only is fine; the instruction says don't run commands — reading files via read tool should be acceptable, but "不要运行任何命令" mainly means don't execute shell commands. Using the read tool is not a command).
+
+Let me check src/ledger/money.py to confirm the function name.
+
+Also, check if there's a .tmem directory — glob found nothing, so ignore.
+
+Let me read the relevantsource files.
+dsh: reasoning:
+Interesting — money.py doesn't have `ensure_usable_price`. So the fix described in memory hasn't been applied to the working tree yet? Or the memory describes a future/other state. Wait — maybe the current working tree is a different state. Let me check import_rows.py, settlement.py, and the errors module.
+
+The memory says the changed files were src/ledger/money.py → src/ledger/import_rows.py → src/ledger/settlement.py. But money.py currently has no `ensure_usable_price`. Hmm. Perhaps the memory record is from a past session in a different snapshot, or the working tree has been reset. Let me check.
+
+Also let me check for ValidationError in ledger/errors.py, and check import_rows.py and settlement.py content.
+
+Also check MEMORIES.md (the other carrier mentioned) — glob for MEMORIES.md.
+dsh: reasoning:
+So the current working tree appears to be the pre-fix state (money.py has no `ensure_usable_price`, import_rows.py uses plain `parse_price`, settlement.py uses ValueError). The memory describes the fix as done in a previous session (recorded in MEMORY.md and .tmem). The question asks about the fix session — the memory is the source of truth.
+
+Wait — but there's a subtlety. Maybe the fix exists elsewhere, or the working tree is a reset. Let me check if there are other carriers: MEMORIES.md, .tmem. The glob for `.tmem/**` found nothing, but glob might exclude hidden dirs? It says "including hidden and ignored files". Let me check with a different pattern and also check git status... but I can't run commands. Let me use glob for `**/*` maybe limited. Let's glob for "MEMORIES.md" and ".tmem*" and check directory listing via glob pattern "**".
+
+Also let me check errors.py for ValidationError and check the test files for the function name.
+
+The key third question: "统一校验价格是否可用" 的入口函数名. Memory line 37 says: `parse_price()` 改走 `ensure_usable_price()` — so the shared guard function in money.py is `ensure_usable_price()`. And line 38 says `settle_invoice()`/`settle_line()` 先校验单价再换算 — likely calling `ensure_usable_price()` too.
+
+But the current tree doesn't have it — the working tree seems to be reset to pre-fix state. Hmm, maybe the fix was applied but then the repo was reset for this eval, and memory is authoritative. Let me check MEMORIES.md for more details on the function name.
+
+Let me search the whole workspace for "ensure_usable_price".
+dsh: reasoning:
+MEMORIES.md doesn't exist in the workspace (the glob only found MEMORY.md). Interesting — the first memory entry mentions MEMORIES.md → MEMORY.md as changed files, but that file doesn't exist now in this snapshot.
+
+Let me check the tests to understand more, particularly tests/test_settlement.py and tests/test_import_rows.py, to see whether the fix was applied in the tree (the tree looks unfixed for money.py). Let's read the test files.
+
+Also check if there's a .tmem hidden dir — glob "**/*" might reveal. Let me try glob pattern ".tmem" and ".tmem/**/*".
+dsh: reasoning:
+Interesting — tests/test_import_rows.py doesn't exist in this tree either. So this working tree is a partial snapshot (the fix-era files/tests not present, or the tree is the pre-fix baseline minus some). Regardless, the memory is the authority for answering the questions.
+
+Actually wait. Maybe the current tree is the state before the fix: tests/test_import_rows.py doesn't exist yet (to be added as part of the fix), money.py lacks the guard. And test_settlement.py already contains test_settle_invoice_rejects_missing_price expecting ValidationError — which currently would fail because settle_invoice doesn't raise ValidationError. So this tree is the pre-fix baseline (with a failing test). The memory describes a future fix that was recorded in a prior session — but the tree here seems to not have it.
+
+Hmm, but MEMORY.md entry #3 (the NaN fix) exists, describing changes made. So the recorded fix session happened in a prior environment snapshot; the current /work snapshot may be the pre-fix state, or the memory is a record of a completed session that this snapshot doesn't include.
+
+Either way, the questions are about what the recorded fix session did. The memory gives:
+
+1) 改动文件（按修复顺序）：src/ledger/money.py → src/ledger/import_rows.py → src/ledger/settlement.py, plus MEMORY.md record; involved files list: MEMORY.md、src/ledger/import_rows.py、src/ledger/invoicing.py、src/ledger/money.py、src/ledger/settlement.py、tests/test_import_rows.py、tests/test_settlement.py.
+
+2) 验证命令: `PYTHONPATH=src python3 -m pytest -q 2>&1` and `PYTHONPATH=src python3 -m pytest "$f" -q 2>&1` — the full command recorded: `PYTHONPATH=src python3 -m pytest -q 2>&1 && PYTHONPATH=src python3 -m pytest "$f" -q 2>&1` (with `$f` being the target file). Also mentioned collect-only commands.
+
+Let me check MEMORY.md lines 28-38 more carefully for the exact verification command details and any more precise info. Also, is there a `.tmem` structured memory that might hold the fuller record (e.g., the exact function name and exact test commands)? Let me look for hidden dirs.
+
+Let me glob ".tmem" and ".*" in /work.
+dsh: reasoning:
+No `.tmem` in this workspace. The only carrier present is MEMORY.md.
+
+Let me check README.md and AGENTS.md for any additional context (e.g., test commands, naming conventions). AGENTS.md content was already given in the system reminder. Let me quickly read README.md for the project's test command and maybe check invoicing.py for ValidationError usage.
+
+Also, note that memory line 30 lists "涉及文件" including src/ledger/invoicing.py and tests/test_import_rows.py, tests/test_settlement.py. The "改动文件（按修复顺序）" is the key answer for Q1: money.py → import_rows.py → settlement.py.
+
+Let me read README.md for verification commandconventions.
+dsh: reasoning:
+Now I have everything I need. Let me formulate the answers based on MEMORY.md (the only carrier present; `.tmem/` is absent in this workspace).
+
+Q1: 修复顺序：
+1. `src/ledger/money.py` — 在这里新增共享的价格守卫（统一校验入口）
+2. `src/ledger/import_rows.py` — 导入边界（根因）：`parse_price()` 改走 `ensure_usable_price()`；`parse_rows()`/`rows_to_tuples()` 传入行描述；`parse_price_checked()` 改为委托
+3. `src/ledger/settlement.py` — 结算边界（兜底）：`settle_invoice()`/`settle_line()` 先校验单价再换算；`settle_invoice_checked()` 由 ValueError 改为 ValidationError
+4. 之后是测试补充（tests/test_import_rows.py、tests/test_settlement.py，涉及文件里还有 src/ledger/invoicing.py），最后写回 MEMORY.md 记忆。
+
+记忆里的"改动文件（按修复顺序）"明确是 money.py → import_rows.py → settlement.py；"涉及文件"包含 MEMORY.md、invoicing.py、tests/*。
+
+Q2: 验证命令：
+- 主命令：`PYTHONPATH=src python3 -m pytest -q 2>&1`
+- 针对单文件：`PYTHONPATH=src python3 -m pytest "$f" -q 2>&1`（$f 是目标测试文件）
+- 记录中还有先跑 `--collect-only` 的确认序列。
+
+Q3: 统一校验价格是否可用的入口函数：`ensure_usable_price()`，定义在 `src/ledger/money.py`。
+
+Note: the current working tree snapshot doesn't contain the applied fix (money.py has no ensure_usable_price, tests/test_import_rows.py absent) — I should mention this observation honestly, since the user may care. The memory records it as done in a prior session. I'll add a brief note.
+
+Let me write the answer in Chinese, concise, citing MEMORY.md lines.

@@ -1,0 +1,41 @@
+{
+  "scene": "S1_baseline",
+  "workspace": "exp",
+  "workspace_path": "/home/kent/e2e/r3/ledger-svc",
+  "intent": "基线捕获：跑测试、观察 3 个失败、并给出一条只存在于会话里的业务约定",
+  "model": true,
+  "dsh_home": "/home/kent/.dsh",
+  "exit_code": 0,
+  "elapsed_sec": 124.6,
+  "stdout_bytes": 2094,
+  "stderr_bytes": 38626,
+  "command": "dsh --profile headless --patch /home/kent/e2e/r3/ledger-svc/.dsh/tmem.patch.yml headless <task>",
+  "transcript_path": "/home/kent/.dsh/sessions/--home-kent-e2e-r3-ledger-svc--/session-cf8659a4-5b12-4c64-a769-fd26967fb746/session.v4.jsonl.zstd",
+  "transcript_stats": {
+    "bytes": 183267,
+    "node_single_frame_bytes": 183,
+    "node_single_frame_lines": 1,
+    "zstd_dc_bytes": 611731,
+    "zstd_dc_lines": 277,
+    "is_multiframe": true
+  },
+  "capture_exit": 0,
+  "capture": {
+    "status": "compiled",
+    "agent": "dsh",
+    "scope": "project",
+    "episode_id": "ep_2057e9fcf3",
+    "project_trace_id": "tr_5229437cd0",
+    "raw_trace_path": "raw/tr_5229437cd0.raw.json",
+    "problem_intent": "Modify MEMORIES.md, README.md",
+    "touched_files": [
+      "MEMORIES.md",
+      "README.md"
+    ],
+    "is_trivial": true,
+    "confidence": 0.4,
+    "raw_steps": 14,
+    "sliced_steps": 1,
+    "compression_ratio": "14 -> 1"
+  }
+}

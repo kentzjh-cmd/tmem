@@ -1,0 +1,529 @@
+dsh: all_proxy names a SOCKS proxy, which is not supported; connecting directly for that scheme — set an http:// or https:// proxy URL instead
+dsh: reasoning:
+Let me start by exploring the project structure to understand what we're working with.
+
+The task:
+1. Run unit tests in `headless` project
+2. Record which tests currently fail (baseline)
+3. Record the convention (all amounts stored as integer minor units/cents) and the failure baseline into project memory
+
+Let me look at the project first. Note the user says "headless 这个项目" — probably a project named headless. Let me explore.
+
+Also I need to find where "项目记忆" (project memory) is stored — maybe there's an AGENTS.md, MEMORY.md, or similar convention. Let me check the skill catalog too.
+
+Let me explore the working directory.
+dsh: reasoning:
+No `headless` directory. Let me look at the project structure. The user mentioned "headless 这个项目" — maybe "headless" refers to a test mode (headless testing) of this project, i.e., the project runs tests headlessly. Let me explore.
+dsh: reasoning:
+The project is `ledger-svc` — the "headless" part in the user's request is probably an odd phrasing; maybe the user means "run the tests headlessly" or refers to the project. Actually re-reading: "headless 这个项目所有金额都以整数最小单位存储" — Hmm, "headless" might be a typo/artifact. The project here is ledger-svc-control. The convention is documented in README: "结算结果统一使用整数最小单位".
+
+Wait — maybe "headless" is a project name in a multi-project workspace. Let's check the parent dir /home/kent/e2e/r2/.
+
+Also I need to find where "项目记忆" is. Let me check for AGENTS.md, MEMORY.md, .memory, etc. Let me check the parent directory and the skill catalog.
+
+Let me check the parent directories and look for memory files.
+dsh: reasoning:
+There's `/home/kent/e2e/r2/ledger-svc` and `/home/kent/e2e/r2/ledger-svc-control-c` too. The current project is `ledger-svc-control`. The user's phrase "headless" might be a red herring / an unusual project naming. Let me check if there's a project named "headless" somewhere — maybe in ledger-svc-control-c or another workspace. Let me search.
+
+Actually, let me focus: the user asks to run unit tests for "this project" (the current workspace ledger-svc-control) — the phrase "headless" probably is a typo or refers to running pytest headlessly. Let me check the sibling dirs to see if any is named headless.
+
+Also I need to determine what "项目记忆" (project memory) means in this harness. Let me check the skills catalog — maybe there's a "memory" skill. Let me check available skills.
+
+Let me do several things in parallel:
+1. Search for "headless" across the e2e dirs
+2. Check .dsh directory for memory storage
+3. Look at sibling ledger-svc dirs for MEMORY.md / AGENTS.md conventions.
+dsh: reasoning:
+"headless" is the DSH_PROFILE name — the agent profile, not a project. So the user means "this project" (the current workspace). The phrase "headless 这个项目" likely means the project being worked on under the headless profile. I'll treat it as the current project: ledger-svc-control.
+
+Now, key discovery: sibling projects `ledger-svc` and `ledger-svc-control-c` have `AGENTS.md` and `MEMORIES.md` (with `MEM.md` symlink) and a `.tmem` directory. The current project `ledger-svc-control` has NEITHER AGENTS.md nor MEMORIES.md. Let me check `/home/kent/e2e/ledger-svc-control/AGENTS.md` (a different path, not in r2) and the sibling AGENTS.md/MEMORIES.md to learn the convention for project memory.
+
+Let me read those files.
+dsh: reasoning:
+The project memory convention is `tmem` — a CLI tool. The AGENTS.md in `ledger-svc-control-c` says:
+- `MEMORIES.md` / `MEM.md` is the living memory index
+- On milestone completion, append a prompt asking whether to persist memory
+- To persist: `tmem capture --agent dsh`
+
+But the current project `/home/kent/e2e/r2/ledger-svc-control` has no AGENTS.md, no MEMORIES.md, no .tmem. Let me check whether `tmem` is installed and whether there's a `.dsh` dir in the current project.
+
+Also let me check the richer sibling `ledger-svc/AGENTS.md` (7060 bytes) which likely has more detail — it might contain the "约定" (conventions) section describing how to record project memory and any instruction about MEMORIES.md format.
+
+Let me read ledger-svc/AGENTS.md and check the current project for .dsh / .tmem.
+
+Also check if `tmem` binary exists.
+
+Let me plan with a todo list since this is a multi-step task:
+1. Read the current project's AGENTS.md convention (from sibling) — determine memory file format
+2. Run unit tests → capture baseline
+3. Record convention + baseline into project memory (MEMORIES.md / via tmem)
+
+First, let me gather info.
+dsh: reasoning:
+Now I understand the conventions clearly. The sibling project `ledger-svc` (in r2) has a rich `AGENTS.md` section 3 "Project Hard Invariants & Known Test Baseline" documenting exactly what the user wants: the integer minor unit convention and the test baseline.
+
+The current project is `/home/kent/e2e/r2/ledger-svc-control`, which has NO AGENTS.md, NO MEMORIES.md, NO .tmem. Let me check git log to see if this is a fresh branch of the same repo. Actually `git log` showed commits like "merge feature/rates-cache" etc.
+
+Let me check if MEMORIES.md was previously in this repo (git history) — maybe deleted. Let's check `git log --all --diff-filter=D --name-only | grep -i mem`.
+
+Also check the `.gitignore`.
+
+Plan:
+1. Run unit tests → baseline.
+2. Create/append project memory: AGENTS.md section 3 (hard invariants + baseline) and MEMORIES.md? The user said "把这条约定和失败基线记到项目记忆里" — record into project memory. Given the convention, project memory = `MEMORIES.md` (living memory index) + `.tmem` traces + AGENTS.md invariants section.
+
+Let me first check git history for MEMORIES.md/AGENTS.md in this repo, and check .gitignore, then run the tests.
+
+Let me create a todo list first.
+
+Actually, let me be efficient. Run the tests now (the main deliverable), and in parallel check git history for memory files.
+
+Important: check the test command. README says `PYTHONPATH=src python -m pytest`, sibling AGENTS.md says the machine only has `python3`, not `python`. Let me check.
+
+Let me run the tests.
+dsh: reasoning:
+The test suite: 21 tests total, 3 failed, 18 passed. The 3 failures match exactly the ones documented in the sibling project's AGENTS.md as "已修复" (already fixed) there — but in this project they are unfixed (this is a "control" project, presumably a variant where the fixes were reverted/never applied).
+
+Let me capture the full output with more detail, and get the exact list of tests. Let me re-run with more verbosity to get the complete failure detail including the pagination one.
+
+Let me get full output saved to a file.
+dsh: reasoning:
+Now let me look at the pagination failure detail to understand it, and confirm the root causes. Let me read the relevant source files to characterize the failures accurately for the memory record.
+
+Let me read:
+- src/ledger/pagination.py
+- src/ledger/rates.py
+- src/ledger/settlement.py
+- src/ledger/money.py
+- tests/test_pagination.py
+
+Also check whether the money.py has require_usable_amount (probably not in this variant).
+
+Let me read the full pagination failure section from the saved output too.
+dsh: reasoning:
+The /tmp file isn't readable via the read tool (probably outside workspace or sandbox restrictions). Let me use the workspace for the baseline file instead. Actually I don't need it — I have the key details. But let me store the baseline output inside the workspace for the record. Actually, let's keep artifacts minimal; I'll capture the summary into the memory file.
+
+Let me now read the other source files to characterize failures: rates.py, settlement.py, money.py, and the tests for pagination.
+
+Note pagination: `list_page` sorts by `created_at.timestamp()` and cursor uses "ts" only; `list_page_by_sequence` exists as an alternative but `list_page` still uses timestamp. The test `test_pagination_does_not_lose_invoices` calls `list_page` with invoices created at the same timestamp → the "strictly less than" comparison finds nothing → start = len(ordered) → empty page, next_cursor None → invoices lost.
+
+Let me read the rest.
+dsh: reasoning:
+Now I understand the three failures in detail:
+
+1. `tests/test_pagination.py::test_pagination_does_not_lose_invoices` — `list_page` sorts by `created_at.timestamp()`; cursor only carries `ts`; the "strictly less than" lookup fails when multiple invoices share the same timestamp → `start = len(ordered)` → empty page, `next_cursor=None` → invoices silently dropped. Note: `list_page_by_sequence` exists as a sequence-based variant, but `list_page` (used by the test and by `api.py`) still uses timestamps.
+
+2. `tests/test_rates.py::test_get_cached_rate_falls_back_to_rate_table` — `get_cached_rate` indexes `RATE_CACHE[f"{base}:{quote}"]` but the cache is keyed by currency only → `KeyError: 'USD:CNY'` instead of falling back to the default rate table.
+
+3. `tests/test_settlement.py::test_settle_invoice_rejects_missing_price` — NaN price: `settle_invoice` does not reject missing price; `int(settled * 10**exponent)` raises `ValueError: cannot convert NaN to integer`. There's `settle_invoice_checked` which raises plain `ValueError` (not `ValidationError`) — but the test expects `ledger.errors.ValidationError` from `settle_invoice`.
+
+Let me check money.py and errors.py to see if `ValidationError` exists and whether `money.require_usable_amount` exists (probably not in this variant).
+
+Also check the api.py which uses list_page.
+
+Let me also verify the test file contents for pagination to confirm.
+
+I'll read money.py, errors.py, tests/test_pagination.py in parallel.
+dsh: reasoning:
+Good. `ValidationError` exists in errors.py. `money.py` lacks `require_usable_amount` / `is_missing_amount` helpers (those exist in the sibling fixed project).
+
+Now I have a complete picture of the 3 failures. Let me update the todo list and then write the project memory.
+
+Now: where to put "项目记忆"? The convention from the sibling project:
+- `AGENTS.md` — section 3 "Project Hard Invariants & Known Test Baseline" holds the convention + baseline.
+- `MEMORIES.md` (+ `MEM.md` symlink) — tmem-generated living memory index.
+- `.tmem/` — tmem traces.
+
+The current project has none of these. The user asked to "把这条约定和失败基线记到项目记忆里" (record the convention and failure baseline into project memory).
+
+Best approach:
+1. Create `AGENTS.md` in the current project following the sibling's tmem protocol template (sections 1 & 2), plus section 3 with the hard invariants and the failure baseline. That matches the repo-family convention exactly.
+2. Run `tmem capture --agent dsh` to create `.tmem/` + `MEMORIES.md` (the actual "project memory" living index) — since AGENTS.md section 2 says persistence = `tmem capture --agent dsh`.
+
+But wait — the AGENTS.md in the sibling includes both the tmem protocol AND section 3 hard invariants. Let me check whether the `r2/ledger-svc` MEMORIES.md also includes a "测试基线" section, and check the README there has a "测试基线" section as mentioned in AGENTS.md ("明细见 README.md 的"测试基线"小节"). The current README has a "约定" section but no baseline section. The sibling README is 7120 bytes vs current 431 bytes — much richer.
+
+Let me check the sibling r2/ledger-svc/README.md and MEMORIES.md to see the full structure, so I write consistent content. Also check r2/ledger-svc/MEMORIES.md for how the baseline is recorded there.
+
+Also there's `/home/kent/e2e/ledger-svc-control/AGENTS.md` (different dir, not r2) — let me check that one too, since it might be the "canonical" template for this project family.
+
+Let me read these.
+dsh: reasoning:
+Excellent. Now I have a very clear picture. There's a `/home/kent/e2e/ledger-svc-control/AGENTS.md` which is a nearly identical project (same project name `ledger-svc-control`, HEAD = `7f67873` merge feature/rates-cache). That file already contains exactly the content the user wants — the convention + the 3-failure baseline. But that's a *different checkout* (`/home/kent/e2e/ledger-svc-control`), not my working directory (`/home/kent/e2e/r2/ledger-svc-control`).
+
+Important nuance flagged in that AGENTS.md itself: "跨目录提醒：同源项目另有更晚的检出（HEAD 已含分页/汇率/缺失价格等后续修复），其基线与本文件不同；以本工作区 HEAD 实测为准".
+
+So I must not copy that file blindly — I need to verify the facts against MY workspace's HEAD. My workspace HEAD is `5efcfca` (merge feature/rates-cache). Let me check the HEAD commit and date.
+
+Interesting: my run gave exactly 3 failed / 18 passed — same as the other checkout's baseline. Good sign, but I must verify each failure's root cause matches my code (I already read pagination.py, rates.py, settlement.py, money.py — they match the described root causes exactly).
+
+Let me now verify:
+1. My HEAD hash and date
+2. The counts per test file (to confirm 21 tests / 5 files breakdown: 3,3,2,4,9)
+3. Whether `python` command exists (no — only python3) ✓ confirmed
+4. Check `api.py` uses list_page (for the "headless pagination" claim)
+5. Check `fetch_rate` direction claim — `DEFAULT_RATES[quote]/DEFAULT_RATES[base]` → for USD:CNY = 1/7.1234 = 0.14038... yes, docstring says "how many units of the quote currency one unit of the base currency buys" → should be 7.1234 for USD→CNY, but code returns 0.14. Confirmed by reading the code.
+
+Let me verify the per-file test counts and HEAD info, and check api.py/cli.py for list_page usage.
+
+Then write:
+- `AGENTS.md` in my workspace (project memory file with convention + baseline) — following the family template.
+- `MEMORIES.md` + `MEM.md` symlink + `.tmem/` via `tmem capture --agent dsh`.
+
+Wait — should I create AGENTS.md in the working dir? The convention in this repo family: AGENTS.md IS "本检出的项目记忆" (per the other checkout's AGENTS.md line 3). And tmem generates MEMORIES.md. The user asked to "把这条约定和失败基线记到项目记忆里".
+
+Let me check if the current workspace has a `.dsh/plugins/tmem-dsh-plugin.mjs` etc. — no `.dsh` dir in my workspace. The sibling projects have `.dsh/` with the tmem plugin. Let me check what's in the sibling `.dsh` dir — maybe I should set up the plugin config too. But that's beyond scope; the essential deliverable is the memory records.
+
+Let me check the tmem skill: is there a `.dsh/skills/tmem/SKILL.md`? Let me look at the skill catalog available in this session — the system mentions a "session skill catalog". Let me check available skills via the skill tool? I don't know the names. Let me check the sibling .dsh/skills directory and the DSH profile skills dir.
+
+Let me do these checks in parallel.
+dsh: reasoning:
+Confirmed:
+- My HEAD = `5efcfca` "merge feature/rates-cache" (2026-11-22 13:48:17) — different from the other checkout's `7f67873`.
+- 21 tests total, per file: idempotency 3, invoicing 3, pagination 2, rates 4, settlement 9. Same breakdown as the other checkout.
+- `python` command doesn't exist; only `python3`.
+- `api.py` line 34-36 uses `list_page` → the pagination bug is on the API/headless path.
+
+Now let me verify the fetch_rate direction claim empirically, and check the api.py error handling (does it catch LedgerError subclasses only?), plus store.py for sequence assignment. Let me read api.py and check fetch_rate value.
+
+Then write the memory files.
+
+Let me verify fetch_rate direction quickly.
+dsh: reasoning:
+Interesting! My computation of the "correct" direction: `DEFAULT_RATES['CNY']/DEFAULT_RATES['USD']` = 1/7.1234 = 0.14038... — wait that's what the code does. Let me recompute: DEFAULT_RATES["CNY"] = 1, DEFAULT_RATES["USD"] = 7.1234. So DEFAULT_RATES['CNY']/DEFAULT_RATES['USD'] = 1/7.1234 = 0.14038.
+
+And the code computes `DEFAULT_RATES[quote] / DEFAULT_RATES[base]` = DEFAULT_RATES['CNY']/DEFAULT_RATES['USD'] = 0.14038.
+
+Now what's the "right" value per the docstring? The table appears to be "CNY per unit of currency"? Let's see: DEFAULT_RATES = {"CNY": 1, "USD": 7.1234, "EUR": 7.8412, "JPY": 0.0473}. So 1 USD = 7.1234 CNY. The docstring: "Rates are expressed as 'how many units of the quote currency one unit of the base currency buys'." So for base=USD, quote=CNY: one USD buys 7.1234 CNY → rate should be 7.1234.
+
+The code returns DEFAULT_RATES[quote]/DEFAULT_RATES[base] = 1/7.1234 = 0.1404 → wrong direction; should be DEFAULT_RATES[base]/DEFAULT_RATES[quote] = 7.1234.
+
+My test print above was wrong — I printed the same inverted formula as "docstring says". Let me verify: the correct per-docstring value = DEFAULT_RATES[base]/DEFAULT_RATES[quote] = 7.1234/1 = 7.1234. Yes.
+
+So the note in the other checkout's AGENTS.md is right in substance: fetch_rate direction is inverted → USD invoices settle ~50.7x too small (7.1234/0.14038 = 50.74). Existing tests only assert > 0, so they don't catch it.
+
+Let me double check with the settlement test: `test_settle_invoice_converts_usd_to_cny` — what does it assert? Let me read tests/test_settlement.py and tests/test_rates.py to describe accurately.
+
+Also check `test_settle_invoice_returns_integer_minor_units` passes — so the int minor unit convention is verified by the suite.
+
+Let me read the test files.
+dsh: reasoning:
+Now I have everything I need. Let me check the pagination test file quickly for accuracy, then write the memory files.
+
+Let me read tests/test_pagination.py.
+
+Also, I should decide the exact deliverables:
+
+1. `AGENTS.md` in `/home/kent/e2e/r2/ledger-svc-control` — the project memory file, following the family template (sections 1-3), with:
+   - fact baseline: this workspace = ledger-svc-control, HEAD = 5efcfca
+   - Section 3: the amount convention (integer minor units, non-negotiable, upstream reconciliation only accepts integer cents) + the failure baseline (3 failed / 18 passed, 21 tests, 5 files) + per-failure root causes + environment facts (no `python`, use `python3`).
+
+2. `MEMORIES.md` + `MEM.md` symlink + `.tmem/` via `tmem capture --agent dsh` — the tmem living memory index.
+
+Let me first check whether tmem capture works in this workspace (it needs `.dsh` config maybe). The siblings have `.dsh/` dir with plugin config. Let me check the sibling's `.dsh` content and whether the current DSH profile has the tmem skill.
+
+Let me check:
+- `ls /home/kent/e2e/r2/ledger-svc/.dsh`
+- `ls ~/.dsh/profiles/headless` for skills
+- tmem --help
+
+Let me do that.
+dsh: reasoning:
+`tmem init` installs DSH plugin hooks, skill, git hooks. The sibling projects have `.dsh/` with plugins/skills and `tmem.patch.yml`.
+
+The `tmem capture --agent dsh` command per AGENTS.md is the persistence mechanism. Let me check `tmem capture --help` and whether it works without `.dsh` init in the project. The siblings have `.dsh/` — probably created by `tmem init`.
+
+Plan:
+1. Write `AGENTS.md` (the project memory doc) in my workspace — the authoritative convention + baseline record.
+2. Run `tmem init` (if needed) + `tmem capture --agent dsh` to persist the execution trace and generate `MEMORIES.md` / `.tmem/`.
+3. Verify MEMORIES.md got regenerated with my content, and that the AGENTS.md content is reflected.
+
+Note: tmem capture generates MEMORIES.md automatically from traces — it may not include my convention text verbatim. The convention text lives in AGENTS.md (which is the "项目记忆" per the other checkout's header) and the trace captures the session steps. To be safe, I'll put the convention + baseline in AGENTS.md (authoritative, human/agent readable) and also ensure MEMORIES.md is generated/updated to reference it.
+
+Let me check `tmem capture --help` and `tmem init --help` first.
+
+Also note the sibling's `.dsh/tmem.patch.yml` (132 bytes) — let me read it and the plugins dir to replicate config if needed. Actually `tmem init` should handle it. But `tmem init` may modify global profile config (~/.dsh) — that could be outside the workspace and require approval. Let's check.
+
+Let me look at the sibling `.dsh` contents and tmem capture/init help.
+dsh: reasoning:
+Interesting — `tmem init` is disabled in this "control arm" (the harness guard). This is the "control" experiment arm: `ledger-svc-control` — the harness deliberately disables `tmem init` to keep the no-plugin control.
+
+Let me check `tmem capture` behavior in this workspace. `tmem capture` might work without init since it just compiles the session trace into `.tmem/`. Let me try it — but first, note the AGENTS.md template in the other checkout says persistence = `tmem capture --agent dsh`.
+
+Wait — the current workspace has NO `.dsh/` directory, so tmem capture may fail without the plugin hooks. Let me just try it and see. If capture fails, the fallback is to author `MEMORIES.md` by hand following the family template, plus the `MEM.md` symlink, plus AGENTS.md.
+
+Let me try `tmem capture --agent dsh` in the workspace and see what happens.
+
+Also `tmem status` first to see the state.
+
+Let me update todos first.
+dsh: reasoning:
+`tmem capture` works but skipped as trivial (no source files touched). The trace was still recorded as an episode `ep_3c98b30cc0` in `.tmem/`. Let me check what's in `.tmem/` now.
+
+Since this task's deliverable IS documentation/memory, "trivial" is expected. I can use `--force` to capture anyway, which would record the trace properly. Let me check `capture --help` for the exact flags (the help output was truncated oddly — it showed the main help).
+
+Let me run `tmem capture --help` properly (maybe it needs different invocation).
+
+Then: the main work is writing AGENTS.md (project memory) with the convention and baseline. Let me also generate MEMORIES.md via `tmem sync` after capture, so the living memory index exists.
+
+Let me check capture flags.
+dsh: reasoning:
+The `--help` for capture isn't showing subcommand-specific flags (the CLI shows the global help). The sibling's MEMORIES.md references `tmem capture --agent dsh --full-session --force --intent "..."` — so `--force` and `--intent` exist.
+
+Now the plan:
+1. Write `AGENTS.md` in the workspace — the project memory document with:
+   - Fact baseline header (workspace, HEAD 5efcfca, date)
+   - Section 1: Consuming Memory (tmem protocol)
+   - Section 2: Goal Completion & /tmem persistence
+   - Section 3: Project invariants & test baseline: the integer minor unit convention (non-negotiable, upstream reconciliation only accepts integer cents) + the measured baseline (3 failed / 18 passed of 21) + the 3 known failures with root causes + fix directions + environment facts.
+2. Also add a "测试基线" section to README.md (the sibling AGENTS.md says "明细见 README.md 的'测试基线'小节"). The current README has a "约定" section that already states the integer minor unit rule — I should strengthen it to say it's non-changeable due to upstream reconciliation, and add the baseline section.
+3. Create `MEMORIES.md` + `MEM.md` symlink (project memory index) — generate via `tmem capture --force` + `tmem sync`.
+4. Verify.
+
+Let me be careful about the exact dates: The system date — the files show "11月 22" and git commit date "2026-11-22". The other checkout's AGENTS.md says "2026-11-22". Let me get the current date from the system to be accurate.
+
+Let me check date and also look at the sibling README's "测试基线" section for the format.
+dsh: reasoning:
+Now I have everything. Time to write the project memory.
+
+Let me write `AGENTS.md` for `/home/kent/e2e/r2/ledger-svc-control`. I'll base the structure on the family template (from `/home/kent/e2e/ledger-svc-control/AGENTS.md`, which is the same project name and near-identical HEAD family) but with facts verified against MY HEAD (`5efcfca`).
+
+Key facts to record:
+- Workspace: /home/kent/e2e/r2/ledger-svc-control, HEAD = 5efcfca ("merge feature/rates-cache", 2026-11-22 13:48:17 +0800), branch main
+- Convention: all amounts as integer minor units (CNY/USD/EUR = cents, JPY = yen). Reason: upstream reconciliation system only accepts integer cents. Never change to float/Decimal. Decimal only as intermediate in cross-currency conversion; the stored/returned value must be int minor units.
+  - Relevant impl: money.to_minor / money.from_minor, CURRENCY_EXPONENT; settlement.settle_invoice / settle_line return int minor units; settlement.settled_amount returns Decimal for display only (converts back via scaleb) — careful: `settled_amount` returns Decimal(minor).scaleb(-exponent), that's a presentation helper, fine.
+- Baseline measured 2026-11-22 22:43 CST at HEAD 5efcfca: `PYTHONPATH=src python3 -m pytest -q` → 3 failed / 18 passed (21 tests, 5 files: test_idempotency.py 3, test_invoicing.py 3, test_pagination.py 2, test_rates.py 4, test_settlement.py 9).
+- The 3 known failures with root cause + fix direction.
+- Environment facts: no `python` command (exit 127) → use python3; pyproject has pythonpath=["src"] so `python3 -m pytest` works too.
+- Observed issues not caught by tests (待办观察):
+  - fetch_rate direction inverted vs docstring: DEFAULT_RATES[quote]/DEFAULT_RATES[base]; for USD:CNY = 0.14038... while per docstring ("how many units of the quote currency one unit of the base currency buys") it should be 7.1234 → USD invoices settle ~50.7x too small. Existing tests only assert > 0 → not caught. Must confirm the rate convention before changing (changing it changes settled amounts already stored).
+  - settlement uses float(fetch_rate(...)) + Decimal(rate) → binary float drift on the settlement path, conflicts with the amount convention → a defect to fix, not an accepted pattern. (Note: `float(rate)` then `Decimal(rate)` — Decimal(float) captures the binary approximation exactly. Then multiplied by Decimal(unit_price) which itself is Decimal(float) → drift.)
+  - build_invoice sets Invoice.sequence = 0; sequence assigned by store.SequencedInvoiceStore.save.
+  - Cross-checkout warning: same-source project has a later checkout with these fixes (all green); do not import that conclusion here — measure on this HEAD.
+
+Let me double check the float drift claim: `converted = Decimal(line.unit_price) * Decimal(rate) * Decimal(line.quantity)`. `Decimal(line.unit_price)` where unit_price = 19.99 (a float) → Decimal(19.99) = 19.9899999999999985736743585430085659027099609375 exactly (binary expansion). And `Decimal(rate)` where rate = float(7.1234) → binary approximation. So yes, drift. Good.
+
+Also check: does `settled_amount` exist and return Decimal — yes, and its test asserts == 10.
+
+One more verification for accuracy of the "50.7x" figure: 7.1234 / 0.14038240166... = 50.74. Let me compute: 7.1234 * 7.1234 = 50.742... Yes, 1/0.1403824 = 7.1234. So the settled amount is 7.1234 times too small (i.e., 1/50.74 ≈ 1.97% of correct). So "偏小约 50.7 倍" (about 50.7x too small) is right.
+
+Now also I want to double-check the pagination failure detail to describe the actual assertion error. The test asserts sorted(seen) == all 5 ids. With limit=2: page 1 = 2 invoices, next_cursor set (since start+limit=2 < 5). Page 2: cursor ts same → no inv with ts < last_ts → start = len(ordered) = 5 → page = ordered[5:7] = [] → next_cursor None (page empty) → break. seen = 2 of 5. So 3 invoices are lost. Let me verify empirically to state it precisely.
+
+Let me run a quick reproduction to get the exact numbers (2 seen of 5).
+
+Also for the rates failure, exact error: KeyError: 'USD:CNY'.
+For settlement: ValueError: cannot convert NaN to integer at src/ledger/settlement.py:31.
+
+Let me run the repro for pagination.
+dsh: reasoning:
+Confirmed: 5 invoices → only 2 seen, 3 lost, pagination stops after 2 pages (page 2 empty, next_cursor None).
+
+Now let me write the project memory files.
+
+1. `AGENTS.md` — the main project memory document.
+2. Update `README.md` — add the baseline section and strengthen the convention (as the sibling does).
+3. `MEMORIES.md` + `MEM.md` symlink — living memory index (generated by tmem, but I can also author it; better: run `tmem capture --force` then `tmem sync` to generate it authentically).
+
+Let me first write AGENTS.md.
+
+I'll write it in Chinese matching the repo family language (the repo README is Chinese; the AGENTS.md templates mix English headers with Chinese content).
+
+Let me write AGENTS.md carefully.
+
+Structure (following the family template):
+
+```markdown
+# tmem Deterministic Engineering Memory & Milestone Protocol (DSH)
+
+> 本文件是本检出的**项目记忆**：记录不可变约定与当前测试基线。
+> 事实基准：本工作区 = `/home/kent/e2e/r2/ledger-svc-control`，HEAD = `5efcfca`（`merge feature/rates-cache`，2026-11-22 13:48 +0800，分支 `main`）。
+> 下面所有基线数字都是**在这个 HEAD 上实测**得到的，不要套用别处的记忆。
+
+## 1. Consuming Memory (`MEMORIES.md`, L2 Runtime Repairs & L1 Co-Change Hints)
+...
+## 2. Goal Completion & `/tmem` Memory Persistence
+...
+## 3. ledger-svc 项目约定与测试基线（项目记忆，勿随意改动）
+- 金额约定
+- 测试基线
+- 已知失败 1/2/3
+- 待办观察
+- 环境事实
+- 跨目录提醒
+```
+
+Note the tmem capture gate: in this control arm `tmem init` is disabled; `tmem capture` needs `--force` for doc-only traces. I should record that fact in the memory too (environment fact), because it's useful for future agents in this workspace.
+
+Let me write the file now.
+
+For section 3, content (verified):
+
+**金额约定（不可变更，本项目第一约定）**
+- 所有金额一律以整数最小单位存储 (CNY/USD/EUR = 分, JPY = 元)
+- 原因：上游对账系统只接受整数分
+- 不得改成 float/Decimal 落库；Decimal 只允许作跨币种换算中间量；落地/返回值必须是 int 最小单位
+- 改动不得改变已落库的结算金额（改口径 ≠ 改约定）
+- 实现位置：money.to_minor/from_minor (CURRENCY_EXPONENT), settlement.settle_invoice/settle_line 返回 int; settlement.settled_amount 只是展示用的 Decimal 换算
+- 回归护栏：tests/test_settlement.py::test_settle_invoice_returns_integer_minor_units / test_settle_line_returns_minor_units / test_settled_amount_is_decimal 目前通过，任何改动后必须仍通过
+
+**测试基线（2026-11-22 22:43 实测，HEAD=5efcfca）**
+命令：`PYTHONPATH=src python3 -m pytest -q` → 3 failed / 18 passed（共 21 例 / 5 个文件）
+按文件：test_idempotency.py 3 全通过、test_invoicing.py 3 全通过、test_pagination.py 2（1 失败）、test_rates.py 4（1 失败）、test_settlement.py 9（1 失败）
+全绿不是现状 —— 这 3 个是既知既有失败。
+
+**已知失败 1** tests/test_pagination.py::test_pagination_does_not_lose_invoices (AssertionError)
+- 根因：list_page() 按 created_at.timestamp() 降序；游标只带时间戳 {"id","ts"}；同秒发票时间戳相同 → 续页扫描找不到 ts < last_ts → start = len(ordered) → 后续页恒空、next_cursor=None → 同秒发票被静默丢弃
+- 实测：5 张同秒发票、limit=2 → 只翻出 2 张，丢 3 张，2 页后终止
+- 影响面：api.handle_invoice_list() 走的就是 list_page（headless/CLI 翻页丢单）
+- 修法方向（未实施）：按发票序号 sequence 降序 + keyset 游标 {"id","seq"}，invoice_id 作 tie-break；旧时间戳游标保留兼容回退；不得回退到时间戳排序
+- 现成可复用：pagination.list_page_by_sequence() / encode_sequence_cursor()（但 list_page 还没切过去）；序号由 store.SequencedInvoiceStore.save() 单调分配
+
+**已知失败 2** tests/test_rates.py::test_get_cached_rate_falls_back_to_rate_table (KeyError: 'USD:CNY')
+- 根因：get_cached_rate() 直接 return RATE_CACHE[f"{base}:{quote}"]，无回退；而 load_rate_table() 写入的是币
+dsh: reasoning:
+Confirmed: 2 pages, only 2 of 5 invoices seen, 3 lost.
+
+Now let me write the project memory files.
+
+1. `AGENTS.md` — the primary project memory doc.
+2. `README.md` — add the "测试基线" section and strengthen the convention wording (the README already has "约定" section; the sibling AGENTS.md references README's 测试基线 section for details). The user asked to record in "项目记忆" — README is documentation, AGENTS.md + MEMORIES.md + .tmem are the memory. I'll update README's 约定 section to note it's non-negotiable (upstream reason) and add a "测试基线" section pointing to AGENTS.md/MEMORIES.md. That mirrors the sibling structure (README has 测试基线 section).
+3. `MEMORIES.md` + `MEM.md` symlink via `tmem capture --force` + `tmem sync`.
+
+Let me write AGENTS.md now. It should be in Chinese (matching the family convention and the user's language).
+
+Careful about the "金额约定" section: include the reasoning (upstream reconciliation only accepts integer cents — cannot change), prohibitions, and where relevant code lives.
+
+Let me write it.
+dsh: reasoning:
+AGENTS.md is created. Now let me:
+1. Update README.md's 约定 section to mark the convention as non-changeable (upstream reason) and add a 测试基线 section.
+2. Capture the tmem trace with --force and sync to generate MEMORIES.md + MEM.md symlink.
+
+Let me first update the README. Current README:
+
+```
+# ledger-svc
+
+发票台账服务。内部结算使用，所有金额以最小货币单位（整数）存储。
+
+## 目录
+
+- `src/ledger/` 业务代码
+- `tests/` pytest 用例
+
+## 约定
+
+- 结算结果统一使用整数最小单位（CNY/USD 为分，JPY 为元）
+- 汇率表集中在 `src/ledger/rates.py`
+- 时间统一通过 `src/ledger/clock.py` 注入，便于测试
+
+## 开发
+
+```bash
+PYTHONPATH=src python -m pytest
+```
+```
+
+Note: the README's dev command says `python -m pytest` which doesn't exist on this machine → should be `python3`. I'll fix that too.
+
+Let me edit README with the edit tool.
+dsh: reasoning:
+Now capture the tmem trace (with --force) and sync to generate MEMORIES.md + MEM.md symlink.
+
+`--intent` flag: let me pass a meaningful intent. The sibling used:
+`tmem capture --agent dsh --full-session --force --intent "..."`.
+
+Let me run it.
+dsh: reasoning:
+The trace compiled: `tr_ca991ff4aa`. Now run `tmem sync` to regenerate MEMORIES.md living index, and create the `MEM.md` symlink (siblings have `MEM.md -> MEMORIES.md`).
+
+Let me run tmem sync and check the MEMORIES.md output.
+dsh: reasoning:
+The `MEM.md -> MEMORIES.md` symlink was created automatically by tmem sync. Let me read the generated MEMORIES.md to see whether it captured the convention and baseline well — if the generated index lacks the key facts, I should augment it (the generated file says "Maintained autonomously by tmem", so hand-editing could be overwritten by sync; but the sibling `r2/ledger-svc/MEMORIES.md` has a "## 0. Verified Env & Test Commands" section which tmem generates).
+
+Let me read it.
+dsh: reasoning:
+The generated MEMORIES.md has "No project execution traces recorded yet" in section 1 — the trace `tr_ca991ff4aa` was compiled but is marked trivial and perhaps filtered out of L0 (active_l0: 1 in gc stats, but section 1 says no traces). Let me check `tmem list` and `tmem status` to see if the trace is indexed.
+
+The living index's "## 0. Verified Env & Test Commands" section is missing too (the sibling had it).
+
+Key concern: the living memory index (Tier 0) doesn't contain the convention or the baseline. The AGENTS.md does, but the AGENTS.md protocol says MEMORIES.md is the "Living Memory Index" that agents consult first. Since tmem regenerates MEMORIES.md on sync, my manual edits could be overwritten. However, the sibling `r2/ledger-svc-control-c/MEMORIES.md` has hand-written-ish content in sections ("_No project execution traces recorded yet._") that is tmem-generated.
+
+Let me check `tmem list` / `tmem status` to see if tr_ca991ff4aa is indexed and searchable. The important thing for the user: the convention + baseline are recorded in project memory. I've put them in AGENTS.md (the primary human/agent-readable project memory doc, matching the family convention) and README.md.
+
+For MEMORIES.md, let me check whether the trace shows up via `tmem list` and whether `tmem search 整数最小单位` finds it — the sibling AGENTS.md references `tmem search 整数最小单位` as the way to find the convention.
+
+Let me check.
+dsh: reasoning:
+The trace is indexed and searchable — `tmem search 整数最小单位` finds it, and `tmem list` shows it as L0_FULL active. 
+
+However, the generated MEMORIES.md section 1 says "_No project execution traces recorded yet._" — that's stale relative to the index DB (the trace IS active). This looks like a tmem sync rendering quirk (perhaps because the trace was captured after the index render, or the sync happened before the trace was promoted). Let me re-run `tmem sync` to see if it now renders the trace table. It ran after capture though... Let me try once more, and check `tmem status` shows active_l0: 1.
+
+Let me re-run sync and read MEMORIES.md again.
+
+Also, I want the living index to carry the convention + baseline explicitly (Tier 0), since AGENTS.md says agents consult MEMORIES.md first. The sibling's MEMORIES.md had a "## 0. Verified Env & Test Commands" section. If tmem's renderer doesn't include my conventions, I can add a section 0 manually — but sync may overwrite it. Let me test: re-run sync and see if the file changes.
+
+Let me try.
+dsh: reasoning:
+`tmem sync` doesn't render the trivial trace into section 1 (likely because it's flagged `is_trivial: true` with confidence 0.4, so it's excluded from the L0 table render, even though `tmem list` shows it active/L0_FULL).
+
+Regardless, the project memory must carry the convention + baseline in the Tier-0 index so agents can find them. The tmem renderer leaves section 1 empty. Two options:
+1. Add a hand-written section to MEMORIES.md (e.g., "## 0. Project Invariants & Test Baseline") — but a future `tmem sync` might wipe it. Let me test whether sync preserves non-generated content... The file is fully regenerated by sync (it rendered the same template). If I add a section, would sync preserve it? Unknown — likely it regenerates the whole file from the template, dropping custom sections.
+
+Given the risk, the safest approach: keep the authoritative content in AGENTS.md (which tmem never touches and which the family convention designates as the project memory doc: "本文件是本检出的项目记忆") and README.md, and add the same pointer + key facts into MEMORIES.md as a section that references AGENTS.md. If a later `tmem sync` drops it, AGENTS.md/README.md still hold it, and the trace is searchable via `tmem search`.
+
+Let me test: add a section to MEMORIES.md and run sync to see if it survives. If it doesn't survive, I'll note in AGENTS.md that MEMORIES.md is tmem-generated and the authoritative record lives in AGENTS.md/README.md.
+
+Let me do the experiment.
+dsh: reasoning:
+Confirmed: `tmem sync` overwrites MEMORIES.md wholesale — my hand-written section 0 was wiped. So MEMORIES.md is a generated artifact; I cannot hand-edit it durably.
+
+Therefore the durable project memory records are:
+1. `AGENTS.md` — the authoritative, hand-maintained project memory (the family convention explicitly calls it "本检出的项目记忆"). ✅ written
+2. `README.md` — the "测试基线" section + strengthened convention. ✅ written
+3. `.tmem/` trace + episode — machine-searchable execution memory. ✅ captured (tr_ca991ff4aa, ep_4bc4a4d760)
+
+To make the convention findable in MEMORIES.md despite it being regenerated, the best I can do is note this in AGENTS.md (that MEMORIES.md is tmem-generated and the authoritative record is AGENTS.md section 3), plus ensure the tmem trace captures the convention text (it does — the intent string and the diff of AGENTS.md/README.md are in the raw trace, and `tmem search 整数最小单位` finds it).
+
+Let me re-add the section 0 to MEMORIES.md anyway? It gets wiped on every sync — a trap for future maintainers (silently lost content). Better: leave MEMORIES.md as generated (clean state), and add a note in AGENTS.md explaining that MEMORIES.md is regenerated by `tmem sync` and therefore must not be hand-edited; the authoritative invariant/baseline record is AGENTS.md §3 + README.
+
+Let me add that note to AGENTS.md section 2, and also make sure the tmem raw trace contains the convention text so `tmem search` works (verified).
+
+Actually, wait — one more consideration. The AGENTS.md protocol section 1 says "consult MEMORIES.md (or MEM.md) for verified environment commands, recurring co-change hints, and known error repairs". Since the sync-wiped section 0 approach doesn't persist, the AGENTS.md pointer is the right mechanism. Let me add an explicit "记忆文件的权威性" note in AGENTS.md §2.
+
+Let me do that edit now.
+dsh: reasoning:
+The quotes differ — I wrote `"只改文档/元数据、不碰源码"` with straight double quotes in the file? Let me check: in my Write call I used `“只改文档/元数据、不碰源码”` with curly quotes. Let me read the file section to match exactly.
+dsh: reasoning:
+Now let me do final verification:
+1. Re-run the test suite to confirm the baseline is still 3 failed / 18 passed (nothing I did changed source).
+2. Verify the memory files exist and are correct (AGENTS.md, MEMORIES.md, MEM.md symlink, .tmem/).
+3. Check git status to show what was added.
+4. Confirm the .tmem/.gitignore content (does .tmem get committed? The siblings have .tmem in the repo, and .gitignore may exclude it).
+
+Let me check .gitignore and final state.
+
+Also, one thing to double check: does MEMORIES.md currently exist in the regenerated (clean) form? Yes — the sync wiped my custom section and regenerated. That's the expected generated state. Good.
+
+Let me run final verification.
+dsh: reasoning:
+Everything is in place:
+- Baseline re-verified: 3 failed / 18 passed (unchanged — I only touched docs, no source).
+- AGENTS.md (8.7KB) — authoritative project memory.
+- MEMORIES.md + MEM.md symlink — tmem living index.
+- .tmem/ traces — captured (tr_ca991ff4aa).
+- README.md updated with the baseline section.
+- .gitignore already ignores .tmem/ (so the trace store stays local, consistent with the repo family).
+
+Note AGENTS.md has mode 0600 (-rw-------) while other files are 0644. The write tool created it with restrictive perms. Let me fix to 0644 for consistency with the repo (README.md is 644). This matters for other tools/users reading it. Let me chmod.
+
+Let me also do a final read of the README to confirm formatting is right.
+
+Then update todos and report.
+dsh: reasoning:
+Everything is complete. One last thing: the README references `MEMORIES.md` for details ("详见项目记忆 `AGENTS.md` / `MEMORIES.md`"), but MEMORIES.md doesn't contain the details (it gets regenerated). Let me fix that reference to avoid pointing at a file that doesn't hold the content — point to AGENTS.md §3 and `.tmem/` search.
+
+Let me edit that line.
+
+Then update the todo list and give the final report.
+dsh: reasoning:
+The edit broke the sentence — the parenthesis is unclosed and the table follows awkwardly. Let me fix line 23 to be complete.

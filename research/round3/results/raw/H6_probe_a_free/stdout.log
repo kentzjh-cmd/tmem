@@ -1,0 +1,39 @@
+三个问题都从项目笔记（`CONVENTIONS.md`、`MEMORIES.md`、`.tmem/traces/tr_e66fe4c00d.json` 与其 raw 轨迹）里查到了，**全程只读文件，没有执行任何命令**。
+
+---
+
+## 1)修复『nan 价格 → ValueError: cannot convert NaN to integer』的改动顺序
+
+这次修复对应 trace **`tr_e66fe4c00d`**（session `session-4d8dc564-…`，基线 commit `035aa40`）。按 trace 里 `l0_critical_path` 的 MUTATE 步骤，还原出的**真实编辑顺序**（共 11 个文件，trace摘要写的是 "read 11 file(s) -> edited 11 file(s)"）：
+
+**源码层（5 个，自下而上）**
+1. `src/ledger/money.py` — 新增 `validate_price(value, description)` 作为**唯一**单价合法性入口（NaN→`missing price for <desc>`、非有限→`non-finite price`、不可解析→`invalid price`，统一抛 `ledger.errors.ValidationError`），并动 `format_money`
+2. `src/ledger/import_rows.py` — `parse_price` / `parse_rows` / `rows_to_tuples` 全部改走 `validate_price`（导入边界拦截）；`parse_price_checked` 降级为别名
+3. `src/ledger/invoicing.py` — `build_invoice` 只校验「能否转成 float」，**不**拒 `nan`（因为 `test_settle_invoice_rejects_missing_price` 是在 `pytest.raises` 块外建发票）
+4. `src/ledger/settlement.py` — `settle_invoice` / `settle_line` / `settle_invoice_checked` 在算术前逐行校验（结算边界拦截）
+5. `src/ledger/cli.py` — `main()` 捕获 `LedgerError`，打印 `error: ...` 并返回退出码 1，不再抛栈**测试层（4 个）**
+6. `tests/test_import_rows.py`（新建，13 条）
+7. `tests/test_settlement.py`（6 条）
+8. `tests/test_invoicing.py`（1 条 `test_build_invoice_rejects_non_numeric_price`）
+9. `tests/test_cli.py`（新建，2 条）
+
+**文档层（2 个）**
+10. `CONVENTIONS.md` — 写入 §1.2「缺失价格的处理约定」与 §2.3「已修复」章节，刷新失败基线表
+11. `README.md` — 补上"缺失单价被 `ValidationError` 明确拒绝"的说明
+
+> 注：`MEMORIES.md` §2 的 L2 因果修复只压缩记录了前 3 个文件（`money.py` → `import_rows.py` → `invoicing.py`），那是最小修复链，不是完整改动顺序。
+
+## 2) 验证命令
+
+- **定向回归**：`python3 -m pytest tests/test_settlement.py tests/test_import_rows.py tests/test_cli.py tests/test_invoicing.py -q 2>&1` → `35 passed in 0.06s`
+- **全量基线**：`python3 -m pytest 2>&1` → **`2 failed, 42 passed`**（修复前是 `3 failed, 18 passed`）；剩下 2 条是**独立缺陷**：分页游标漏单 + 汇率缓存回退，本次未动
+- **手工冒烟**（内联 `python3 - <<'PY'`）：确认 CNY/JPY 结算输出仍是 `int` 最小单位、`nan` 现在抛 `ValidationError`（且 `isinstance(e, ValueError) == False`）
+- **trace 记录里的 "Verification Command" 列**其实是收尾的 `tmem capture --agent dsh --intent "修复 headless 导入空价格单元格…" --full-session --force2>&1`（capture 门禁要求一条绿色验证命令），这是把整条执行路径沉淀进项目记忆的收尾动作，不是测试本身
+
+## 3) `parse_price_checked` 由哪次提交引入
+
+**commit `54e1833`** —— 完整 hash `54e1833476781dc61751173b7a88a76160fc28ae`，提交标题 **`feat(import): reject empty price cells`**（作者 e2e-bot，2026-11-23 22:45:32 +0800），出现在 git log 里 `2b447f2 feat(settlement): support quote currency switch` 与 `cd1f2fa refactor(settlement): extract conversion helper` 之间。
+
+当时的排查动作就是 `git show 54e1833 --stat && git show 54e1833 -- src/ledger/import_rows.py`。它的毛病正如 `CONVENTIONS.md:170` 记的：**从未接进主链路**，而且抛的是裸 `ValueError` 而非项目自己的 `ValidationError`；本次修复把它保留为 `parse_price` 的别名，现在也统一抛 `ValidationError`（`src/ledger/import_rows.py:51`）。
+
+> 补充一个容易混淆的点：后来 `src/ledger/bulk.py`（commit `b5187bc` 引入）是**第三条**绕过校验的入口——批量结算直接吃导出的原始行，不经过 `import_rows`。那是**另一次**修复（trace `tr_fab1d893e6`），结论记在 `CONVENTIONS.md` §2.4，不在本题这一轮的 11 个文件里。

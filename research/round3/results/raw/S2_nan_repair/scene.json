@@ -1,0 +1,40 @@
+{
+  "scene": "S2_nan_repair",
+  "workspace": "exp",
+  "workspace_path": "/home/kent/e2e/r3/ledger-svc",
+  "intent": "修复缺陷一：NaN 价格导致 ValueError，要求用领域异常明确拒绝",
+  "model": true,
+  "dsh_home": "/home/kent/.dsh",
+  "exit_code": 0,
+  "elapsed_sec": 171.3,
+  "stdout_bytes": 2087,
+  "stderr_bytes": 51607,
+  "command": "dsh --profile headless --patch /home/kent/e2e/r3/ledger-svc/.dsh/tmem.patch.yml headless <task>",
+  "transcript_path": "/home/kent/.dsh/sessions/--home-kent-e2e-r3-ledger-svc--/session-4d8dc564-d529-4107-b464-24ff19bbde3b/session.v4.jsonl.zstd",
+  "transcript_stats": {
+    "bytes": 209085,
+    "node_single_frame_bytes": 183,
+    "node_single_frame_lines": 1,
+    "zstd_dc_bytes": 785481,
+    "zstd_dc_lines": 354,
+    "is_multiframe": true
+  },
+  "capture_exit": 0,
+  "capture": {
+    "status": "compiled",
+    "agent": "dsh",
+    "scope": "project",
+    "episode_id": "ep_e610c11267",
+    "project_trace_id": "tr_3e46acbffe",
+    "raw_trace_path": "raw/tr_3e46acbffe.raw.json",
+    "problem_intent": "Modify CONVENTIONS.md",
+    "touched_files": [
+      "CONVENTIONS.md"
+    ],
+    "is_trivial": true,
+    "confidence": 0.3,
+    "raw_steps": 10,
+    "sliced_steps": 2,
+    "compression_ratio": "10 -> 2"
+  }
+}

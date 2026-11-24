@@ -1,0 +1,38 @@
+dsh: reasoning:
+The user wants me to answer three questions based on the context I already have (the speculative memory traces). No file reads, no commands.
+
+Let me extract from the trace information:
+
+1) Files modified in order: From "Root Cause: Error 'ValueError' resolved by 'edit src/ledger/money.py (ensure_usable_price, format_money) -> edit src/ledger/import_rows.py (parse_price, parse_price_checked, parse_rows) -> edit src/ledger/settlement.py (settle_invoice)'"
+
+So order:
+1. src/ledger/money.py — ensure_usable_price, format_money
+2. src/ledger/import_rows.py — parse_price, parse_price_checked, parse_rows
+3. src/ledger/settlement.py — settle_invoice
+
+Also from Partial L0 Path: READ(src/ledger/settlement.py) -> MUTATE(src/ledger/settlement.py) -> ...
+
+But the canonical causal repair chain gives the order. Also MEMORY.md was edited (recording the investigation conclusion) — the intent said "把排查结论记到项目记忆里". So the file order includes MEMORY.md at the end. The trace says "read 8 file(s) -> edited 6 file(s)". The Note mentions missing_file:MEMORY.md in drifted list. So MEMORY.md was also edited.
+
+2) Verification command: `PYTHONPATH=src python3 -m pytest --collect-only -q 2>&1 && PYTHONPATH=src python3 -m pytest tests/test_import_rows.py --collect-only -q 2>&1 && PYTHONPATH=src python3 -m pytest tests/test_settlement.py --collect-only -q 2>&1`
+
+Also mentioned: `PYTHONPATH=src python3 -m pytest -q 2>&1 && PYTHONPATH=src python3 -m pytest "$f" -q 2>&1` from the partial path (Behavior line).
+
+3) The unified validation entry point name: `ensure_usable_price` in src/ledger/money.py — signature `ensure_usable_price(value, description)`.
+
+Note that there's a "drifted_signature" note for ensure_usable_price — L0 concrete paths drifted. But the question asks for the name, which is stable: ensure_usable_price.
+
+I should note the caveat about MEMORY.md edit and mention the caveat that the trace details are from memory traces (L0 paths drifted slightly) — but the user asked to answer based on current context. I'll answer directly, maybe with a brief note.
+
+Let me be careful about accuracy:
+- Question 2: "修完之后你用什么命令做的验证？" The final verify command per the L2 Causal Repair: the pytest collect-only chain. And there was a general `PYTHONPATH=src python3 -m pytest -q` plus per-file runs.
+
+Let me write the answer in Chinese.
+
+Also mention the "统一校验价格是否可用" entry: `ensure_usable_price(value, description)` in `src/ledger/money.py` — raises the project's own validation exception instead of letting NaN flow to int conversion. And `parse_price_checked` in import_rows is the import-layer wrapper.
+
+I'll note the caveat that these come from trace memory, and L0 signatures drifted (e.g., function signature may now differ slightly), but names/order are as recorded.
+
+Also note: the "统一校验" name could arguably be `parse_price_checked` at the import layer but "统一校验价格是否可用" — ensure_usable_price is described in the trace as "missing_symbol:src/ledger/money.py#ensure_usable_price" and "drifted_signature:src/ledger/money.py#ensure_usable_price:ensure_usable_price(value,description)". That's the unified gate. parse_price_checked is in import_rows which is the import-specific wrapper. So answer: ensure_usable_price.
+
+Let me answer concisely with the three items.

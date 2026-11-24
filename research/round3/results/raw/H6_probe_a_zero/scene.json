@@ -1,0 +1,27 @@
+{
+  "scene": "H6_probe_a_zero",
+  "workspace": "exp",
+  "workspace_path": "/home/kent/e2e/r3/ledger-svc",
+  "intent": "H6' 探针 A 臂（插件+记忆，零读取）：测自动注入能否零读取成本地带出历史根因",
+  "model": true,
+  "dsh_home": "/home/kent/.dsh",
+  "exit_code": 0,
+  "elapsed_sec": 12.4,
+  "stdout_bytes": 1671,
+  "stderr_bytes": 3877,
+  "command": "dsh --profile headless --patch /home/kent/e2e/r3/ledger-svc/.dsh/tmem.patch.yml headless <task>",
+  "transcript_path": "/home/kent/.dsh/sessions/--home-kent-e2e-r3-ledger-svc--/session-e8e93c30-f769-4808-b30a-05bfb8e52396/session.v4.jsonl.zstd",
+  "transcript_stats": {
+    "bytes": 22205,
+    "node_single_frame_bytes": 183,
+    "node_single_frame_lines": 1,
+    "zstd_dc_bytes": 65946,
+    "zstd_dc_lines": 22,
+    "is_multiframe": true
+  },
+  "capture_exit": 1,
+  "capture": {
+    "status": "skipped",
+    "reason": "no_effective_actions"
+  }
+}

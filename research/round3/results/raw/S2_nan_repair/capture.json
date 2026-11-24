@@ -1,0 +1,17 @@
+{
+  "status": "compiled",
+  "agent": "dsh",
+  "scope": "project",
+  "episode_id": "ep_e610c11267",
+  "project_trace_id": "tr_3e46acbffe",
+  "raw_trace_path": "raw/tr_3e46acbffe.raw.json",
+  "problem_intent": "Modify CONVENTIONS.md",
+  "touched_files": [
+    "CONVENTIONS.md"
+  ],
+  "is_trivial": true,
+  "confidence": 0.3,
+  "raw_steps": 10,
+  "sliced_steps": 2,
+  "compression_ratio": "10 -> 2"
+}

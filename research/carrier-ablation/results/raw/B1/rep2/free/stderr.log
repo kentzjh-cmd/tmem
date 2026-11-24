@@ -1,0 +1,68 @@
+dsh: reasoning:
+The user asks me to consult project memory without running any commands. I need to read files (read tool is not a command). Let me check MEMORY.md and .tmem/.
+
+Wait — "不要运行任何命令" means don't run shell commands. But I can use read tool and grep/glob? Those are tools, not commands. The instruction says "你可以查阅本项目可用的项目记忆来回答问题，但不要运行任何命令" — I should use read/grep/glob to read files rather than bash commands.
+
+Let me look at MEMORY.md and .tmem/.
+
+Actually, the decision record at the top of the conversation already contains the info. But let me verify by reading the actual memory files.
+
+Let me glob for memory files.
+dsh: reasoning:
+Let me read MEMORY.md.
+dsh: reasoning:
+Now I need to find the entry function name for "统一校验价格是否可用". The memory says `ensure_usable_price()` in `src/ledger/money.py`. Let me verify by reading src/ledger/money.py (read tool, not a command). Also check import_rows.py and settlement.py for details.
+
+Note the AGENTS.md says `.tmem/` may exist — it doesn't in this workspace. So MEMORY.md is the carrier.
+
+Let me read the relevant source files to confirm the function name and validation command.
+dsh: reasoning:
+Interesting — the current source files do NOT contain the fix. `money.py` has no `ensure_usable_price()`, and `import_rows.py` still has the old `parse_price` and `parse_price_checked` raising `ValueError`.
+
+Wait — MEMORY.md records the fix as having been done. But the source in the workspace doesn't reflect it. Hmm. Let me check settlement.py and errors.py too. Maybe the fix was reverted, or maybe the workspace is a different state.
+
+Actually, the task setup here: MEMORY.md is the "project memory" carrier with decision records. The user asks me to answer from project memory. The memory says the fix order was money.py → import_rows.py → settlement.py, the entry function was `ensure_usable_price()`, and verification command was `PYTHONPATH=src python3 -m pytest -q 2>&1` plus per-file pytest runs.
+
+But wait — the actual source doesn't have `ensure_usable_price`. Let me check settlement.py and whether there's an errors.py with ValidationError, and check git state maybe. Let me read settlement.py and errors.py.
+
+I shouldn't run commands per user instruction. But I can read files.
+
+Let me check settlement.py, errors.py, and the tests.
+dsh: reasoning:
+The current source tree does NOT contain the fix — `ensure_usable_price` doesn't exist in money.py, and the settlement/import code still uses raw ValueError checks. So the MEMORY.md records the decision from a prior session (the "fix session"), but the working tree currently reflects a pre-fix state (perhaps the repo was reset, or the fix session is a different workspace).
+
+Hmm. The user's question is about the project memory: "修复『导入表格价格是 nan 导致 ValueError』这个坑时，你依次修改了哪几个文件、按什么顺序？" The memory says: src/ledger/money.py → src/ledger/import_rows.py → src/ledger/settlement.py.
+
+Question 2: verification command. The memory records: `PYTHONPATH=src python3 -m pytest -q 2>&1` and per-file `PYTHONPATH=src python3 -m pytest "$f" -q 2>&1`, plus collect-only runs.
+
+Question 3: the unified price-validation entry function name: `ensure_usable_price()` in `src/ledger/money.py`.
+
+Note: memory says the fix files also involved tests (tests/test_import_rows.py, tests/test_settlement.py) and invoicing.py. But the "改动文件（按修复顺序）" line lists the three source modules in order.
+
+Should I mention the discrepancy that the current workspace source doesn't have ensure_usable_price? The user asked to answer from project memory without running commands. It's honest and useful to note that the current working tree appears to be at a pre-fix state (money.py has no ensure_usable_price, import_rows.py still raises ValueError in parse_price_checked). Let me double check errors.py for ValidationError to confirm the project's own validation exception exists.
+
+Let me read errors.py to confirm ValidationError.
+dsh: reasoning:
+Confirmed:
+- `ensure_usable_price` appears only in MEMORY.md, not in the source tree — so the current working copy is at the pre-fix state (or the fix was recorded but the tree is a different snapshot). The memory is the record of the fix.
+- The project's own validation exception is `ledger.errors.ValidationError`.
+
+Now let me answer the three questions from memory, and flag the discrepancy.
+
+Question 1: Fix order: `src/ledger/money.py` → `src/ledger/import_rows.py` → `src/ledger/settlement.py`. (Plus tests: tests/test_import_rows.py, tests/test_settlement.py; and invoicing.py in involved files list.)
+
+Actually, the memory's "涉及文件" list includes: MEMORY.md、src/ledger/import_rows.py、src/ledger/invoicing.py、src/ledger/money.py、src/ledger/settlement.py、tests/test_import_rows.py、tests/test_settlement.py. But "改动文件（按修复顺序）" gives the three-module order. The decision points show the boundary table:
+- 导入边界（根因）| src/ledger/import_rows.py:13 | parse_price() 改走 ensure_usable_price(); parse_rows()/rows_to_tuples() 传入行描述; parse_price_checked() 改为委托
+- 结算边界（兜底）| src/ledger/settlement.py:25,65,91 | settle_invoice()/settle_line() 先校验单价再换算; settle_invoice_checked() 由 ValueError 改为 ValidationError
+
+And the decision point "Root cause is fully mapped. Now let me implement the fix, starting with a shared guard in `money.py`" — so money.py first with the shared guard.
+
+Question 2: Verification command: `PYTHONPATH=src python3 -m pytest -q 2>&1` (full suite), plus per-file runs `PYTHONPATH=src python3 -m pytest "$f" -q 2>&1` for the touched test files, plus collect-only checks: `PYTHONPATH=src python3 -m pytest --collect-only -q 2>&1`, `PYTHONPATH=src python3 -m pytest tests/test_import_rows.py --collect-only -q 2>&1`, `PYTHONPATH=src python3 -m pytest tests/test_settlement.py --collect-only -q 2>&1`. The recorded combined form: `PYTHONPATH=src python3 -m pytest -q 2>&1 && PYTHONPATH=src python3 -m pytest "$f" -q 2>&1`.
+
+Question 3: `ensure_usable_price()` — placed in `src/ledger/money.py` as the shared guard.
+
+Also note the export-side convention: exporter writes empty numeric cells as literal text `nan` (documented in import_rows.py docstring).
+
+Caveat: current working tree state doesn't have the fix applied — worth flagging.
+
+I'll answer concisely in Chinese.

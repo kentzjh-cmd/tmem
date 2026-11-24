@@ -1,0 +1,109 @@
+dsh: reasoning:
+There's a .tmem structured memory. Let me search it using tmem_search tool (no running commands allowed - the user said don't run any commands). tmem_search is a tool, not a command, so it should be fine.
+
+Let me search for the NaN price fix.
+
+Also, the user said "headless 你可以查阅本项目可用的项目记忆来回答问题，但不要运行任何命令" — don't run any commands. So I should use tmem_search/tmem_expand tools and read files (read tool is not a command... but reading files via read tool should be acceptable? The instruction says don't run any commands, so using read tool is fine since it's not a bash command).
+
+Let me first usetmem_search.
+dsh: reasoning:
+Let me expand the playbook tr_01aed48efa and the episode ep_e98083fe22.
+dsh: reasoning:
+I have most of the answer. Let me get more detail:
+1. Files modified in order: money.py → import_rows.py → settlement.py → tests/test_import_rows.py → tests/test_settlement.py → MEMORY.md.
+2. Verification commands: `PYTHONPATH=src python3 -m pytest -q 2>&1 && PYTHONPATH=src python3 -m pytest "$f" -q 2>&1` — but I need the actual final verification command. Let me expand the raw level to see the actual commands run and the final answer text.
+3. The new entry function for "统一校验价格是否可用" — likely `ensure_usable_price` in `src/ledger/money.py`.
+
+Let me expand the raw turn to see the final answerand the exact commands.
+dsh: reasoning:
+The turn output was truncated. I need the verification commands exactly and the final answer. Let me look at the raw level around seq 183-255 (tests, memory update, verification, final answer).
+
+Let me expand with level=raw and seq range.
+dsh: reasoning:
+I now have all the information. Let me also check the final answer (seq 250-255) to confirm the summary and the verification command mentioned. Let me expand raw seq 249-255.
+
+Actually I already have enough. But let me confirm the final assistant message, which likely lists the verification commands explicitly. Let me do a quick raw expand for seq 250-255.
+dsh: reasoning:
+The final assistant message might be at seq 254 or so. Let me try seq 249-255 again with different parameters. Actually the previous raw window covered 180-255 and showed up to seq 249. Let me try seq_from=250, seq_to=255 but the result said no matching steps. Hmm, the episode seq range is 0..255. Maybe the final text isn't a "step". That's fine — the L1 slice already gave me the decisions with the table content.
+
+I have everything I need. Let me also verify the MEMORY.md content in the repo to double check the recorded conclusion about the entry function name. Let me read MEMORY.md from the workspace (read tool, not a command).
+
+Actually, the workspace is /work, and MEMORY.md wasn't found by glob earlier. Wait — glob for MEMORY.md found nothing. The episode's project was at /home/kent/e2e/abl/ledger-svc. The current workspace is /work. Let me check what's in /work.
+
+Let me glob the workspace for theproject files.
+dsh: reasoning:
+Interesting — the current workspace has the source but no MEMORY.md, and no tests/test_import_rows.py. So this workspace is a *pre-fix* state (the fix session happened in a different working directory, /home/kent/e2e/abl/ledger-svc). Wait, actually the workspace at /work lacks MEMORY.md and tests/test_import_rows.py — meaning the current state is before that session's changes (or a snapshot).
+
+Hmm, actually the memory episode's project was at /home/kent/e2e/abl/ledger-svc, but the current workspace is /work. The .tmem directory exists in /work though (glob found .tmem files earlier). So the memory library is shared/copied here.
+
+Anyway, the question is purely about the memory content. Let me check the current src/ledger/money.py to confirm whether ensure_usable_price exists in the current workspace (probably not, since workspace looks pre-fix). Let me read money.py and import_rows.py to verify the baseline state — useful for confirming which is "the fix" (the memory describes it).
+
+Actually, this is relevant: the user asks "修复完之后你用什么命令做的验证" and "修好后项目里新增的那个『统一校验价格是否可用』的入口函数叫什么名字". The answer from memory: `ensure_usable_price` in `src/ledger/money.py`.
+
+Let me quickly verify the current workspace state of money.py to see whether it has ensure_usable_price (to note the current workspace might be pre-fix, or the fix persisted).
+dsh: reasoning:
+Confirmed: the current /work workspace is in the **pre-fix** state (the fix session ran in a different checkout `/home/kent/e2e/abl/ledger-svc`). The memory records the fix that was performed in that other working tree.
+
+I should answer the three questions based on memory, and note the caveat that the current workspace at /work still has the pre-fix code (money.py has no ensure_usable_price, import_rows.py still does float(raw)).
+
+Let me double-check whether the workspace has any other memory carriers with the final answer, e.g., MEMORY.md is missing here. But .tmem has the episode.
+
+Now, let me structure the answer:
+
+**1) 修改的文件及顺序**
+
+按会话中的 MUTATE 顺序：
+1. `src/ledger/money.py` — 新增 `ensure_usable_price(value, description="line")`，并让 `format_money` 走校验（seq 96/101）
+2. `src/ledger/import_rows.py` — `parse_price()` 改走 `ensure_usable_price()`；`parse_rows()`/`rows_to_tuples()` 传入行描述；`parse_price_checked()` 改为委托 `parse_price`（seq 106）
+3. `src/ledger/settlement.py` — `settle_invoice()`/`settle_line()` 先校验单价再换算；`settle_invoice_checked()` 由 `ValueError` 改为 `ValidationError`（seq 127）
+4. `tests/test_import_rows.py` — 新建，新增 15 个用例（seq 183）
+5. `tests/test_settlement.py` — 新增/改写用例（seq 188, 193）
+6. `MEMORY.md` — 更新项目记忆（seq 234）
+
+Note: `src/ledger/invoicing.py` 也在过程中被 edit 过（seq 114/122，引入 ensure_usable_price 到 invoicing），但最终 git diff --stat 只显示 import_rows.py / money.py / settlement.py + tests/test_settlement.py 和新增 tests/test_import_rows.py. So invoicing.py changes were reverted/abandoned. Let me verify: the final diff (seq 208) shows only 4 files changed + import_rows.py test new file. `git status --porcelain` at seq 239 shows:
+```
+ M src/ledger/import_rows.py
+ M src/ledger/money.py
+ M src/ledger/settlement.py
+ M tests/test_settlement.py
+?? tests/test_import_rows.py
+```
+And invoicing.py is NOT modified — so the invoicing.py edits were reverted. Interesting. In the earlier L1 slice table, the decisions listed a table with three rows: 导入边界, 结算边界, and one more row (导出端约定 convention note). The invoicing.py change was experimented with then reverted.
+
+So the final changed set: money.py → import_rows.py → settlement.py → tests/test_import_rows.py → tests/test_settlement.py → MEMORY.md.
+
+The "Root Cause" field in the playbook lists: `edit src/ledger/money.py (ensure_usable_price, format_money) -> edit src/ledger/import_rows.py (parse_price, parse_price_checked, parse_rows) -> edit src/ledger/settlement.py (settle_invoice)`.
+
+**2) 验证命令**
+
+- 主验证：`PYTHONPATH=src python3 -m pytest -q 2>&1 | tail -5`（或 `| tail -8`）→ 结果 `2 failed, 39 passed`
+- 稳定性 & 按文件隔离：
+```
+for i in 1 2 3; do PYTHONPATH=src python3 -m pytest -q 2>&1 | tail -1; done
+for f in tests/test_import_rows.py tests/test_settlement.py ...; do PYTHONPATH=src python3 -m pytest "$f" -q 2>&1 | tail -1; done
+```
+  → test_import_rows.py 15 passed, test_settlement.py 14 passed, 剩下 2 failed 是无关的既有用例（test_pagination.py::test_pagination_does_not_lose_invoices 和 test_rates.py::test_get_cached_rate_falls_back_to_rate_table）
+- 收集用例计数：`PYTHONPATH=src python3 -m pytest --collect-only -q` → 41 tests collected；以及 `--collect-only` per file → 15 / 14
+- 记忆里记录的 "Verification Cmds" 也包括 `PYTHONPATH=src python3 -m pytest --collect-only -q 2>&1 && PYTHONPATH=src python3 -m pytest tests/test_import_rows.py --collect-only -q 2>&1 && PYTHONPATH=src python3 -m pytest tests/test_settlement.py --collect-only -q 2>&1`
+
+**3) 入口函数名**
+
+`ensure_usable_price(value, description="line") -> float`，定义在 `src/ledger/money.py:55`（fix 后）。它抛出 `ledger.errors.ValidationError`（而不是 ValueError）。调用点：
+- import_rows.py:15 `parse_price` → 委托
+- settlement.py:25 `settle_invoice`、:65 `settle_line`、:91 `settle_invoice_checked`
+
+Caveat: 当前 /work 工作区仍是修复前的代码 — money.py 中没有 ensure_usable_price，import_rows.py 的 parse_price 仍是 `float(raw)`。修复发生在另一个检出目录 (/home/kent/e2e/abl/ledger-svc)。而且该工作区没有 MEMORY.md（散文载体），只有 .tmem 结构化库。
+
+Let me note: the error was `ValueError: cannot convert NaN to integer` — root cause chain: exporter writes empty cell as literal text "nan" → import_rows.parse_price does float("nan") → nan passes through Decimal.quantize silently → int(nan*100) raises ValueError.
+
+Also note parse_price('') raised ValueError: could not convert string to float: '' during the diagnostic script.
+
+Let me write the answer in Chinese, since the user asked in Chinese.
+
+I should also mention the format_money change in money.py — the diff shows format_money was touched (seq 101) but the final diff of money.py doesn't show format_money changes... Let me re-check the final diff of money.py at seq 208: it shows the import addition and the new ensure_usable_price function; format_money body unchanged in the final diff (the diff context shows format_money unchanged). Actually the diff shows only context lines for format_money. So format_money was edited during the session but reverted, or the edit was neutralized. The MUTATE metadata lists symbols (ensure_usable_price, format_money) for money.py. The final diff shows format_money unchanged. I'll mention it briefly: money.py 是第一个被改的文件（新增 ensure_usable_price；format_money 一度被改但最终 diff 中保留原样）。
+
+Hmm, better to be accurate and mention the final diff. Let me phrase carefully.
+
+Also: tests/test_import_rows.py 是**新建**文件 (Created file). tests/test_settlement.py 是修改。
+
+Let me write the final answer.

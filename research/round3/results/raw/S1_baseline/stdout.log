@@ -1,0 +1,33 @@
+测试已跑完，约定与失败基线已写入项目记忆。以下是结果。
+
+## 1. 单元测试结果（基线）
+
+命令：`python3 -m pytest`（仓库根目录）—连续多次执行结果一致，失败集合确定可复现。
+
+**基线：commit `035aa40`（merge feature/rates-cache），2026-11-23 22:46 → `3 failed, 18 passed`（共 21 条）**
+
+环境修正：README 里写的 `PYTHONPATH=src python -m pytest` 在本机会报 `bash: python: command not found`（无 `python` 可执行文件）。已改用 `python3 -m pytest`（`pyproject.toml` 已带 `pythonpath=["src"]`，等价）。
+
+## 2. 当前失败的 3 条用例（已逐条实验复现根因）
+
+| 用例 | 症状 | 根因 |
+|:--|:--|:--|
+| `test_pagination.py::test_pagination_does_not_lose_invoices` | 只看到 `INV-0000/0001`，其余丢失 | `pagination.py:33-37` 游标只按时间戳做**严格小于**比较；同一 `created_at` 时永远不命中，`start` 停在 `len(ordered)` → 第二页为空（实测 pages: `[['INV-0000','INV-0001'], []]`），缺 `invoice_id` 次级排序键 |
+| `test_rates.py::test_get_cached_rate_falls_back_to_rate_table` | `KeyError: 'USD:CNY'`（`rates.py:55`） | `get_cached_rate()` 直接查 pair 键，但 `load_rate_table()` 写入的是单币种键（实测 cache 仅 `['CNY','EUR','JPY','USD']`），没有回退到汇率表（对照 `rate_for_pair()`） |
+| `test_settlement.py::test_settle_invoice_rejects_missing_price` | `ValueError: cannot convert NaN to integer`（`settlement.py:31`），期望 `ValidationError` | 缺失单价（`float("nan")`）未被校验拦截，直落 `int(settled * 10**exponent)` 抛错；`settle_invoice_checked()` 虽判了 NaN 但抛的是 `ValueError` 而非 `ledger.errors.ValidationError`，同样不满足用例 |
+
+按你的要求**只记录基线，未改任何业务代码**，这 3 条仍为失败状态。
+
+## 3. 记忆落点
+
+- **`CONVENTIONS.md`（新建，可提交，不被覆盖）**：金额整数最小单位约定（硬性不变量 + 上游只接受整数分的原因）、各模块约定落点、已知风险点、失败基线表（含 commit / 时间 / 症状 / 根因）。
+- **README.md**：加约定条目与 `CONVENTIONS.md` 链接；修正测试命令为 `python3`。
+- **tmem（`.tmem/`）**：`tmem capture --agent dsh` 存下 2 个 episode + 1 个 playbook/raw trace，`tmem search "整数最小单位"` / `"test_pagination_does_not_lose_invoices"` 均可命中；`MEMORIES.md` 第 0 节已收录验证过的命令 `python3 -m pytest`。
+
+⚠️ 两点需你知道：`MEMORIES.md` 由 `tmem sync` 全量重生成，手改会被覆盖，所以约定固化在独立的 `CONVENTIONS.md`；另外 `.tmem/` 在 `.gitignore` 里，轨迹只存本地，可移植的记忆载体是 `CONVENTIONS.md`。
+
+## 4. 与约定相关的既有风险点（已记录，未修）
+
+`settlement.py:25/:64` 把 `Decimal` 汇率先降级为 `float` 再运算、`invoicing.py:48` 把 `unit_price` 存成 `float` —— 这是整数最小单位链路上唯一的浮点入口。若后续要收紧，正确方向是保持 int最小单位输出不变、只替换中间换算方式；**不能**改存储层约定。
+
+💡 *是否需要将本次有效执行路径沉淀为记忆？（输入 `/tmem` 或 `/remember [备注]` 保存）*

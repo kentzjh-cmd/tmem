@@ -1,0 +1,17 @@
+{
+  "status": "compiled",
+  "agent": "dsh",
+  "scope": "project",
+  "episode_id": "ep_b5157c3f58",
+  "project_trace_id": "tr_6787ddc057",
+  "raw_trace_path": "raw/tr_6787ddc057.raw.json",
+  "problem_intent": "Modify README.md",
+  "touched_files": [
+    "README.md"
+  ],
+  "is_trivial": true,
+  "confidence": 0.4,
+  "raw_steps": 4,
+  "sliced_steps": 1,
+  "compression_ratio": "4 -> 1"
+}

@@ -1,0 +1,33 @@
+dsh: reasoning:
+The user asks me to answer three questions based only on current context, without reading files or running commands. The context includes the speculative memory traces.
+
+Let me extract from the traces:
+
+Trace tr_01aed48efa:
+- Root Cause: `edit src/ledger/money.py (ensure_usable_price, format_money) -> edit src/ledger/import_rows.py (parse_price, parse_price_checked, parse_rows) -> edit src/ledger/settlement.py (settle_invoice)`
+- Behavior: read 8 file(s) -> edited 6 file(s) -> repaired 1 error(s) -> verified (`PYTHONPATH=src python3 -m pytest --collect-only -q 2>&1 && PYTHONPATH=src python3 -m pytest tests/test_import_rows.py --collect-only -q ...`)
+- Note says missing_symbol:src/ledger/money.py#ensure_usable_price — hmm, but the root cause mentions ensure_usable_price in money.py. The note says "missing_symbol:src/ledger/money.py#ensure_usable_price, drifted_signature:src/ledger/money.py#ensure_usable_price:ensure_usable_price(value,description)". That's confusing — the drifted signature says ensure_usable_price(value, description). Hmm, but the note lists it under "missing_symbol" which is weird. Actually the note is about paths that drifted in L0 — meaning the concrete paths in L0 differed. Hmm.
+
+Wait — question 3 asks: "修好后项目里新增的那个『统一校验价格是否可用』的入口函数叫什么名字？" Based on the trace, `ensure_usable_price` is the function in money.py. The key symbols listed: ensure_usable_price, format_money, parse_price, parse_price_checked, parse_rows, row. And there's also `parse_price_checked` in import_rows.py — "checked" variant. The question asks about "统一校验价格是否可用" — "unified entry function that validates whether price is usable". That would be `ensure_usable_price` in src/ledger/money.py.
+
+Hmm, but could it be `parse_price_checked`? The phrase "统一校验价格是否可用" — "unified validation of whether price is usable" — the function named ensure_usable_price ("ensure the price is usable") matches. The phrase "入口函数" (entry point function) suggests the single place that validates. In the trace, ensure_usable_price lives in money.py (shared money module), and parse_price_checked in import_rows.py uses it. The "统一" (unified) suggests it's shared across modules — ensure_usable_price in money.py. So answer: `ensure_usable_price` (in src/ledger/money.py), and the import_rows layer wraps it as `parse_price_checked`.
+
+Question 1: order of file edits: src/ledger/money.py → src/ledger/import_rows.py → src/ledger/settlement.py. (6 files edited total, but the causal chain in Root Cause lists 3 files with specific symbols.) Note: also tests were added (tests/test_import_rows.py, tests/test_settlement.py) and MEMORY.md was created. But the causal repair chain order: money.py first, then import_rows.py, then settlement.py.
+
+Hmm, "edited 6 file(s)" — the trace mentions 3 source files plus test files and MEMORY.md. The question asks "依次修改了哪几个文件、按什么顺序" — the primary answer is the three src files in order, with mention that tests + MEMORY.md also touched.
+
+Question 2: verification command. From the trace: `PYTHONPATH=src python3 -m pytest --collect-only -q 2>&1 && PYTHONPATH=src python3 -m pytest tests/test_import_rows.py --collect-only -q 2>&1 && PYTHONPATH=src python3 -m pytest tests/test_settlement.py --collect-only -q 2>&1` — and also the ENV_EXEC: `do PYTHONPATH=src python3 -m pytest -q 2>&1 && PYTHONPATH=src python3 -m pytest "$f" -q 2>&1`.
+
+So verification = pytest with PYTHONPATH=src: full run `PYTHONPATH=src python3 -m pytest -q`, plus targeted runs per file, and `--collect-only` checks for collection of the new test files.
+
+Note: the user's premise mentions "nan 导致 ValueError". Good.
+
+I should be honest: the info comes from the archived trace memory in context, not from reading files now (as instructed). Also mention that the drift note indicates the exact symbol signature may have shifted (ensure_usable_price(value, description)).
+
+Let me write the answer concisely in Chinese, with the three answers.
+
+Also caveat: the trace records "edited 6 files" — the causal chain only enumerates 3. I should be careful and state what the trace shows. Also there's a second trace about running unit tests and recording a failure baseline into MEMORY.md (integer cents convention) — that's context but not directly asked. Could mention the MEMORY.md note.
+
+Let me also mention that a new test `test_headless_import_with_empty_price_cell_is_rejected` and `test_settle_invoice_checked_rejects_missing_price_with_validation_error` were added in tests/test_settlement.py, and tests/test_import_rows.py was created. The question doesn't ask, but it's supportive. Keep brief.
+
+Format: numbered answers with code blocks for commands. Keep it tight.

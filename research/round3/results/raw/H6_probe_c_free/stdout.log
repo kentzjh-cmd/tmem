@@ -1,0 +1,47 @@
+我没有运行任何命令，全部结论来自项目记忆/笔记文件（只读）：`.tmem/traces/tr_e66fe4c00d.json`、`.tmem/episodes/ep_7dc599f0ce.json`、`.tmem/raw/tr_e66fe4c00d.raw.json`（注：这些笔记在同级的 `/home/kent/e2e/r3/ledger-svc/.tmem/` 下；当前工作区 `ledger-svc-control-c/.tmem/` 尚无 trace）。
+
+## 1) 修改的文件与顺序
+
+对应 trace `tr_e66fe4c00d` 的 `l0_critical_path`（step 号即真实执行顺序），是一次"自底向上"的修复：
+
+| 顺序 | step | 文件 | 改了什么 |
+|---|---|---|---|
+| 1 | 108 | `src/ledger/money.py` | 新增唯一的单价合法性入口 `validate_price(value, description)`（NaN / inf / 无法解析一律抛 `ledger.errors.ValidationError`），并整理 `format_money` |
+| 2 | 118 | `src/ledger/import_rows.py` | `parse_price` / `parse_price_checked` / `parse_rows` / `rows_to_tuples` 全部改走 `validate_price`（导入边界拦截） |
+| 3 | 126 | `src/ledger/invoicing.py` | `build_invoice` 只校验发票级数据与"单价能否转 float"，不拒 NaN（否则 `test_settle_invoice_rejects_missing_price` 会在 `pytest.raises` 之外炸掉） |
+| 4 | 134 | `src/ledger/settlement.py` | `settle_invoice` / `settle_line` / `settle_invoice_checked` 在算术前逐行校验（结算边界拦截） |
+| 5 | 149 | `src/ledger/cli.py` | `main` 捕获 `LedgerError`，打印错误并返回退出码 1（headless 不再吐裸 traceback） |
+| 6 | 178 | `tests/test_import_rows.py` | 新建，13 条用例（含 headless 全链路不漏 NaN） |
+| 7 | 183 | `tests/test_settlement.py` | 新增 8 条（missing/infinite/non-numeric price → `ValidationError` 等） |
+| 8 | 198 | `tests/test_invoicing.py` | 新增 2 条 |
+| 9 | 203 | `tests/test_cli.py` | 新建，2 条（正常输出 / 缺价退出码） |
+| 10 | 260 | `CONVENTIONS.md` | 写入 §1.2「缺失价格的处理约定」与刷新失败基线表 |
+| 11 | 270 | `README.md` | 补充约定链接与缺失单价说明 |
+
+净变更：已跟踪 8 个文件 `144 insertions(+), 17 deletions(-)`，外加 2 个新测试文件（89 + 33 行）。只加校验、没改任何金额换算逻辑，结算输出仍是 int 最小单位。
+
+> 记忆里压缩版的一句话根因链：`edit src/ledger/money.py (format_money, validate_price) -> edit src/ledger/import_rows.py (parse_price) -> edit src/ledger/invoicing.py (build_invoice)`。
+
+## 2) 验证命令
+
+- **定向验证（绿）**：`python3 -m pytest tests/test_settlement.py tests/test_import_rows.py tests/test_cli.py tests/test_invoicing.py -q` → `35 passed in 0.06s`
+- **全量验证**：`python3 -m pytest` → `2 failed, 42 passed`（修复前基线是 `3 failed, 18 passed`；修掉的正是 `tests/test_settlement.py::test_settle_invoice_rejects_missing_price`，剩下 2 条是**独立**的分页游标 / 汇率缓存回退缺陷，本次未动）
+- 另外做过一次 `tmem capture --agent dsh --intent "修复 headless 导入空价格单元格…" --full-session --force` 把这条路径沉淀进项目记忆。
+
+## 3) `parse_price_checked` 的来源提交
+
+**`54e1833` —— `feat(import): reject empty price cells`**（完整 SHA `54e1833476781dc61751173b7a88a76160fc28ae`，作者 e2e-bot，2026-11-23 22:45:32 +0800）。
+
+该提交的 diff 正是：
+
+```
++def parse_price_checked(raw, description: str = "") -> float:
++    value = float(raw)
++    if value != value:  # NaN
++        raise ValueError(f"missing price for {description or 'line'}")
++    return value
+```
+
+它只被**声明**、从未被主链路调用（`parse_price` 走的是 `float(raw)`），而且抛的是裸 `ValueError` 而不是项目的 `ValidationError` —— 这正是本次 NaN 事故的根因之一。本次修复把它改成了 `parse_price` 的别名（同样抛 `ValidationError`），当前工作区 `src/ledger/import_rows.py:45` 仍是修复前的原始定义，全仓除定义处外无任何调用点。
+
+💡 *是否需要将本次有效执行路径沉淀为记忆？（输入 `/tmem` 或 `/remember [备注]` 保存）*

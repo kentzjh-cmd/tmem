@@ -1,0 +1,161 @@
+dsh: reasoning:
+The user says "headless" — meaning don't run any commands, just read project memory files. Let me check MEMORY.md and .tmem/.
+
+I need to use read/glob tools (not bash commands). Let me look.
+dsh: reasoning:
+Let me look at the workspace contents generally.
+dsh: reasoning:
+No MEMORY.md and no .tmem. The AGENTS.md says: "不存在的载体直接忽略即可，不要凭空推测记忆内容。" — If the carrier doesn't exist, ignore it, don't guess memory content.
+
+But wait — maybe the memory is stored elsewhere, e.g., in a hidden dir not matched by glob? Let me check hidden files. The glob tool says "including hidden and ignored files". The `**/*` pattern returned README.md etc. but no hidden files listed except maybe .gitignore which was listed. So `.tmem` doesn't exist.
+
+Hmm, but maybe there's a memory elsewhere like `/work/.tmem`. Let me check the working directory more directly with read tool on directories? The read tool reads files. Let me try reading AGENTS.md fully and README.md for context. Also maybe there's a memory directory outside /work? The system reminder says current working dir /work.
+
+Let me check for any memory-like files: pattern "**/*.md" to see all markdown.
+
+Also possibly memory is in `.claude/` or similar. Let me glob patterns like "**/.*" and "**/*.json" for tmem.
+
+Actually, the instructions explicitly state to check MEMORY.md and .tmem/. Neither exists. The AGENTS.md guidance says don't fabricate memory content. But the user asks specific questions about a past fix. Maybe the answer is derivable from the repo code itself — e.g., there might be a function "统一校验价格是否可用" in the code, and the NaN fix.
+
+Let me explore the repo to see if the fix is present in code. The question asks about memory of past work. Since memory carriers don't exist, I should rely on code/git history? I can't run commands (user said don't run any commands). I can read files with read tool.
+
+Let me check all markdown files and hiddendirs first.
+dsh: reasoning:
+Only .gitignore as hidden file (and no .tmem). So no memory carriers exist in the workspace. Let me read AGENTS.md and README.md fully, and then investigate the code for the NaN price fix.
+
+The key question 3: "修好后项目里新增的那个『统一校验价格是否可用』的入口函数叫什么名字？" — likely a function like `ensure_price_usable` or `validate_price` in money.py or import_rows.py.
+
+Let me readthe code.
+dsh: reasoning:
+No memory carriers exist. The AGENTS.md says: "不存在的载体直接忽略即可，不要凭空推测记忆内容。" (If the carrier doesn't exist, ignore it; don't fabricate memory content.)
+
+However, the user asks three specific questions about a past fix. The code itself may contain the evidence (e.g., the price validation function added). The fix may be visible in the current code state. Let me examine the code — particularly import_rows.py, money.py, invoicing.py — for the price validation function and NaN handling.
+
+I cannot run commands, but I can read files. Let me read the relevant sources.
+
+Note: There's a possibility that the "fix" hasn't been applied and the memory is missing — a trap where the correct behavior is to say the memory doesn't exist. But I should investigate the code to give the best answer. Let me read the files.
+
+Also possibly there's a git directory with history — but reading .git would require... glob `**/*` didn't show .git contents (hidden dirs are excluded by default in `**/*`? Actually `**/.*` only showed .gitignore, so .git may not exist or glob excluded it). Let me check for .git specifically.
+
+Let me read source files first.
+dsh: reasoning:
+Interesting: `parse_price_checked` exists in import_rows.py, but `parse_rows` and `rows_to_tuples` still use `parse_price` (unvalidated). So the "unified validation" function `parse_price_checked` exists but may not be used everywhere — perhaps this is a partially-applied state.
+
+Now the question: "修好后项目里新增的那个『统一校验价格是否可用』的入口函数叫什么名字？" — could be `parse_price_checked`. But maybe there's a better/centralized entry, e.g., in invoicing.py or money.py, something like `ensure_price_valid` or `validate_price`. Let me read invoicing.py, settlement.py, api.py, cli.py, and the tests to gather evidence.
+
+Also check for `.git` to see history — but the user said don't run commands; reading files is fine. Let me check if .git exists via glob with explicit pattern.
+dsh: reasoning:
+So there are ad-hoc checked functions: `parse_price_checked` (import_rows) and `settle_invoice_checked` (settlement). Neither seems to be a single "统一校验价格是否可用" entry point used everywhere.
+
+The question mentions "修好后项目里新增的那个『统一校验价格是否可用』的入口函数" — maybe it's something like `ensure_price_valid` / `is_price_valid` / `validate_price`. Let me search the repo for such names.
+
+Also, the memory carriers don't exist. The user's question is premised on the memory containing this info. AGENTS.md says don't fabricate. But maybe the memory is in a git repo (.git) — the fix's history might be in git commits. But I can't run git commands (user said don't run commands). However I could read .git files with read tool (e.g., .git/COMMIT_EDITMSG, logs/HEAD). Let me check whether .git exists.
+
+Let me grep for "price" across the repo to find any validation entry function, and check .git presence.
+dsh: reasoning:
+No `.git` directory. So there's no git history to consult, and no memory carriers (MEMORY.md or .tmem/).
+
+Now, the current code state: `parse_price_checked` and `settle_invoice_checked` exist, but they are *per-module* ad-hoc checks. The question asks about a single unified entry function for "统一校验价格是否可用" that was added after the fix.
+
+Hmm — but wait. Maybe the fix hasn't actually been completed in the current tree: `parse_rows` and `rows_to_tuples` still call `parse_price` (no NaN check). Let me check tests to see what's expected. Let me read the test files, especially test_settlement.py line 34 and any test referencing import_rows.
+
+Let me also read api.py, cli.py, store.py, audit.py, idempotency.py, pagination.py, errors.py, rates.py, clock.py for completeness — particularly for anything like a validation helper module (e.g., `validation.py` doesn't exist).
+
+Let me read tests.
+dsh: reasoning:
+Important observation: `tests/test_settlement.py::test_settle_invoice_rejects_missing_price` expects `settle_invoice` to raise `ValidationError` for NaN unit price. But current `settle_invoice` does NOT validate price → the test would FAIL currently (NaN propagates: Decimal(nan) → Decimal('NaN'), quantize raises InvalidOperation, not ValidationError). Actually `Decimal(float('nan'))` = Decimal('NaN'); total += NaN → Decimal('NaN'); quantize → raises InvalidOperation ("decimal.InvalidOperation"), which is not ValidationError. So the test fails.
+
+Also `settle_invoice_checked` raises ValueError, not ValidationError.
+
+So the current tree state suggests the fix is NOT complete — the "unified price validation entry function" may not exist yet. Hmm. The question presupposes a past fix with memory records. The memory carriers are absent, and there's no git history.
+
+Wait — maybe there's more: let me check errors.py, api.py, cli.py, and other files. Maybe there's a `validate_price` somewhere else (e.g., in a `validation` module or in `store.py`). My grep for "price" covered all .py files in /work — 19 matches only, all shown. So no unified function like `ensure_price_valid`.
+
+Let me grep for "nan" and "usable" and "valid" to be thorough.
+
+Also let me check the remaining files for context: errors.py (ValidationError), api.py, cli.py, store.py, audit.py, idempotency.py, pagination.py, rates.py, clock.py, __init__.py, and the other tests.
+
+Key finding for the answer: The project memory carriers (MEMORY.md / .tmem/) do not exist in this workspace, so I cannot answer questions 1 and 2 from memory — AGENTS.md explicitly says not to fabricate. But I can report what the repository code shows as evidence of the intended fix.
+
+Let me gather more evidence to give a helpful answer: which files would need to change, what the validation command is (README says `PYTHONPATH=src python -m pytest`), and what the unified entry function might be named — but is it present? Let me check errors.py to see ValidationError and whether there's a price validation helper there.
+
+Let me read the remaining sourcefiles.
+dsh: reasoning:
+No unified price validation entry function exists in the current tree.
+
+Let me check remaining files just to be thorough: cli.py, store.py, audit.py, idempotency.py, pagination.py, rates.py, clock.py and other tests. Maybe there's a "validation" module hidden or a `prices.py`.
+
+Actually glob already showed the complete file list: src/ledger/{__init__,clock,api,cli,audit,import_rows,errors,invoicing,idempotency,settlement,pagination,store,money,rates}.py and tests/{test_invoicing,test_idempotency,test_rates,test_pagination,test_settlement}.py.
+
+Let me grep for "nan" and "usable" across the whole repo (including non-py) and read cli.py + store.py quickly to be thorough about where NaN could hit "cannot convert NaN to integer".
+
+Where does "cannot convert NaN to integer" come from? `int(Decimal('NaN'))` raises `ValueError: cannot convert NaN to integer`. Yes! In settlement.py: `int(settled * (10 ** exponent))` where settled is NaN. Or in money.py `int(scaled.to_integral_value(...))` with Decimal('NaN') → InvalidOperation? Let's check: Decimal('NaN').to_integral_value() returns Decimal('NaN'); int(Decimal('NaN')) raises ValueError: cannot convert NaN to integer. Yes.
+
+Also `int(float('nan'))` → ValueError: cannot convert float NaN to integer (different message). The exact message "cannot convert NaN to integer" comes from `int(Decimal('NaN'))`.
+
+So the bug: import price 'nan' → float NaN → settlement Decimal NaN → int() raises ValueError: cannot convert NaN to integer.
+
+Now the fix: the memory would have recorded which files were changed in what order. Since memory carriers don't exist, I can't know the exact historical order. I should be honest about that and give evidence-based answer from the code.
+
+Let me still read cli.py and store.py to see if there's price validation in CLI import path, and check the remaining tests for hints (e.g., a test that references a unified function name).
+
+Let me grep for "usable", "valid", "ensure", "check"across the repo.
+dsh: reasoning:
+Summary of findings:
+
+Memory carriers: neither `MEMORY.md` nor `.tmem/` exists in the workspace. AGENTS.md says to ignore non-existent carriers and NOT to fabricate memory content. There's also no `.git` history available (glob for `.git/**` found nothing).
+
+So questions 1 and 2 cannot be answered from project memory — no record of the file modification order or the verification command used. Question 3: no unified "price validation entry function" exists in the code; instead there are two separate ad-hoc checks:
+- `parse_price_checked(raw, description="")` in `src/ledger/import_rows.py` (raises ValueError)
+- `settle_invoice_checked(invoice, base_currency, quote_currency)` in `src/ledger/settlement.py` (raises ValueError)
+
+Neither is used by the main code paths: `parse_rows` and `rows_to_tuples` still call the unguarded `parse_price`; `settle_invoice` (the function actually used by `settle_and_invoice` → API/CLI) has no price guard at all. Meanwhile `tests/test_settlement.py::test_settle_invoice_rejects_missing_price` expects `settle_invoice` to raise `ValidationError` on a NaN price — so that test currently fails (NaN → `Decimal('NaN')` → `int(Decimal('NaN'))` → ValueError: cannot convert NaN to integer).
+
+Hmm, wait — is the ValidationError raised anywhere for quantity? build_invoice raises ValidationError for quantity <= 0. For NaN price: build_invoice does `float(unit_price)` → nan, no error. settle_invoice: Decimal(nan) * ... = NaN; total = NaN; total.quantize(quantum) → Decimal('NaN').quantize raises InvalidOperation. Actually let me think: Decimal('NaN').quantize(Decimal('0.01')) → raises InvalidOperation? Per docs, quantize on NaN returns NaN if... Let me recall: `Decimal('NaN').quantize(Decimal('0.01'))` raises InvalidOperation ("quantize result is not finite"?). Actually in CPython, Decimal('NaN').quantize(Decimal('1')) returns Decimal('NaN'). Hmm, the spec says quantize returns NaN for NaN input? Let me check: In the decimal spec, quantize of NaN returns NaN (quiet). Actually the implementation: `Decimal('NaN').quantize(Decimal('0.1'))` → raises InvalidOperation: "cannot quantize NaN"? I believe the decimal module raises InvalidOperation for quantize with NaN in some contexts. Testing in memory: 
+
+>>> from decimal import Decimal
+>>> Decimal('NaN').quantize(Decimal('0.01'))
+Decimal('NaN')
+
+I believe that returns NaN (quiet). Then `int(settled * (10**exponent))` → int(Decimal('NaN')) → ValueError: cannot convert NaN to integer. That matches the reported error exactly! Good — so the error path is settlement.py line 31 `return int(settled * (10 ** exponent))`.
+
+So the fix's goal: validate price before it reaches settlement, and raise ValidationError per the existing test.
+
+But my job here is to answer the three questions from project memory, which doesn't exist. The honest answer: no memory carriers present → cannot answer 1 & 2 from memory; provide code-derived evidence and note the discrepancy. For question 3, the closest existing entry points are `parse_price_checked` and `settle_invoice_checked`; there is no single unified function. If the memory's answer was e.g. `parse_price_checked`... but the user says "统一校验价格是否可用" (unified validation of whether price is usable). Neither is truly unified.
+
+Wait — maybe I should double-check for other memory locations outside /work, e.g. a global ~/.tmem or /root/.tmem. The AGENTS.md refers to workspace-local. The user asked to check "本项目可用的项目记忆". Let me check whether there are other filesystems: I could use glob with path "/" for "**/MEMORY.md" — that might be huge/slow. Let me try targeted: glob path "/root" pattern "**/MEMORY.md", and path "/home" etc. Actually I don't know the home dir. Let me try a couple of targeted globs quickly: path "." is /work. Try glob with path "/" pattern ".tmem/**" — risky but glob is read-only and bounded to 100 results.
+
+Let me try: glob path="/root" pattern="**/*MEMORY*", glob path="/root" pattern="**/.tmem/**", glob path="/tmp" pattern="**/MEMORY.md". And also check for a tmem binary? AGENTS.md mentions `tmem lookup` — but user said don't run commands, so I can't run tmem anyway.
+
+Let me do a quick set of targeted globs outside /work to bethorough.
+dsh: reasoning:
+Confirmed: no MEMORY.md or .tmem accessible. /root is permission-denied (sandbox), so I can't check there — but the workspace is the project scope and it has neither carrier.
+
+Now let me also verify the remaining source files quickly for anything relevant (store.py, audit.py, idempotency.py, pagination.py, rates.py, clock.py) and other tests — mainly to be complete about whether a unified validation function exists anywhere. Grep already covered "price" across all .py files, so nothing price-related is in those. Good enough.
+
+Let me also check pyproject.toml for pytest config (test command) — the README says `PYTHONPATH=src python -m pytest`. pyproject may define config.
+dsh: reasoning:
+Good. Now I have everything needed to answer.
+
+Final answer structure (in Chinese, matching the user's language):
+
+核心结论：本工作区**不存在**任何项目记忆载体（无 `MEMORY.md`，无 `.tmem/`），也没有 `.git` 历史可查。按照 AGENTS.md 的指引「不存在的载体直接忽略即可，不要凭空推测记忆内容」，我不能用「记忆」来回答第 1、2 问。但我可以从当前代码状态给出可核对的证据：
+
+1) 修改文件与顺序：无法从记忆确认；当前仓库只留下"半成品"痕迹：
+   - `src/ledger/import_rows.py`：新增了 `parse_price_checked()`（第45-50行），但 `parse_rows()`（第25行）和 `rows_to_tuples()`（第38行）仍在调用未校验的 `parse_price()` → 说明导入侧没有真正接上统一校验。
+   - `src/ledger/settlement.py`：新增了 `settle_invoice_checked()`（第86-91行），同样只在自己内部做 `unit_price != unit_price` 的 NaN 检查，抛的是 `ValueError`，而生产路径 `settle_invoice()`（第18-31行）完全没有校验，NaN 会一路走到第31行 `int(settled * (10 ** exponent))` → `int(Decimal('NaN'))` → `ValueError: cannot convert NaN to integer`（与报错文案完全吻合）。
+   - 错误类型不一致：`tests/test_settlement.py:34` 期望 `ValidationError`，而两个 `_checked` 函数抛的是 `ValueError`。
+   - 按依赖关系推断，一个合理的修复顺序应该是：先 errors.py（若要新增/复用统一异常）→ money.py 或新建一个校验模块放"统一入口" → import_rows.py（接入）→ invoicing.py（build_invoice 入口）→ settlement.py（最后兜底），最后 tests/。但这只是我的推断，不是记忆内容。
+
+2) 验证命令：仓库约定的测试命令是 `PYTHONPATH=src python -m pytest`（README 第19行；pyproject 里也配了 `pythonpath=["src"]`、`testpaths=["tests"]`，所以在项目根目录直接 `python -m pytest` 也行）。针对性验证可用 `python -m pytest tests/test_settlement.py -k price`。再次说明：我没有执行任何命令，也不清楚当时实际用的哪一条。
+
+3) 统一入口函数名：**当前代码里并不存在这样一个统一的入口函数**。现存的是两个各自为政、语义相近的函数：
+   - `parse_price_checked(raw, description="")`（src/ledger/import_rows.py:45）
+   - `settle_invoice_checked(invoice, base_currency, quote_currency)`（src/ledger/settlement.py:86）
+   两者都只是局部检查，抛 `ValueError`，没有被主流程调用。所以如果你记忆中那个"统一校验价格是否可用"的函数名是 `parse_price_checked`，那它只覆盖了导入侧，且未接线。
+
+I should be careful to flag: maybe the user wants me to say the name. But honesty requires noting there's no unified function. I can note that if the fix were to be completed now, the natural candidate name would be `parse_price_checked` — but I shouldn't claim it is the answer without evidence.
+
+Also mention that I did not run any commands (per instruction) and did not modify files.
+
+Let me write the answer in Chinese, clear and structured.

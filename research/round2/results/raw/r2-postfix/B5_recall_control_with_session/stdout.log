@@ -1,0 +1,34 @@
+直接依据本检出（HEAD `5efcfca`）的项目记忆 `AGENTS.md` 第 3 节回答，未读源码。
+
+## 1) 为什么所有金额都用整数最小单位存储
+
+因为**上游对账系统只接受整数分**，这是本项目**第一约定，不可变更**：
+
+- **不得**把落库金额改成 `float` / `Decimal`；
+- **不得**在结算链路上引入二进制浮点（`float(rate)` + `Decimal(float)` 这类写法是**现存缺陷**，不是范例）；
+- `Decimal` **只允许**用作跨币种换算的**中间过程**，落地值必须是 `int` 最小单位；
+- 任何改动都**不得改变已落库的结算金额**（改口径 ≠ 改约定，口径问题另开单评估）。
+
+落地方式：`money.to_minor` / `money.from_minor`，小数位由 `CURRENCY_EXPONENT` 决定（CNY/USD/EUR 为分，JPY 为元）；`settlement.settle_invoice` / `settle_line` 返回 `int` 最小单位；`settlement.settled_amount` 只是把 `int` 最小单位再显示成 `Decimal`，**不是存储口径**。
+
+## 2) 导入表格里价格为 `nan` 时的约定
+
+**约定（应当的行为）**：在**结算边界显式拒绝缺失价格**，抛项目自己的 `ledger.errors.ValidationError`（`LedgerError` 子类）——因为 `api.handle()` 只捕获 `LedgerError` 子类，裸 `ValueError` 会变成 500 式崩溃。**零价 `0.0` 是合法值，不得误拒。**
+
+**现状（已知失败 3，尚未修复）**：`settle_invoice()` **没有**缺失价格校验；空单元格被导出器写成文本 `nan` → `unit_price = nan` → `Decimal('NaN')` 一路走到 `int()` → 裸 `ValueError: cannot convert NaN to integer`（`src/ledger/settlement.py:31`）。`settle_invoice_checked()` 虽然存在，但抛的是裸 `ValueError`，而且**没有**被 `settle_invoice()` 调用。
+
+所以：约定是「抛 `ValidationError` 明确拒绝」，实现尚未落实。
+
+## 3) 结算金额的舍入策略
+
+**记忆里写死的只有三条硬约束**：
+
+1. 结算结果必须收敛为 **`int` 最小单位**（跨币种换算可用 `Decimal` 作中间过程，但落库是整数最小单位）；
+2. **不得**走二进制浮点链路；
+3. **不得改变已落库的结算金额**。
+
+**需要说清楚的现状偏差**：当前 `settle_invoice()` / `settle_line()` 用 `float(fetch_rate(...))` + `Decimal(rate)`，`Decimal(line.unit_price)` 直接由 `float` 构造，落到 `int()` 是**向零截断**（不是明确的四舍五入模式）——这属于**待修缺陷**，不能当作既定口径。
+
+**记忆中没有写死具体的舍入模式**（如 `ROUND_HALF_UP`）。所以回答是：**舍入方向的硬约定是「落地 int 最小单位 + 禁止二进制浮点」，具体舍入模式尚未在项目约定中确定**；落地任何舍入改动前必须先确认口径，因为 `rates.fetch_rate(base, quote)` 返回值与其 docstring 方向相反（`fetch_rate("USD","CNY") = 0.1403824016621276356795912064`，按 docstring 应为 `7.1234`，USD 结算金额偏小约 50.7 倍，现有用例只断言 `> 0` 抓不到）——**改口径会改动已落库的结算金额**，必须先单独确认。
+
+> 三题里第 3 题只有部分能在项目记忆中找到权威答案；如需把「明确的舍入模式 + 汇率方向口径」定死为正式约定，建议单开一单评估后再写入 `AGENTS.md` 第 3 节（约定正文不要只写在 `MEMORIES.md`，`tmem sync` 会覆盖手写内容）。

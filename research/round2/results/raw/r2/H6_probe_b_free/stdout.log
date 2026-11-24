@@ -1,0 +1,39 @@
+已读完本检出里的笔记与执行记忆（`AGENTS.md`、`MEMORIES.md`、`.tmem/traces/tr_c1d28efa73.json` / `tr_089f777baf.json` 及其 `raw/*.raw.json`，以及 `.git/logs/HEAD` 的 reflog），未运行任何命令。
+
+## 1) 修这个坑时依次改了哪些文件、顺序
+
+修复分两段 trace：源码修复 `tr_c1d28efa73`，测试 + 记忆 `tr_089f777baf`。顺序如下：
+
+| 顺序 | 文件 | 改动 |
+|:--|:--|:--|
+| 1 | `src/ledger/money.py` | 新增**单一校验原语** `require_usable_price(value, description)`：拒 `nan`/`None`/空串/非数字/`±inf`，抛项目自己的 `ValidationError`；**零价 `0.0` 放行**（trace step 84/89） |
+| 2 | `src/ledger/settlement.py` | 结算边界兜底：`settle_invoice()` 每行先过校验；`settle_line()` 同样过；`settle_invoice_checked()` 改为直接委托 `settle_invoice()`（step 94/99/104） |
+| 3 | `src/ledger/import_rows.py` | 导入边界**根因**修复：`parse_price()` 走 `require_usable_price`；`parse_rows()` / `rows_to_tuples()` 改调 `parse_price_checked(row["unit_price"], row["description"])`；`parse_price_checked()` 改为委托同一原语（step 109） |
+| 4 | `tests/test_settlement.py` | 新增 6 例回归（零价合法、`inf` 拒绝、报错含行描述与 `invoice_id`、`LedgerError` 子类等） |
+| 5 | `tests/test_import_rows.py` | 新建测试文件，12 例（导入边界拒 `nan`/空/None/`inf`、零价通过等） |
+| 6 | `AGENTS.md` | 把“已知失败 3”改写成 ✅ 已修复记录 + 新增“缺失价格约定（不可变更）” |
+| 7 | `README.md` | 面向人的测试基线摘要（39 例 / 37 通过 / 2 失败）与缺失价格约定 |
+| 8 | — | `tmem capture --agent dsh` 沉淀 trace（`tr_c1d28efa73`、`tr_089f777baf`） |
+
+注意 `invoicing.build_invoice()` **有意不改**（把关点是导入边界 + 结算边界）。这些改动**至今仍未提交**，HEAD 仍是 `5efcfca`。
+
+## 2) 修完之后的验证命令
+
+- 全量测试：`cd /home/kent/e2e/r2/ledger-svc-control && PYTHONPATH=src python3 -m pytest -q 2>&1 | tail -20`
+  - 改源码后：`2 failed, 19 passed`（目标失败已消失，剩 pagination / rates 两张单）
+  - 加完测试后/收尾再跑：`2 failed, 37 passed in 0.10s`（39 例 / 6 文件）
+- **金额不变性对比**（关键约束）：
+  `ORIG=$(mktemp -d) && git archive HEAD | tar -x -C "$ORIG" && PYTHONPATH="$ORIG/src" python3 settle_compare_tmp.py > "$ORIG/orig.txt"; PYTHONPATH=src python3 settle_compare_tmp.py > "$ORIG/new.txt"; diff "$ORIG/orig.txt" "$ORIG/new.txt"`
+  → 10 组发票（零价、多行、JPY 0 位小数、跨币种）输出 **IDENTICAL: no settled amount changed**
+- **headless 症状端到端复现**：`git archive HEAD` 取出修复前代码 + `PYTHONPATH=... python3 repro_tmp.py` 对比
+  → 修复前 `ValueError: cannot convert NaN to integer`；修复后导入即 `ValidationError: missing price for bandwidth`，结算兜底 `ValidationError: missing price for line 'bandwidth' of invoice 'INV-9002'`
+- 辅助统计：`PYTHONPATH=src python3 -m pytest --collect-only -q`（39 collected）与逐文件用例计数；临时脚本用 `python3 -c "os.remove(...)"` 清理（`rm` 被沙箱的 trash shim 拦了）。
+- 环境事实：本机**没有 `python`**，只能 `python3`（`pyproject.toml` 已配 `pythonpath=["src"]`）。
+
+## 3) `parse_price_checked` 的引入提交
+
+**`a33c3c8`（完整哈希 `a33c3c84f8ccbd3db3cc6de6a30e4d1fb0d14981`），提交信息 `feat(import): reject empty price cells`**，作者 `e2e-bot <e2e-bot@ledger-svc.local>`，日期 `Sun Nov 22 13:48:16 2026 +0800`。
+
+该提交给 `src/ledger/import_rows.py` 追加了 8 行（`def parse_price_checked(raw, description="")`，内部 `float(raw)` + `if value != value: raise ValueError(...)`），**从未**把 `parse_rows()` / `rows_to_tuples()` 接到它上面 → **从引入之日起就是死代码**，而且抛的是裸 `ValueError`（不是 `ValidationError`），所以既没被调用也没暴露问题。它和 `742c0ad`（`test(settlement): cover rows with missing prices`，同期给 `settlement.py` 加了姊妹死代码 `settle_invoice_checked`）是同一类问题；两者最终在本次 NaN 修复中被收敛到同一校验原语上，`parse_price_checked` 现在已被 `parse_rows` / `rows_to_tuples` 真正调用。
+
+证据来源：仓内 `.git/logs/HEAD` 的 reflog（提交序列 + 提交信息），以及早前会话记录在 tmem store 里的 raw trace 中保存的 `git show a33c3c8` 补丁（显示 `src/ledger/import_rows.py | 8 ++++++++` 与 `parse_price_checked` 的新增 diff）。

@@ -1,0 +1,20 @@
+{
+  "status": "compiled",
+  "agent": "dsh",
+  "scope": "project",
+  "episode_id": "ep_6ee84ae7d8",
+  "project_trace_id": "tr_fab1d893e6",
+  "raw_trace_path": "raw/tr_fab1d893e6.raw.json",
+  "problem_intent": "headless src/ledger/bulk.py 的批量结算在导入行价格是 nan 时会崩（ValueError: cannot convert NaN to integer）。请修好它，让缺失价格被明确拒绝，并补上测试。",
+  "touched_files": [
+    "CONVENTIONS.md",
+    "README.md",
+    "src/ledger/bulk.py",
+    "tests/test_bulk.py"
+  ],
+  "is_trivial": false,
+  "confidence": 0.7,
+  "raw_steps": 37,
+  "sliced_steps": 11,
+  "compression_ratio": "37 -> 11"
+}

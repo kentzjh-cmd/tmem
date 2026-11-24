@@ -1,0 +1,103 @@
+dsh: reasoning:
+No MEMORY.md, but .tmem exists. Let me use tmem_search to retrieve the details. The user said "不要运行任何命令" — don't run any commands. So I should use tmem_search / tmem_expand tools (not bash).
+
+Let me search for the relevant trace.
+
+The speculative memory already gave a lot: the trace tr_01aed48efa. Let me expand it for details on order of files modified, verification commands, and the entry function name (`ensure_usable_price` in src/ledger/money.py).
+
+Let me search and expand.
+dsh: reasoning:
+Now let me expand the episode ep_e98083fe22 at turn level to get details: order of edits, verification commands, and the function name.
+dsh: reasoning:
+I have good detail. But the trace summary at the top said files modified: money.py → import_rows.py → settlement.py. However, the actual episode shows edits in order: money.py (seq 96, 101), import_rows.py (seq 106), invoicing.py (seq 114, 122), settlement.py (seq 127). So order: money.py, import_rows.py, invoicing.py, settlement.py, then tests, then MEMORY.md.
+
+Wait, but the "playbook" L2 Causal Repair mentions only 3 files: money.py -> import_rows.py -> settlement.py. But the raw episode shows invoicing.py also edited. Let me get more of the turn to see the rest (tests files, verification commands, MEMORY.md write). Let me expand more chars / use raw level to see the full sequence.
+
+Let me expand at turn level with larger max_chars, and also check the diffs for invoicing.py and the subsequent test file edits and verification commands.
+
+Let me do tmem_expand with seq windows to see seq 127..255.
+dsh: reasoning:
+Now let me see the final verification commands and the MEMORY.md write (seq 200-255). Also I want the exact final answer text (the "Outcome") which likely contains the summary with file order, verification commands, and the function name.
+
+Let me expand seq 198..255.
+dsh: reasoning:
+I now have most details. Key remaining item: the final answer text (the Outcome / assistant final message) which summarized everything. Let me check the raw trace for the final assistant message to get the exact verification commands listed and the summary of the file order. Let's use level "raw" with a filter query for "pytest" or check the final turn.
+
+Also important nuance: the final `git diff --stat` at seq 208 showed only 4 files changed: import_rows.py, money.py, settlement.py, tests/test_settlement.py — meaning invoicing.py changes were later reverted (seq 166, 171 edits to invoicing.py were reverts of the earlier changes). Indeed at seq 166/171 the invoicing.py was edited again — likely reverting the guard to avoid breaking existing tests (the test failure at seq 156 showed ValidationError raised at money.py:73 breaking a test — `build_invoice` with nan expected... Actually at seq 156 the failing test raised ValidationError from money.py:73 — the test in test_settlement.py::test_settle_invoice_rejects_missing_price expected ValueError? Hmm).
+
+So the final change set is: src/ledger/money.py, src/ledger/import_rows.py, src/ledger/settlement.py, tests/test_settlement.py, plus new tests/test_import_rows.py (untracked file — git diff --stat wouldn't show untracked). Wait, git diff --stat shows only tracked modifications: 4 files. tests/test_import_rows.py was newly written (untracked, so not in diff --stat). And MEMORY.md was written later (seq 234).
+
+So the final set of modified files: src/ledger/money.py → src/ledger/import_rows.py → src/ledger/settlement.py, then tests/test_import_rows.py (new) and tests/test_settlement.py, then MEMORY.md.
+
+Hmm, but invoicing.py was edited in between (seq 114/122) and then edited again at 166/171 — probably reverted. Let me confirm by checking the final diff content. Let me look at the raw trace for the final assistant message and the final `git diff src/` output to see whether invoicing.py was reverted.
+
+Let me expand raw for the episode, filtered by "git diff" and the final answer.
+dsh: reasoning:
+Now I have a clear picture. Let me confirm the invoicing.py revert: final git status shows only src/ledger/import_rows.py, src/ledger/money.py, src/ledger/settlement.py, tests/test_settlement.py modified, plus new tests/test_import_rows.py and MEMORY.md (untracked). So invoicing.py edits were reverted (seq 166, 171).
+
+Hmm wait — the invoicing.py was edited at 166 and 171 after the test failure at 156. Let me check what those edits did — likely reverted the ensure_usable_price guard in build_invoice because the existing test `test_settle_invoice_rejects_missing_price`... Actually no, the failing test at seq 156 was the target test expecting ValidationError. Hmm, the error at 156 was "ledger.errors.ValidationError: missing price for hosting src/ledger/money.py:73: ValidationError" — a test failed because a ValidationError was raised where the test expected something else (e.g., build_invoice tests expected no error or a different error). Anyway, invoicing.py ended up reverted.
+
+Let me double check by getting the diff for invoicing.py in the final `git diff src/` output — the diff --stat listed only 4 files, so invoicing.py is not in the final diff → reverted. Good.
+
+Now, let me verify the money.py diff portion (the omitted 3840 chars) to get the exact implementation of ensure_usable_price — particularly that it raises ValidationError. Let's expand raw with a query on "ensure_usable_price" in the money.py diff region (seq 208).
+
+Also I want the final assistant answer text, which contains the verification commands. The trace's "Outcome" summary says "已修好。下面是排查结论与改动。" — the full final message isn't in the episode output list (it was likely the final assistant message, maybe not captured in actions). The MEMORY.md write at seq 234 content is "Updated file" (not captured). The playbook's "Verify" field gives: `PYTHONPATH=src python3 -m pytest --collect-only -q 2>&1 && PYTHONPATH=src python3 -m pytest tests/test_import_rows.py --collect-only -q 2>&1 && PYTHONPATH=src python3 -m pytest tests/test_settlement.py --collect-only -q 2>&1`.
+
+Let me check MEMORY.md content in the memory — the written MEMORY.md is now part of the project memory? But the workspace /work doesn't have MEMORY.md (glob found none). The trace was recorded in a different path (/home/kent/e2e/abl/ledger-svc). Anyway.
+
+Let me get the money.py diff to see ensure_usable_price implementation details (does it use math.isfinite? rejects None/empty/non-numeric?). Expand raw with query "ensure_usable_price def" aroundseq 208.
+dsh: reasoning:
+I now have everything needed. Let me also double-check the final answer message from the assistant (the "Outcome" in the trace). The trace outcome was "已修好。下面是排查结论与改动。" plus "根因链（逐段定位，不是单点）". The full final answer text may be in the raw trace file, but I have enough.
+
+One more check: the "验证命令" - the playbook verify field: 
+`PYTHONPATH=src python3 -m pytest --collect-only -q 2>&1 && PYTHONPATH=src python3 -m pytest tests/test_import_rows.py --collect-only -q 2>&1 && PYTHONPATH=src python3 -m pytest tests/test_settlement.py --collect-only -q 2>&1`
+
+And the actual verification runs during the session:
+- `PYTHONPATH=src python3 -m pytest -q` (full suite: 2 failed, 39 passed — the 2 failures are pre-existing unrelated pagination/rates defects, matching the earlier baseline recorded in MEMORY.md)
+- per-file: `PYTHONPATH=src python3 -m pytest "$f" -q` for test_import_rows.py (15 passed), test_settlement.py (14 passed), etc.
+- `--collect-only -q` runs to count collected tests.
+- 3x repeat run for stability.
+
+Let me also confirm the pre-existing baseline failures were known before the fix (MEMORY.md line 56 mentioned test_settle_invoice_rejects_missing_price failing with ValueError expecting ValidationError — that was the target failing test). And test_rates/test_pagination failures existed prior (baseline from the earlier session tr_5b9a255d03). Let me quickly verify the baseline failures from the earlier session to describe the baseline accurately. In the episode at seq 66 (before the fix), pytest -q output tail showed the ValueError failure. Let me check the earlier session's baseline: MEMORY.md line 56 says "| 3 | `tests/test_settlement.py::test_settle_invoice_rejects_missing_price` | `ValueError: cannot convert NaN to integer`（期望 `ledger.errors.ValidationError`） |". And the other two failures (pagination, rates) were pre-existing unrelated.
+
+I could quickly check ep_ff7df23606 to confirm the baseline failure list, but not strictly necessary. Let me do a quick check for accuracy of "2 pre-existing unrelated failures".
+
+Actually, at seq 176, after reverting invoicing changes but before adding tests: "2 failed, 19 passed" — the 2 failures being pagination + rates. And at seq 66 (before the fix) the output tail showed the ValueError traceback for test_settlement. So the original baseline likely was 3 failures: pagination, rates, and test_settle_invoice_rejects_missing_price (the target). Let me verify with ep_ff7df23606 quickly— it's cheap.
+dsh: reasoning:
+That was the earlier baseline session. It confirms MEMORY.md existed with the baseline table. Good enough — the exact baseline numbers: after the fix, full suite = "2 failed, 39 passed", where the 2 failures are tests/test_pagination.py::test_pagination_does_not_lose_invoices and tests/test_rates.py::test_get_cached_rate_falls_back_to_rate_table (pre-existing, unrelated).
+
+Before the fix, the suite also had the target failure test_settle_invoice_rejects_missing_price failing (ValueError instead of ValidationError). At seq 176 (after reverting invoicing, before adding new tests) it was "2 failed, 19 passed" — the target test now passed (since settle_invoice_checked raised ValidationError and the test expected ValidationError).
+
+Hmm, wait: at seq 176 the 2 failures are pagination+rates and 19 passed. So the pre-existing baseline (before fix) was 3 failed, 18 passed presumably. Let me quickly verify at seq 66 output. Actually it doesn't matter much for the answer; I can state that after the fix the suite is "2 failed, 39 passed" with the 2 failures being the pre-existing unrelated pagination/rates defects.
+
+Now I'm ready to answer. Let me structure:
+
+**1) 修改的文件与顺序**
+- 根因链定位后，修复顺序（源文件，先加共享守卫再改调用方）：
+  1. `src/ledger/money.py` — 新增共享守卫 `ensure_usable_price()`（第 55 行），并让 `format_money` 之类走同一套校验（money.py 改了 27 行）
+  2. `src/ledger/import_rows.py` — 导入边界（根因）：`parse_price(raw, description)` 改走 `ensure_usable_price()`；`parse_rows()`/`rows_to_tuples()` 传入行描述；`parse_price_checked()` 改为委托
+  3. `src/ledger/settlement.py` — 结算边界兜底：`settle_invoice()`/`settle_line()` 先校验单价再换算；`settle_invoice_checked()` 由 ValueError 改为 ValidationError
+  4. `src/ledger/invoicing.py` — 中途试加过 build 时的守卫，但因改变了既有测试的语义/项目约定（拒绝发生在结算侧）而回退，最终 diff 中不含此文件
+  5. 测试：`tests/test_import_rows.py`（新建，15 个用例）+ `tests/test_settlement.py`（新增回归用例，如 `test_headless_import_with_empty_price_cell_is_rejected`、`test_settle_invoice_checked_rejects_missing_price_with_validation_error`）
+  6. `MEMORY.md` — 写入根因链与新基线
+
+**2) 验证命令**
+- 全量：`PYTHONPATH=src python3 -m pytest -q` → 2 failed, 39 passed（2 个失败是既有的 pagination/rates 无关缺陷）
+- 按文件隔离：`for f in tests/test_import_rows.py tests/test_settlement.py ...; do PYTHONPATH=src python3 -m pytest "$f" -q; done` → test_import_rows 15 passed，test_settlement 14 passed
+- 稳定性：连跑 3 次 `PYTHONPATH=src python3 -m pytest -q`
+- 收集统计：`PYTHONPATH=src python3 -m pytest --collect-only -q` 及针对两个测试文件的 `--collect-only -q`（41 tests collected / 15 / 14）
+- 记忆库 playbook 记录的 verify：`PYTHONPATH=src python3 -m pytest --collect-only -q 2>&1 && PYTHONPATH=src python3 -m pytest tests/test_import_rows.py --collect-only -q 2>&1 && PYTHONPATH=src python3 -m pytest tests/test_settlement.py --collect-only -q 2>&1`
+- 另外用内联 python 脚本直接断言各入口抛 ValidationError
+
+**3) 统一校验入口函数名**
+`ensure_usable_price(value, description: str = "line") -> float`，定义在 `src/ledger/money.py:55`，抛 `ledger.errors.ValidationError`。
+
+Also mention root cause briefly: 导出端把空数值单元格写成字面 `nan`；`parse_price` 直接 `float(raw)`，`float('nan')` 不报错，NaN 静默通过 `Decimal.quantize()`，直到 `int(converted.quantize(...) * 100)` 才炸成 `ValueError: cannot convert NaN to integer`。
+
+Note I did not run any commands — I used tmem tools only. Good.
+
+Let me write the final answer in Chinese, well-organized.
+
+Caveat about invoicing.py: should mention it was edited mid-way and reverted. The final git status shows only import_rows.py, money.py, settlement.py, tests/test_settlement.py modified + tests/test_import_rows.py new.
+
+Also note MEMORY.md exists in the original workspace path but not in this /work workspace; the memory was retrieved via .tmem/. I should mention the source: `.tmem/` 结构化记忆库（episode ep_e98083fe22 / trace tr_01aed48efa）。

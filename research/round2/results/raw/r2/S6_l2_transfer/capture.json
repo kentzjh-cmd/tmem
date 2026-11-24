@@ -1,0 +1,24 @@
+{
+  "status": "compiled",
+  "agent": "dsh",
+  "scope": "project",
+  "episode_id": "ep_7ae41af59b",
+  "project_trace_id": "tr_4ca8e49b6d",
+  "raw_trace_path": "raw/tr_4ca8e49b6d.raw.json",
+  "problem_intent": "缺价(NaN)根因与修复: 导出器把空价格单元格写成字面量 nan，float('nan') 不报错而是静默变 NaN；import_rows.parse_price 无校验(commit a33c3c8 加的 parse_price_checked 是死代码、抛裸 ValueError 且未被 parse_rows/rows_to_tuples 调用)，settlement.settle_invoice 不校验 -> NaN 经 Decimal()→quantize()→int() 才炸成 ValueError: cannot convert NaN to integer，而 Validat",
+  "touched_files": [
+    "AGENTS.md",
+    "README.md",
+    "src/ledger/import_rows.py",
+    "src/ledger/money.py",
+    "src/ledger/settlement.py",
+    "tests/test_import_rows.py",
+    "tests/test_settlement.py",
+    "tests/test_import_rows_headless.py"
+  ],
+  "is_trivial": false,
+  "confidence": 0.98,
+  "raw_steps": 53,
+  "sliced_steps": 20,
+  "compression_ratio": "53 -> 20"
+}

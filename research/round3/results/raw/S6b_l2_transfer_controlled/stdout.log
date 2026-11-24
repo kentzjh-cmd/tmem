@@ -1,0 +1,39 @@
+修好了。根因与修复如下：
+
+## 根因
+
+`src/ledger/bulk.py`（commit `b5187bc` 引入）是**第三条**不经过校验的入口：
+
+- 它直接吃导出的原始表格行，**绕过了 `import_rows.parse_price`**，所以 `CONVENTIONS.md` §1.2 里的三道拦截（导入边界、结算边界、`build_invoice`）对它统统不生效；
+- `Decimal("nan")` 是合法的 NaN → `quantize()` 后仍是 NaN → `int(NaN * 10 ** exponent)` 抛裸 `ValueError: cannot convert NaN to integer`，报错点离真正出问题的空单元格很远。
+
+## 修复（`src/ledger/bulk.py`）
+
+每行在算术之前先过项目唯一的单价合法性入口 `money.validate_price()`：
+
+```python
+for index, row in enumerate(rows):
+    description = row.get("description", "") or f"row {index}"
+    price = validate_price(row["unit_price"], description)
+    ...
+    converted = Decimal(str(price)) * Decimal(rate) * Decimal(int(row["quantity"]))
+```
+
+- 缺失（`nan`）/非有限（`inf`）/不可解析的价格一律抛 `ledger.errors.ValidationError`（不是裸 `ValueError`），错误信息直接指向出问题的行：`missing price for support` 或 `missing price for row 1`；
+- **金额算术未改**：输出仍是 int 最小单位，单价改用 `Decimal(str(price))`，与 `money.to_minor` / `settlement.convert` 的写法一致。
+
+## 测试（`tests/test_bulk.py`，12 条）
+
+覆盖：`nan` 字符串 / `nan` 浮点 / 不可解析 / `inf` / 不再抛裸 `ValueError` / 错误信息含行描述与行号 / 正常行结算值（19.99×2 → 3998）/ 输出为 int 最小单位 / 币种换算（100 USD → 1404 分）/ 零小数位币种（JPY）/ 坏行之前的行仍能结算。
+
+## 验证
+
+- `python3 -m pytest` → **0 failed, 81 passed**（改前基线 `1 failed, 69 passed`，失败用例即 `tests/test_bulk.py::test_settle_batch_rows_rejects_missing_price`）。
+- 金额未变的核对：对 3000 组随机字符串单价（CNY/USD/EUR/JPY 组合）与修复前逐个比对，**0 处差异**；浮点单价（如 `2.675`）的舍入改用 `Decimal(str(...))` 后与 `money.to_minor` 对齐（267 → 268 分），单张发票路径未受影响。
+
+## 文档
+
+- `CONVENTIONS.md` §1.2 增加 `bulk.py` 落点；新增 §2.4 记录本次修复；§2.0 基线刷新为 `0 failed, 81 passed`；§1.1 记录两条**未修**的已知风险（`bulk.py` 的 `quantize` 用的是 `Decimal` 默认 `ROUND_HALF_EVEN`，与全局 `ROUND_HALF_UP` 不一致；批量路径与单张发票路径的单价来源差异）。
+- `README.md` 缺失单价条目补上「批量结算」。
+
+💡 *是否需要将本次有效执行路径沉淀为记忆？（输入 `/tmem` 或 `/remember [备注]` 保存）*

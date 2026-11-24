@@ -1,0 +1,10 @@
+{
+  "status": "synchronized",
+  "gc_stats": {
+    "active_l0": 8,
+    "degraded_l1_l2": 0,
+    "stale": 1,
+    "pruned": 0
+  },
+  "living_index": "/home/kent/e2e/r2/ledger-svc/MEMORIES.md"
+}

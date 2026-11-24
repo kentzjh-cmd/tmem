@@ -1,0 +1,27 @@
+{
+  "scene": "S2_nan_repair",
+  "workspace": "exp",
+  "workspace_path": "/home/kent/e2e/r2/ledger-svc",
+  "intent": "修复缺陷一：NaN 价格导致 ValueError，要求用领域异常明确拒绝",
+  "model": true,
+  "dsh_home": "/home/kent/.dsh",
+  "exit_code": 0,
+  "elapsed_sec": 137.6,
+  "stdout_bytes": 2012,
+  "stderr_bytes": 55750,
+  "command": "dsh --profile headless --patch /home/kent/e2e/r2/ledger-svc/.dsh/tmem.patch.yml headless <task>",
+  "transcript_path": "/home/kent/.dsh/sessions/--home-kent-e2e-r2-ledger-svc--/session-7e9d69e9-6aec-4492-b54a-8c3dd95f63c1/session.v4.jsonl.zstd",
+  "transcript_stats": {
+    "bytes": 170223,
+    "node_single_frame_bytes": 183,
+    "node_single_frame_lines": 1,
+    "zstd_dc_bytes": 709640,
+    "zstd_dc_lines": 277,
+    "is_multiframe": true
+  },
+  "capture_exit": 1,
+  "capture": {
+    "status": "skipped",
+    "reason": "no_effective_actions"
+  }
+}

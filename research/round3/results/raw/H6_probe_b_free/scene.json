@@ -1,0 +1,23 @@
+{
+  "scene": "H6_probe_b_free",
+  "workspace": "control",
+  "workspace_path": "/home/kent/e2e/r3/ledger-svc-control",
+  "intent": "H6' 探针 B 臂（无插件，允许读取）",
+  "model": true,
+  "dsh_home": "/home/kent/.dsh",
+  "exit_code": 0,
+  "elapsed_sec": 89.2,
+  "stdout_bytes": 4718,
+  "stderr_bytes": 49098,
+  "command": "dsh --profile headless headless <task>",
+  "transcript_path": "/home/kent/.dsh/sessions/--home-kent-e2e-r3-ledger-svc-control--/session-30e1adca-2d43-4e0f-9053-47279847fc9f/session.v4.jsonl.zstd",
+  "transcript_stats": {
+    "bytes": 123291,
+    "node_single_frame_bytes": 191,
+    "node_single_frame_lines": 1,
+    "zstd_dc_bytes": 485201,
+    "zstd_dc_lines": 144,
+    "is_multiframe": true
+  },
+  "capture_skipped": "scene flag: control arm must not create a tmem store"
+}

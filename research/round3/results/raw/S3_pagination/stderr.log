@@ -1,0 +1,702 @@
+dsh: all_proxy names a SOCKS proxy, which is not supported; connecting directly for that scheme — set an http:// or https:// proxy URL instead
+dsh: reasoning:
+Let me read the key files: MEMORIES.md, pagination.py, tests/test_pagination.py, and understand structure.
+
+Note: The system reminder says AGENTS.md mentions MEMORIES.md. Also there's a `tmem` skill available, and the user asked "把改动要点记到项目记忆里" (record the change points into project memory). That matches the tmem skill description. Let me load the skill.
+
+Let me read files in parallel.
+dsh: reasoning:
+Now let me look at the rest of the codebase to understand who uses pagination: api.py, cli.py, invoicing.py, store.py.
+
+Also note there is already a `list_page_by_sequence` function. The task: "headless 翻页时同一秒创建的多张发票会被漏掉。请把分页排序改成按发票序号（sequence）排序，同步更新测试，并把改动要点记到项目记忆里。"
+
+So we need to change pagination ordering to use `sequence`. The existing `list_page_by_sequence` is a candidate implementation, but let's check correctness: it uses `getattr(inv, "sequence", 0) < last_seq` — the "find first invoice with sequence less than last_seq" approach. That's a linear scan but works assuming sorted descending by sequence. Actually there's a subtle issue: if multiple invoices share the same sequence, they'd be skipped... but sequences should be unique.
+
+Let me read the otherfiles.
+dsh: reasoning:
+Now, let me understand the "headless" context. The user mentions "headless 翻页" (headless pagination). Let me search for "headless" in the repo.
+
+Also there's CONVENTIONS.md which is 8662 bytes — I should read it since it's a conventions file (probably important for how to write code here). Note the file permissions: `-rw-------` for CONVENTIONS.md — owned by kent. It's readable by us since we're kent.
+
+Let me grep for headless and read CONVENTIONS.md.
+dsh: reasoning:
+Now I have a clear picture. The failing baseline includes `tests/test_pagination.py::test_pagination_does_not_lose_invoices` which fails due to timestamp-based cursor comparison.
+
+The user's request: change pagination ordering to sort by invoice `sequence`, sync tests, and record the change points in project memory.
+
+Key facts:
+- `Invoice` dataclass has `sequence: int = 0`.
+- `SequencedInvoiceStore` assigns monotonically increasing sequence.
+- `pagination.py` already has `list_page_by_sequence` and `encode_sequence_cursor` — these exist but aren't wired up. The primary `list_page` uses timestamps.
+
+Design decision: The cleanest approach given the request "把分页排序改成按发票序号（sequence）排序" is:
+1. Change `list_page` to sort by sequence (descending — newest first, consistent with existing "newest first" semantics), and use sequence-based cursor.
+2. `api.handle_invoice_list` uses `list_page` — it will automatically benefit.
+3. Keep cursor format compatibility? Old cursors encoded `{"id":..., "ts":...}`. Should we handle backward compat? The new cursor format `{"id":..., "seq":...}`. Since decode_cursor is generic JSON, we can make `list_page` read `seq` from cursor, and fall back gracefully.
+
+Let me think about the ordering semantics. Currently `list_page` sorts by created_at descending (newest first). With sequence, "newest first" = descending sequence. The store assigns increasing sequence, so descending sequence = newest first. That preserves the "newest first" documented behavior in the module docstring.
+
+But wait — there's a subtlety with `list_page_by_sequence`: it sorts descending, and the resume logic scans for the first invoice with `sequence < last_seq`. With unique sequences that works.
+
+However, there's a risk: invoices that don't have a sequence attribute (default 0). In tests, `make_invoice` sets sequence = 0 for all. We need to update the test to give distinct sequences.
+
+Now, about the `list_page_by_sequence` existing function — it seems it was added as a partial/parallel implementation (perhaps by a previous session). The question: should I consolidate? The cleanest is to make `list_page` sequence-based and remove the duplicate `list_page_by_sequence`/`encode_sequence_cursor`... but removing public functions might break other things. Let me check usages.
+
+Let me grep for `list_page`, `encode_cursor`, `sequence`, `list_page_by_sequence`.
+
+Also I should check git log/status to understand repo state and the baseline commit.
+
+Let me also check tests/test_rates.py and other tests, plus the .tmem traces to see if there's relevant playbook for pagination.
+
+Let me do thesegreps in parallel.
+dsh: reasoning:
+The working tree has uncommitted changes from a previous session (the price validation fix). The pagination module is unchanged in git (not in the diff list), so `list_page_by_sequence` is committed code? Let's check: `git diff --stat` doesn't include src/ledger/pagination.py, so pagination.py is unchanged from the baseline commit. Interesting — so `list_page_by_sequence` and `encode_sequence_cursor` already exist in the committed code at 035aa40.
+
+Let me check the git history of pagination.py to see when list_page_by_sequence was added.
+
+Now the plan:
+1. Change `list_page` to sort by sequence descending and use sequence-based cursor.
+2. Handle the cursor format: `encode_cursor(invoice_id, created_at)` currently produces `{"id", "ts"}`. The new cursor should be `{"id", "seq"}`.
+
+Question: should I keep `encode_cursor` signature? The test uses `encode_cursor("INV-3001", moment)` and `decode_cursor(cursor)["id"]`. If I change `encode_cursor` to take a sequence, I need to update the test (task says "同步更新测试" — sync/update tests).
+
+Design options:
+
+Option A: Rewrite `list_page` to be sequence-based, keep `encode_cursor`/`decode_cursor` as-is for timestamp cursors (legacy), and use `encode_sequence_cursor` for next_cursor. Then `list_page_by_sequence` becomes a duplicate — remove it or make it an alias to `list_page`.
+
+Option B: Make `list_page` sequence-based with a unified `encode_cursor(invoice_id, sequence)` and keep `decode_cursor`. Remove the duplicate `list_page_by_sequence`/`encode_sequence_cursor` or keep them as thin aliases.
+
+I think the cleanest approach, respecting "分页排序改成按发票序号（sequence）排序":
+
+- `encode_cursor(invoice_id, sequence)` → payload `{"id": invoice_id, "seq": sequence}`.
+- `decode_cursor` unchanged (generic).
+- `list_page(invoices, cursor=None, limit=50)` → sort by sequence descending (stable tie-break by invoice_id for determinism), resume from cursor's seq.
+- Keep `encode_sequence_cursor` and `list_page_by_sequence` as backwards-compatible aliases? Hmm. Duplicated code is a smell. Let me check whether they're used anywhere else: grep showed only defined in pagination.py, not used in tests or api. They're dead code from a prior partial fix.
+
+I think the best approach: consolidate. Make `list_page` the single sequence-based implementation. Keep `encode_sequence_cursor` as a thin wrapper of `encode_cursor` for compatibility (since it's a public function), and `list_page_by_sequence` as an alias to `list_page`. Actually — should I keep them? They might have been deliberately added. But leaving two divergent implementations of the same thing is worse. I'll make them thin aliases with docstrings noting they're kept for backwards compatibility.
+
+Hmm, but also consider backwards compatibility for old timestamp cursors: an in-flight cursor from a previous deployment contains `{"id":..., "ts":...}`. If we decode it with `last.get("seq")` → missing → 0 → we'd restart from the beginning → duplicate items, but nothing lost. Alternatively, treat legacy cursor without seq as "start from beginning" or better: fall back to timestamp comparison. Hmm, that adds complexity. Let's think about what's clean and defensible.
+
+Actually, a cleaner way to handle the legacy cursor: `decode_cursor` returns dict; in `list_page`, read `seq = last.get("seq")`. If `seq` is None (legacy timestamp cursor), we could fall back to filtering by timestamp... but that reintroduces the bug. I think the safest is: legacy cursor (no "seq") → treat as invalid and start from the beginning? That yields duplicates. Or raise an error? That could break clients.
+
+Hmm. Actually since the docstring says clients follow next_cursor until empty, and cursor is opaque, the typical approach in such a small codebase: keep it simple and support only the sequence cursor; if a cursor lacks "seq", treat it as an unknown/expired cursor and restart from the first page (log/ignore). But "restart from beginning" duplicates invoices — the client's dedup would handle? Risky.
+
+Let me reconsider: Maybe better to make the cursor contain BOTH seq and ts? No — the whole point is to not depend on ts.
+
+I think a pragmatic, well-documented approach:
+- Cursor payload: `{"id": ..., "seq": ...}`.
+- `decode_cursor` handles both.
+- In `list_page`: if the cursor has "seq", resume by sequence. If it's a legacy cursor with only "ts", we can't order by sequence reliably... but we could map: find the invoice with that invoice_id in the list and use its sequence. That's a nice fallback! The cursor contains the invoice id, so we can locate that invoice and take its sequence. If the invoice isn't found (deleted), we fall back to... hmm, then we can't know. Fall back to timestamp comparison as a last resort, or just start at 0.
+
+Actually let's do this: legacy cursor resolution:
+1. If "seq" present → use it directly.
+2. Else if "id" present and that invoice is in the current listing → use that invoice's sequence.
+3. Else → treat cursor as unusable, start from the beginning (safe: no data loss, possible duplicates).
+
+That's reasonable and keeps it simple enough. Hmm, is #2 worth the complexity? It's ~4 lines. It provides genuine backwards compatibility for in-flight cursors. I think yes, and it's testable.
+
+Hmm, but wait. Let me not over-engineer. Let me consider the actual repo style: small, simple functions with docstrings. The CONVENTIONS.md says hard conventions should be recorded in CONVENTIONS.md (MEMORIES.md is auto-generated by tmem sync and manual edits get overwritten!). That's a critical hint:
+
+> 手写、长期有效的项目记忆。`MEMORIES.md` / `MEM.md` 由 `tmem sync` 全量重生成，手改会被覆盖，因此硬性约定与失败基线固化在本文件。
+
+So "把改动要点记到项目记忆里" (record the change points in project memory) should primarily go to CONVENTIONS.md, since MEMORIES.md is regenerated by tmem sync. But the user might also want tmem capture (the skill). The tmem skill exists: "Capture, slice, or query deterministic execution trace memories at project (.tmem/) scope. Activate when the user types /tmem, /remember, or confirms saving the current session's effective execution path."
+
+The user said "把改动要点记到项目记忆里" = "record the key points of the change into the project memory". This strongly suggests using tmem capture (project scope memory). Per AGENTS.md §2: "If the user asks to save/record memory via natural language or /tmem, run: `tmem capture --agent dsh`".
+
+So the plan:
+1. Fix pagination (sequence ordering).
+2. Update tests.
+3. Update CONVENTIONS.md (manual project memory: failure baseline update + new convention about pagination ordering).
+4. Run `tmem capture --agent dsh` to persist the execution trace into project memory.
+5. Possibly `tmem sync` to regenerate MEMORIES.md.
+
+Let me load the tmem skill first since it's relevant, then do the code work.
+
+Also note the other failing test (rates) is a separate defect — per CONVENTIONS.md §2.3, "修 bug 时以「本表 2 条为待清理项」为起点；修完一条就从表中移除并更新计数". The user only asked for pagination. I should not fix the rates bug (out of scope), but I must update the failure baseline table in CONVENTIONS.md to remove the pagination entry and update counts. Careful: the baseline count must reflect reality after my change. Let me verify the current state by running the tests first.
+
+Let me run the test suite to see the baseline now.
+
+Also check the tmem skill and .tmem traces for the pagination-related playbook. Let me run pytest first and load theskill in parallel.
+dsh: reasoning:
+Baseline confirmed: 2 failed, 42 passed. Pagination test fails as described.
+
+Now let me plan the implementation.
+
+### Design
+
+**`src/ledger/pagination.py`**:
+
+Make ordering by `sequence` (descending — newest first, preserving the documented "newest first" behavior).
+
+Key elements:
+- `encode_cursor(invoice_id, sequence)` → `{"id": ..., "seq": ...}`. But the current signature is `encode_cursor(invoice_id, created_at)`. Changing the signature breaks the existing test's usage — but I'm asked to update tests. I should keep a clean API.
+
+Hmm — but should I preserve `encode_cursor(invoice_id, created_at)` for the timestamp cursor? The `encode_cursor`/`decode_cursor` pair is generic-ish. If I repurpose `encode_cursor` to take a sequence, the name "cursor" is generic so it's fine.
+
+Let me decide the final API:
+
+```python
+def encode_cursor(invoice_id: str, sequence: int) -> str:
+    """Encode a pagination cursor pointing at the invoice with ``sequence``."""
+    payload = json.dumps({"id": invoice_id, "seq": int(sequence)})
+    return base64.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii")
+
+
+def decode_cursor(cursor: str) -> dict:
+    """Decode a cursor produced by :func:`encode_cursor`."""
+    raw = base64.urlsafe_b64decode(cursor.encode("ascii")).decode("utf-8")
+    return json.loads(raw)
+```
+
+And:
+
+```python
+def _sequence_of(invoice) -> int:
+    return int(getattr(invoice, "sequence", 0) or 0)
+
+
+def list_page(invoices, cursor=None, limit=50):
+    """Return ``(page, next_cursor)`` for ``invoices``, newest sequence first."""
+    ordered = sorted(invoices, key=lambda inv: (-_sequence_of(inv), inv.invoice_id))
+    start = 0
+    if cursor:
+        last = decode_cursor(cursor)
+        last_seq = _cursor_sequence(last, ordered)
+        if last_seq is not None:
+            for index, inv in enumerate(ordered):
+                if _sequence_of(inv) < last_seq:
+                    start = index
+                    break
+            else:
+                start = len(ordered)
+    page = ordered[start:start + limit]
+    next_cursor = None
+    if page and start + limit < len(ordered):
+        next_cursor = encode_cursor(page[-1].invoice_id, _sequence_of(page[-1]))
+    return page, next_cursor
+```
+
+Wait — careful with the resume logic. The original code: `start = len(ordered)` then break at first invoice with ts < last_ts. With strict `<` and the cursor pointing at the last item of the previous page, the first invoice with seq < last_seq is exactly the next item (since all sequences are unique). But if there are duplicate sequences (ties), the strict `<` would skip the remaining ties — that would lose invoices with the same sequence! Since sequences are assigned monotonically by `SequencedInvoiceStore`, they're unique. But `Invoice.sequence` defaults to 0 and `build_invoice` doesn't set it, so multiple invoices could have sequence 0.
+
+Hmm, this matters. With ties, the "first invoice with seq < last_seq" would skip all invoices sharing last_seq. Safer approach: skip all invoices whose sequence >= last_seq AND invoice_id == cursor id? Hmm.
+
+Better and robust approach: the cursor points at a specific invoice (id + seq). Resume position = the index right after the invoice identified by the cursor's id in the ordered list, if found. That's exact and tie-safe. If not found (invoice deleted), fall back to "first invoice with seq < last_seq" (strictly less) — which under ties could skip same-seq invoices, but those are unresolvable anyway.
+
+Let me implement:
+
+```python
+def _resume_index(ordered, cursor_payload):
+    """Return the index where the next page starts."""
+    last_id = cursor_payload.get("id")
+    last_seq = cursor_payload.get("seq")
+    if last_id is not None:
+        for index, inv in enumerate(ordered):
+            if inv.invoice_id == last_id:
+                return index + 1
+    if last_seq is not None:
+        for index, inv in enumerate(ordered):
+            if _sequence_of(inv) < last_seq:
+                return index
+    return 0
+```
+
+Hmm, but with the id-based resume, if the cursor's invoice was deleted from the listing, we fall to seq-based. But careful: if the id-based lookup finds the invoice but the listing changed (new invoices inserted with higher sequences), then index+1 in the *current* ordering might not be correct if new invoices were added with sequences lower than... Actually new invoices get *higher* sequences, and we sort descending by sequence, so new invoices would appear *before* the cursor invoice in the ordering. Their presence shifts indices, but index+1 still points to the element right after the cursor invoice in the new ordering — correct, since ordering is stable relative to sequence. Good.
+
+Wait, is that right? Ordering is by -sequence descending. New invoices have higher sequences → they come earlier in the list. The cursor invoice is still at the same relative position relative to the older ones. index+1 = next element after the cursor invoice in the new ordering = the next older invoice. Correct.
+
+However, there's a subtle issue with id-based resume + the `seq` fallback interplay. If both id and seq present, prefer id. But what if id exists in the list but with a *different* sequence than the cursor's seq (invoice re-sequenced)? Then the id-based resume is still right (it's the same invoice). Fine.
+
+Now, legacy cursor compatibility: old cursors are `{"id":..., "ts":...}` with no "seq". With id-based resume, a legacy cursor still resumes correctly by id! That's elegant — the legacy timestamp cursor works because we resolve by id. Only if the id is missing do we fall back to seq, and then to 0 (start from beginning).
+
+Hmm, but wait: is id-based resume safe if the same invoice_id appears twice? invoice_ids are unique keys in the store. Fine.
+
+But hold on: should the primary resume key be id or seq? Consider a scenario where the invoice referenced by the cursor is deleted between pages — id lookup fails → fall back to seq → "first invoice with seq < last_seq". With unique sequences, that's exactly the next page. Good.
+
+Now — tie-breaking. Sorting key: `(-sequence, invoice_id)`. With duplicates in sequence, ties broken by invoice_id ascending. Deterministic. Good.
+
+But hmm: if ties exist and we resume by seq fallback (strictly less), we'd skip same-seq invoices. But with id-based resume (the normal path), ties are handled exactly. Good enough.
+
+Now about `limit`: `page = ordered[start:start+limit]`; `next_cursor` set only if `start + limit < len(ordered)`. That's correct.
+
+Wait, there's an existing bug-ish thing: `if page and start + limit < len(ordered)`. If `start + limit == len(ordered)`, no next cursor → correct (last page). If `start > len(ordered)`? start is bounded.
+
+Now, `api.handle_invoice_list` calls `list_page` — automatically fixed.
+
+Should I remove `list_page_by_sequence` and `encode_sequence_cursor`? They're now redundant duplicates. Options:
+- Remove them (cleaner, but removes public API).
+- Keep as thin aliases delegating to `list_page` / `encode_cursor`.
+
+Since `list_page_by_sequence` was presumably added as a "sequence variant", and now `list_page` IS sequence-based, keeping both risks divergence. I'll keep them as deprecated aliases delegating to the new implementation, with a docstring noting they're kept for backwards compatibility. That preserves any external caller while having a single source of truth.
+
+Hmm, actually, let me check git history to see if `list_page_by_sequence` was recently added and used anywhere (e.g., in a trace). Let me check `git log -p src/ledger/pagination.py`.
+
+Also, what about the module docstring? "The API returns invoices newest first." → update to mention sequence ordering.
+
+**Tests** (`tests/test_pagination.py`): need to update:
+1. `make_invoice` to accept a sequence.
+2. `test_cursor_round_trip` — update for the new cursor format.
+3. `test_pagination_does_not_lose_invoices` — the key regression test: invoices created in the same second (same `created_at`) must all be seen across pages. Give them distinct sequences.
+4. Add a test for same-second creation (the actual bug): several invoices with identical `created_at` but distinct sequences → pagination must not lose any.
+5. Add a test that ordering is by sequence (newest/highest sequence first).
+6. Maybe a test for legacy cursor compat? And for `handle_invoice_list` via api? Let me keep the test suite focused but meaningful.
+
+Let me write the tests using the real `Invoice` dataclass from `ledger.invoicing`? The current test uses a local `_Invoice` class. Using the real `Invoice` would be better integration. `Invoice(invoice_id, currency, lines, created_at, sequence)` — dataclass with fields invoice_id, currency, lines, created_at, sequence. I could use `ledger.invoicing.Invoice` directly. That's cleaner and ties to the real model. But `Invoice.created_at` is `datetime | None`. Fine.
+
+Hmm, but using the real Invoice couples pagination tests to invoicing. The existing test's local stub is fine and keeps the test focused. I'll keep a local stub but add a `sequence` parameter, and maybe add one test using the real `Invoice` + `SequencedInvoiceStore` to prove the end-to-end story (store assigns sequences → pagination works). That's a nice integration test for the headless flow.
+
+Let me check what "headless" means in this repo: `import_rows.py` — headless import path. Let me read import_rows.py and README to understand the "headless" flow, to make sure the pagination fix matches the real usage (e.g., CLI import → list invoices).
+
+Let me read README.md, import_rows.py, and check the git logfor pagination.py.
+dsh: reasoning:
+Good context. The `list_page_by_sequence` was added in commit 4b60eb2 ("feat(store): persist invoice sequence") as a *variant*, while `list_page` (the one used by `api.handle_invoice_list`) still uses timestamps — that's the bug the user reported.
+
+Now let me write the implementation. Plan:
+
+1. `src/ledger/pagination.py`: make `list_page` sequence-ordered; unify cursor encoding; keep `encode_sequence_cursor` / `list_page_by_sequence` as thin back-compat wrappers.
+
+2. `tests/test_pagination.py`: update + add regression tests.
+
+3. `src/ledger/api.py`: `handle_invoice_list` uses `list_page` — no change needed (maybe nothing). Let me double check the docstring in api.py — fine.
+
+4. `CONVENTIONS.md`: update the failure baseline (§2) — remove the pagination failure from the table, update counts, add a new section documenting the pagination ordering convention (sort by sequence). This is the hand-written project memory.
+
+5. `README.md`: maybe add a bullet about pagination ordering. The README has a 约定 list. Adding a line about cursor pagination ordering is reasonable.
+
+6. `MEMORIES.md`: auto-generated by tmem sync — I'll run `tmem capture --agent dsh` and possibly `tmem sync` to regenerate. Per AGENTS.md, capture is the way to persist. Let me check whether `tmem` CLI is available.
+
+Let me check tmem availability first.
+
+Also — should I use the `SequencedInvoiceStore` more? The `api.handle_invoice_list` gets invoices from the caller. Fine.
+
+Let me now write the new pagination.py.
+
+Detailed implementation:
+
+```python
+"""Cursor pagination for invoice listings.
+
+The API returns invoices newest first, ordered by the invoice ``sequence``
+(the monotonically increasing number assigned when the invoice is stored).
+Ordering by sequence instead of ``created_at`` keeps pagination lossless:
+several invoices created within the same second still have distinct
+sequences, so a timestamp based cursor used to skip or repeat them.
+
+Clients follow ``next_cursor`` until it is empty.
+"""
+
+from __future__ import annotations
+
+import base64
+import json
+
+
+def encode_cursor(invoice_id: str, sequence: int) -> str:
+    """Encode a pagination cursor pointing at the invoice with ``sequence``."""
+    payload = json.dumps({"id": invoice_id, "seq": int(sequence)})
+    return base64.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii")
+
+
+def decode_cursor(cursor: str) -> dict:
+    """Decode a cursor produced by :func:`encode_cursor`."""
+    raw = base64.urlsafe_b64decode(cursor.encode("ascii")).decode("utf-8")
+    return json.loads(raw)
+
+
+def invoice_sequence(invoice) -> int:
+    """Return the sequence number of ``invoice`` (0 when it has none)."""
+    sequence = getattr(invoice, "sequence", 0)
+    return int(sequence) if sequence else 0
+```
+
+Hmm, `int(sequence) if sequence else 0` — handles None → 0. OK.
+
+```python
+def _ordered_by_sequence(invoices):
+    """Return ``invoices`` ordered by sequence, newest first."""
+    return sorted(invoices, key=lambda inv: (-invoice_sequence(inv), inv.invoice_id))
+```
+
+Wait: `inv.invoice_id` — all invoices have invoice_id. Yes (Invoice dataclass has invoice_id; store keys by it).
+
+```python
+def _resume_index(ordered, payload):
+    """Return the index of the first invoice of the next page."""
+    last_id = payload.get("id")
+    if last_id is not None:
+        for index, invoice in enumerate(ordered):
+            if invoice.invoice_id == last_id:
+                return index + 1
+    last_seq = payload.get("seq")
+    if last_seq is not None:
+        for index, invoice in enumerate(ordered):
+            if invoice_sequence(invoice) < int(last_seq):
+                return index
+    return 0
+```
+
+Hmm, one concern with the id-based resume: what if the same invoice_id appears twice in `ordered`? Not possible normally.
+
+But there's a subtle risk with the id-first approach: consider a cursor whose id refers to an invoice that is NOT the one that was last in the previous page (e.g., a client hand-crafts a cursor). Not a concern.
+
+Another subtlety: legacy cursors ({"id", "ts"}) → id path works.
+
+But hmm — one more consideration: is id-based resume robust when the listing is filtered/paginated differently? Fine.
+
+Actually wait. There's a scenario worth thinking about: id-based resume when the cursor's invoice has been *deleted* and another invoice now has the same id? Not possible.
+
+Now `list_page`:
+
+```python
+def list_page(invoices, cursor=None, limit=50):
+    """Return ``(page, next_cursor)`` for ``invoices``, newest sequence first."""
+    ordered = _ordered_by_sequence(invoices)
+    start = 0
+    if cursor:
+        start = _resume_index(ordered, decode_cursor(cursor))
+    page = ordered[start:start + limit]
+    next_cursor = None
+    if page and start + limit < len(ordered):
+        next_cursor = encode_cursor(page[-1].invoice_id, invoice_sequence(page[-1]))
+    return page, next_cursor
+```
+
+Edge: if `limit <= 0`, `ordered[start:start+limit]` → weird. Original had the same issue; `page_size_hint` raises for limit<=0. Should list_page validate limit? Not required; keep behavior.
+
+Edge: start could exceed len(ordered)? `_resume_index` returns at most len(ordered). If id found at last index → returns len(ordered) → page = [] → next_cursor None → loop ends. Good.
+
+Now the back-compat wrappers:
+
+```python
+def encode_sequence_cursor(invoice_id: str, sequence: int) -> str:
+    """Encode a cursor pointing at a sequence number (alias of :func:`encode_cursor`)."""
+    return encode_cursor(invoice_id, sequence)
+
+
+def list_page_by_sequence(invoices, cursor=None, limit=50):
+    """Return ``(page, next_cursor)`` ordered by sequence (alias of :func:`list_page`)."""
+    return list_page(invoices, cursor, limit)
+```
+
+Should I keep `encode_cursor`'s old timestamp behavior? The old `encode_cursor(invoice_id, created_at)` produced `{"id","ts"}`. If some external caller still calls `encode_cursor(id, datetime)`, with my change `int(created_at)` raises TypeError. Hmm. That's a breaking API change. Options:
+- Keep `encode_cursor(invoice_id, created_at)` as-is (timestamp cursor) and use `encode_sequence_cursor` for the sequence cursor. Then `list_page` produces sequence cursors; `decode_cursor` handles both; `list_page` resolves legacy ts-cursors by id.
+- That's more conservative and avoids breaking the existing `encode_cursor` API and the existing test's usage.
+
+Which is better? The module's cursor concept is now sequence-based. Having two encoders (`encode_cursor` = ts, `encode_sequence_cursor` = seq) is confusing. But `encode_cursor` with a timestamp is the historical public API used in tests.
+
+I think the cleanest coherent story: **the cursor is now sequence-based**. `encode_cursor(invoice_id, sequence)`. To avoid silently breaking callers that pass a datetime, I can make `encode_cursor` tolerant: if given a datetime, encode it in the legacy `{"id","ts"}` shape? That adds fuzziness.
+
+Let me think about what a reviewer would want. The user's instruction: "把分页排序改成按发票序号（sequence）排序，同步更新测试". The tests are ours to update. The public API surface of this tiny internal service: pagination functions + api.handle_invoice_list. The only in-repo callers of `encode_cursor` are the test itself. So changing the signature is safe within the repo.
+
+I'll go with the coherent single-cursor design: `encode_cursor(invoice_id, sequence)` produces `{"id", "seq"}`, and keep `encode_sequence_cursor` as an alias for compatibility. Legacy ts-cursors are still resolvable by id (documented).
+
+Hmm, but hold on: if `encode_cursor` now takes an int, a legacy caller passing a datetime gets `int(datetime)` → TypeError. I could guard with a clear error message... Let's add a small normalization helper that raises a clear TypeError? Overkill. Actually, `int(sequence)` on a datetime raises `TypeError: int() argument must be...`. Acceptable.
+
+Hmm, alternatively I can make encode_cursor accept either and encode accordingly:
+
+```python
+def encode_cursor(invoice_id, sequence):
+    """Encode a cursor pointing at an invoice.
+
+    ``sequence`` is the invoice sequence number.  For backwards compatibility a
+    ``datetime`` is still accepted and encoded as the legacy timestamp cursor.
+    """
+```
+
+That gives graceful compat for old callers (they'd get a ts cursor which list_page resolves by id). But then the returned cursor for old callers has no "seq" — still resolvable by id. That's actually nice and harmless. But is it over-engineering? It's ~4 lines and prevents a hard break. Hmm, I lean toward keeping it simple and explicit: sequence only.
+
+Let me decide: **simple and explicit** — `encode_cursor(invoice_id, sequence)`. Legacy ts-cursors remain *decodable* and resolvable (by id), which is the realistic compat concern (in-flight cursors), while the encoder API changes to the new ordering contract. I'll document this in CONVENTIONS.md.
+
+Now, about `datetime` import in pagination.py — it will no longer be needed. Remove it (`from datetime import datetime` was only used for the type hint). Yes, remove.
+
+Now let me also double check `api.handle_invoice_list`: it returns `invoice_ids` and `next_cursor`. Should the API response expose the ordering? Maybe add "order": "sequence"? Not necessary. But hmm — a nice touch for clients: include `"sequence"` values? No, keep the API stable.
+
+Wait, actually — should I double check `api.handle_invoice_list`'s usage of `list_page` with the default limit? Fine.
+
+Now the tests. Let me write a comprehensive test file:
+
+```python
+from datetime import datetime, timezone
+
+from ledger.invoicing import Invoice
+from ledger.pagination import (
+    decode_cursor,
+    encode_cursor,
+    list_page,
+    page_size_hint,
+)
+from ledger.store import SequencedInvoiceStore
+
+
+SAME_MOMENT = datetime(2026, 3, 1, 12, 0, tzinfo=timezone.utc)
+
+
+def make_invoice(invoice_id, sequence, moment=SAME_MOMENT):
+    """Build an invoice stub that carries an id, a timestamp and a sequence."""
+    class _Invoice:
+        pass
+
+    invoice = _Invoice()
+    invoice.invoice_id = invoice_id
+    invoice.created_at = moment
+    invoice.sequence = sequence
+    return invoice
+```
+
+Tests:
+
+1. `test_cursor_round_trip`: encode_cursor("INV-3001", 42) → decode_cursor → {"id": "INV-3001", "seq": 42}.
+
+2. `test_pagination_orders_by_sequence_descending`: invoices with sequences 1..5 → first page with limit=2 → returns highest sequences first (5, 4).
+
+3. `test_pagination_does_not_lose_invoices` (existing name, keep it — the baseline table references it): invoices with same created_at but distinct sequences → paginate with limit=2 → all seen, no duplicates.
+
+4. `test_pagination_keeps_invoices_created_in_the_same_second` — the specific regression for the reported bug: e.g., 5 invoices created at the same timestamp; with limit 2 → all 5 seen exactly once. (Same as #3 essentially; maybe merge. I'll make #3 the general one and #4 the same-second specific one with the timestamps identical and assert no duplicates.)
+
+Hmm, #3 and #4 overlap. Let me structure:
+- `test_pagination_does_not_lose_invoices` — mixed timestamps, distinct sequences, paginate → all seen exactly once (keeps the baseline test name; now passing).
+- `test_pagination_keeps_same_second_invoices` — all same created_at, distinct sequences → all seen exactly once, in sequence order.
+- `test_pagination_orders_by_sequence_not_timestamp` — two invoices: newer sequence but *older* timestamp → sequence wins (the ordering contract).
+- `test_pagination_is_stable_when_sequences_tie`? — same sequence, different ids → both returned. Good to have: ensures ties don't get dropped.
+- `test_next_cursor_points_at_sequence` — decode the next cursor → {"id":..., "seq": ...}.
+- `test_pagination_resumes_after_legacy_timestamp_cursor` — legacy cursor {"id","ts"} still resumes by id (compat). Good.
+- `test_store_assigned_sequences_paginate_without_loss` — integration: use SequencedInvoiceStore to save invoices created in the same second → paginate over store.list() → all seen.
+- `test_api_handle_invoice_list_uses_sequence_order` — maybe via api.handle_invoice_list. Good to lock the API layer behavior.
+
+Also `test_page_size_hint`? Existing function, no test currently. Not required, but could add. I'll skip to stay focused... actually a tiny test is cheap. Skip — out of scope.
+
+Let me now check: does `Invoice` (real dataclass) work with `list_page`? `invoice.invoice_id`, `invoice.sequence` — yes. `Invoice(invoice_id="INV-1", currency="CNY", lines=[], created_at=moment, sequence=1)`.
+
+Let me write the implementation now.
+
+One more consideration about ordering direction: "The API returns invoices newest first." With sequence descending → newest first. Keep that. But hmm — is "newest" by creation time or by sequence? Sequence is assigned at store time, so higher sequence = later inserted = newer. Consistent.
+
+Now, an important question: should `list_page` sort ascending (oldest first)? The original was `reverse=True` (newest first). Keep descending.
+
+Let's write the code.
+
+Also: should I add `sequence` to the API response? No.
+
+Let me write pagination.py now.
+dsh: reasoning:
+Now write the new pagination.py.
+dsh: reasoning:
+The co-change hint confirms pagination.py co-changes with tests/test_pagination.py — which I'm updating next.
+
+Now write the updated tests.
+dsh: reasoning:
+Wait, there's a bug in my test file: `moment + timezone.utc.utcoffset(None) or moment` — that's nonsense leftover. Let me fix `test_pagination_does_not_lose_invoices` to use distinct timestamps properly.
+
+Also `timezone.utc.utcoffset(None)` returns timedelta(0), so `moment + timedelta(0) == moment` — but the `or moment` is weird and the intent is muddled. Let me rewrite that test with distinct timestamps using `timedelta`.
+
+Let me fix it.
+dsh: reasoning:
+My test expectation was wrong: invoices have sequences index+1 = 1,2,3,4. Sorted descending → INV-0003 (seq 4), INV-0002 (seq 3). So the cursor seq is 3, not 2. Let me fix the test expectation.
+
+Also the api test: 3 invoices with sequences 1,2,3 → descending: INV-0002 (seq 3), INV-0001 (seq 2) → cursor {"id": "INV-0001", "seq": 2}. That one passed, consistent.
+
+Fix the failing expectation to {"id": "INV-0002", "seq": 3}.
+dsh: reasoning:
+The pagination failure is fixed. Now: 1 failed (rates, an independent pre-existing defect out of scope), 52 passed (was 2 failed, 42 passed).
+
+Let me update the todos and then verify the whole diff. Also I should double-check that the `api.handle_invoice_list` path and other callers work — no other callers of `encode_cursor` in the repo besides the test.
+
+Let me grep once more for `encode_cursor` usage across all files (including non-py) to make sure nothing else uses it with a datetime.
+
+Also check `.tmem/traces` for pagination-related playbooks that might mention constraints (e.g., a rule that the cursor must remain timestamp-based). Let me use tmem_search for pagination-related memories.
+
+Let me do that in parallel with viewing the finaldiff.
+dsh: reasoning:
+The memory episodes confirm the project workflow: hard conventions + failure baseline go into CONVENTIONS.md (hand-written), and MEMORIES.md is regenerated by tmem sync.
+
+Now let me update the todos and record the change in project memory:
+
+1. CONVENTIONS.md:
+   - Add a new section documenting the pagination ordering convention (sort by sequence, cursor carries seq, legacy ts cursor resolved by id).
+   - Update the failure baseline: §2.0 latest run → update numbers; §2.1 remove the pagination row (only rates remains).
+
+2. README.md: add a bullet in 约定 about cursor pagination ordering by sequence.
+
+3. Run `tmem capture --agent dsh` to persist the execution trace into project memory (.tmem/), then optionally `tmem sync` to regenerate MEMORIES.md.
+
+Let me first update the todos, then write CONVENTIONS.md updates.
+
+Let me re-read the relevant sections of CONVENTIONS.md to edit precisely (§2 area and §2.1).
+
+Current §2:
+
+```
+## 2. 测试失败基线（Failure Baseline）
+
+- **基线时间**：2026-11-23 22:46 (+08:00)
+- **基线 commit**：`035aa40be22aae9cae458bc5bd118536cb11347b`（merge feature/rates-cache）
+- **执行命令**：`python3 -m pytest`（仓库根目录）
+- **结果**：`3 failed, 18 passed`（共 21 条用例）
+- **稳定性**：连续多次执行结果一致，未安装随机顺序插件（pytest-randomly 不存在），失败集合确定可复现。
+
+### 2.0 最新一次执行（2026-11-23 22:49 +08:00，基线 commit 之上的工作区改动）
+
+- **结果**：`2 failed, 42 passed`（共 44 条用例）
+- **本轮修掉**：`tests/test_settlement.py::test_settle_invoice_rejects_missing_price`
+  ——缺失单价现在被 `ledger.errors.ValidationError` 明确拒绝（详见 §1.2）。
+- **仍失败**：下面 2.1 表中的 2 条，属于**独立**缺陷（分页游标 / 汇率缓存回退），与本次价格校验无关，未做改动。
+
+### 2.1 当前失败的用例（2 条）
+
+| # | 用例 | 症状 | 根因定位 |
+| :--- | :--- | :--- | :--- |
+| 1 | `tests/test_pagination.py::test_pagination_does_not_lose_invoices` | ... | `src/ledger/pagination.py:33-37` ... |
+| 2 | `tests/test_rates.py::test_get_cached_rate_falls_back_to_rate_table` | ... | ... |
+```
+
+I'll update §2.0 to a new subsection §2.0 for this run and restructure §2.1 to only contain the rates row. Let me write it carefully.
+
+Plan for CONVENTIONS.md edits:
+
+(a) Add a new section §1.3 (or a new top-level section 4?) documenting pagination ordering. The existing structure: §1 金额存储约定 (with 1.1, 1.2), §2 测试失败基线, §3 常用命令.
+
+The pagination ordering convention is a hard invariant ("分页排序必须按 sequence，不得按 created_at"), so it belongs in §1 as §1.3. Good.
+
+(b) Update §2.0 and §2.1.
+
+Let me write:
+
+```markdown
+### 1.3 分页排序约定（已落地，不可回退）
+
+**发票列表分页必须按发票序号 `sequence` 排序，不得按 `created_at` 时间戳排序。**
+
+背景：headless 导入会在同一秒内创建多张发票，它们的 `created_at` 完全相同。
+旧实现把游标位置编码成时间戳并用「严格小于」比较续页，同一秒的多张发票无法区分，
+翻页时会被整批漏掉（`test_pagination_does_not_lose_invoices` 只能看到 2/5 张）。
+
+约定落点：
+
+| 位置 | 约定 |
+| :--- | :--- |
+| `src/ledger/pagination.py` | `list_page()` 按 `(-sequence, invoice_id)` 降序排序（最新在前）；`encode_cursor(invoice_id, sequence)` 把 `{"id", "seq"}` 编进游标；`decode_cursor()` 兼容旧的 `{"id","ts"}` 游标 |
+| `src/ledger/store.py` | `SequencedInvoiceStore` 在保存时分配单调递增的 `sequence`，它是分页排序的唯一依据 |
+| `src/ledger/api.py` | `handle_invoice_list()` 走 `list_page()`，因此 API 的翻页顺序即 sequence 顺序 |
+
+续页定位规则（`pagination._resume_index`）：先按游标里的 `invoice_id` 定位到「上一页最后一张的下一位」；
+该发票已被删除时退回按 `seq` 严格小于定位；两者都拿不到才从头开始。
+旧版时间戳游标（只带 `id`/`ts`）仍能通过 `id` 正常续页。
+
+约定来源：`tests/test_pagination.py::test_pagination_keeps_invoices_created_in_the_same_second`
+（5 张同一秒创建的发票按 limit=2 翻页，5 张全部可见且不重复）。
+```
+
+(c) §2.0 update:
+
+```markdown
+### 2.0 最新一次执行（2026-11-23 23:0X +08:00，基线 commit 之上的工作区改动）
+
+- **结果**：`1 failed, 52 passed`（共 53 条用例）
+- **本轮修掉**：`tests/test_pagination.py::test_pagination_does_not_lose_invoices`
+  ——分页改按 `sequence` 排序后，同一秒创建的多张发票不再被漏掉（详见 §1.3）。
+- **仍失败**：下面 2.1 表中的 1 条，属于**独立**缺陷（汇率缓存回退），与本次分页改动无关，未做改动。
+```
+
+I need the current time. Let me get `date`.
+
+(d) §2.1 table → only the rates row, renumber to #1.
+
+Let me get the date first, then make the edits.
+dsh: reasoning:
+Oops — I accidentally introduced a corrupted character in the text: "���游标兼容" — that was meant to be "旧游标兼容". Let me check the file and fix it.
+
+Let me read that part of thefile.
+dsh: reasoning:
+Now update README.md to add a convention bullet about pagination ordering (README links to CONVENTIONS.md).
+
+Current README 约定 section:
+```
+## 约定
+
+- 结算结果统一使用整数最小单位（CNY/USD 为分，JPY 为元）
+- 汇率表集中在 `src/ledger/rates.py`
+- 时间统一通过 `src/ledger/clock.py` 注入，便于测试
+- **金额一律以整数最小单位存储，这条约定不可变更**（上游对账系统只接受整数分）。
+  硬性约定、已知风险点与当前测试失败基线见 [`CONVENTIONS.md`](CONVENTIONS.md)。
+- 缺失单价（表格空单元格导出的 `nan`）在**导入**与**结算**两处被
+  `ledger.errors.ValidationError` 明确拒绝，不会流进金额算术。
+```
+
+Add:
+```
+- **发票列表分页按发票序号 `sequence` 排序**（不用 `created_at`），
+  避免同一秒创建的多张发票在翻页时被漏掉（详见 `CONVENTIONS.md` §1.3）。
+```
+
+Let me makethat edit.
+dsh: reasoning:
+The tmem capture was skipped as "trivial" because "Lacks verified test/build execution command". The gate wants a verified test/build execution command in the trace. Let me check the tmem capture options — maybe I need to include the command, e.g., `--verify "python3 -m pytest"` or run it with a specific flag. Let me check `tmem capture --help`.
+
+The skill only documents `tmem capture --agent dsh`. But the tool says "Pass --force to capture anyway." Since I did run `python3 -m pytest` (verified) and `python3 -m pytest tests/test_pagination.py -v`, the gate may not have detected the command because... hmm. Let me check the CLI options.
+dsh: reasoning:
+The help doesn't show capture-specific options in this format. The previous run accepted `--agent dsh --intent "..."`. The gate said "Lacks verified test/build execution command" and offered `--force`.
+
+Why didn't it detect the test command? Possibly because the tmem plugin hooks capture commands from the session transcript, and my pytest run happened before the capture but perhaps the trace only includes commands after the plugin was initialized, or the gate looks for a successful test command executed *after the last file modification*. My last full `python3 -m pytest` run was after modifying pagination.py and test_pagination.py — that succeeded (1 failed, 52 passed) but with a non-zero exit code (because the rates test fails). The gate may require exit code 0 → "verified test/build execution command".
+
+That's likely: pytest exited non-zero due to the pre-existing rates failure, so the trace was judged "unverified" → default-deny.
+
+Options:
+1. Run `tmem capture --force` to capture anyway.
+2. First run a test command that exits 0 (e.g., `python3 -m pytest tests/test_pagination.py` exits 0), then capture.
+
+Option 2 is better: run the pagination test file (exit 0), which gives a verified green command. But the capture gate may require the *whole* suite to pass... Let me just run `python3 -m pytest tests/test_pagination.py` (green) and then attempt capture again. If it still skips, use `--force`.
+
+Actually — hmm, wait. Consider that the repo's baseline has a known failing test (rates). The previous successful capture (tr_e66fe4c00d) was for the price fix session, where the suite presumably had failures too... Actually in that session the rates test also failed. So the gate must have accepted it somehow — maybe because that session ran a targeted verification command like `python3 -m pytest tests/test_settlement.py tests/test_import_rows.py tests/test_cli.py tests/test_invoicing.py -q` which exited 0 (see MEMORIES.md §2 "Verification Command": `python3 -m pytest tests/test_settlement.py tests/test_import_rows.py tests/test_cli.py tests/test_invoicing.py -q 2>&1`). That command passes since those 4 files don't include test_rates.py.
+
+So: run a green verification command covering the touched area, then capture. Let me run `python3 -m pytest tests/test_pagination.py -q` (green) plus maybe the api-related ones. Then capture.
+
+Let me run the targeted test file first (exit0), then capture.
+dsh: reasoning:
+The trace was compiled and saved: `tr_11399efffb`, episode `ep_b57749bc31`.
+
+Now, the MEMORIES.md living index is regenerated by `tmem sync`. Let me run `tmem sync` to regenerate MEMORIES.md so the new trace appears in the project memory index. Per CONVENTIONS.md: "MEMORIES.md / MEM.md 由 tmem sync 全量重生成，手改会被覆盖".
+
+Let me run `tmem sync` and then verify MEMORIES.md includes the new trace.
+
+Also verify the final test state and review the fulldiff.
+dsh: reasoning:
+Everything is in place. MEMORIES.md now indexes the new trace `tr_11399efffb`.
+
+Let me do a final review of the diff of the two core files (pagination.py and test_pagination.py) to make sure everything is clean.
+
+Let me view the diff for src/ledger/pagination.py and tests/test_pagination.py.
+
+Also double-check the final test file content for correctness andcleanliness.
+dsh: reasoning:
+Everything looks good. One thing to double check: `test_pagination_does_not_drop_invoices_sharing_a_sequence` — with limit=1 and three invoices (INV-0001 seq 1, INV-0002 seq 1, INV-0003 seq 2), the ordering key is (-seq, invoice_id): INV-0003 (seq 2) first, then INV-0001, INV-0002 (both seq 1, ordered by id). Pages of 1: INV-0003 → cursor {id: INV-0003, seq: 2} → resume index after INV-0003 = 1 → INV-0001 → cursor {id: INV-0001, seq: 1} → resume: id lookup finds INV-0001 at index 1 → index+1 = 2 → INV-0002 → cursor {id: INV-0002, seq: 1} → resume: id lookup finds INV-0002 at index 2 → index+1=3 → empty page → cursor None → done. All 3 seen. ✓ (and it passed).
+
+Note the seq-fallback would have skipped INV-0002 in that tie case; the id-based resume avoids it. Good — that's why I implemented id-first.
+
+One more consideration: `test_legacy_timestamp_cursor_still_resumes` expects ["INV-0001", "INV-0000"]. The legacy cursor id is INV-0002 (seq 3). Ordered: INV-0003(4), INV-0002(3), INV-0001(2), INV-0000(1). id lookup for INV-0002 → index 1 → start 2 → page = INV-0001, INV-0000. ✓ (passed).
+
+Now, is there anything else in the repo referencing pagination behavior that should be updated? Let me check the `api.py` docstring for `handle_invoice_list` — it says "Return one page of invoices." Fine.
+
+Also, `src/ledger/clock.py` — the injected clock. Not relevant to pagination ordering anymore, but `created_at` is still used elsewhere. Fine.
+
+One more: `store.InvoiceStore.list()` returns insertion order; `SequencedInvoiceStore.list()` returns sorted by sequence ascending. The API caller passes whatever list. Fine.
+
+Let me finally verify the CONVENTIONS.md renders correctly (read the new §1.3 section), and confirm MEM.md symlink still points to MEMORIES.md (regenerated).
+
+Also check git status for MEMORIES.md — it's untracked (?? MEMORIES.md) since it's generated. Fine.
+
+Let me read the CONVENTIONS.md §1.3 region to doublecheck formatting.
+dsh: reasoning:
+Everything is in place. Let me do a final summary of the work.
+
+Final state:
+- `src/ledger/pagination.py`: sequence-based ordering.
+- `tests/test_pagination.py`: updated + 9 new tests (11 total).
+- `CONVENTIONS.md`: new §1.3 convention + updated failure baseline (§2.0 → 1 failed / 52 passed, §2.1 → only rates).
+- `README.md`: convention bullet.
+- `MEMORIES.md`: regenerated by `tmem sync`, indexing new trace `tr_11399efffb`.
+- `.tmem/`: raw trace + playbook captured.
+
+Test results: 1 failed (pre-existing rates defect, out of scope), 52 passed (was 2 failed, 42 passed).
+
+Now, per AGENTS.md §2, I should append the milestone prompt line asking whether to persist memory. The memory has already been persisted via tmem capture (the user explicitly asked "把改动要点记到项目记忆里"), so I already did it. The milestone prompt is for asking whether to persist — but since the user explicitly requested persistence and I did it, I should still append the line per the protocol? The AGENTS.md says "When you complete a non-trivial coding, debugging, or environment setup goal (or when <tmem_milestone_reached> is injected), append a concise one-line prompt at the end of your response asking whether to persist the memory trace". I already persisted it, but the protocol says to append the prompt. I'll include it, noting the capture is already done — actually the prompt is standard. I'll include it as the final line since the milestone marker was injected.
+
+Let me write the final summary in Chinese (user wrote in Chinese).

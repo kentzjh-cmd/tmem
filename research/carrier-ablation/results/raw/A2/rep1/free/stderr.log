@@ -1,0 +1,99 @@
+dsh: reasoning:
+Let's search the tmem index for relevant content.
+
+I should use tmem_search tool (not runcommands).
+dsh: reasoning:
+Let's expand the playbook tr_01aed48efa (level "playbook" isn't in the documented levels, but let's try "slice") and the episode ep_e98083fe22.
+dsh: reasoning:
+I have most of the answer. Let me get more details:
+
+1) Files modified in order: src/ledger/money.py → src/ledger/import_rows.py → src/ledger/settlement.py → tests/test_import_rows.py → tests/test_settlement.py → MEMORY.md.
+
+2) Verification commands: `PYTHONPATH=src python3 -m pytest -q` ... Let's check the raw turn for exact verification commands.
+
+3) The new unified price validation entry function: `ensure_usable_price` in src/ledger/money.py.
+
+Let me expand the turn level to check the exact verification command and the final answer text.
+dsh: reasoning:
+Good. Now I have details. Let me also check the raw final answer text (seq ~245-255) to capture the final summary and verification commands, plus confirm `ensure_usable_price` signature and location.
+
+Let me expand raw with seq_from=239 to 255, and also search for the final answer.
+dsh: reasoning:
+Interesting — invoicing.py was also edited (seq 114, 122), but the git diff --stat at seq 208 showed only import_rows.py, money.py, settlement.py, tests/test_settlement.py changed... Hmm, wait, git diff --stat showed 4 files: src/ledger/import_rows.py, src/ledger/money.py, src/ledger/settlement.py, tests/test_settlement.py. But invoicing.py was edited at seq 114/122. And tests/test_import_rows.py was edited at seq 183.
+
+Maybe the invoicing.py edit was later reverted, or... Actually the diff showed `src/ledger/invoicing.py | ...`? Let me re-read: "src/ledger/import_rows.py | 16 ++++++-------  src/ledger/money.py | 27 +++++++++++++++++++++  src/ledger/settlement.py | 11 +++++----  tests/test_settlement.py | 61 +++++++++++++++++++++++++++++++++++++++++++++++ 4 files changed, 101 insertions(+), 14 deletions(-)".
+
+So invoicing.py and tests/test_import_rows.py were not in the diff — meaning they were edited but reverted, or the edits were made to files that were then restored. Hmm. Actually wait, the invoicing.py diff shows the import line changed to include ensure_usable_price, and build_invoice changed... but that's not in the final diff. Maybe those edits were reverted later because the decision was to keep the guard at import + settlement boundaries only (not at build_invoice). Let's check for a revert step.
+
+Let me look at the raw sequence between seq 132 and 183 to see what happened with invoicing.py and test_import_rows.py.
+
+Also the Files Touched list includes src/ledger/invoicing.py and tests/test_import_rows.py. Let me look more carefully at the full sequence of mutations. Let me expand raw from 133to 190.
+dsh: reasoning:
+Now I have a clear picture. Note invoicing.py was edited (added guard) but then the guard was reverted (seq 166/171) because the pinned contract was that settlement rejects missing price. And tests/test_import_rows.py was newly created (write). The final diff showed 4 files changed: import_rows.py, money.py, settlement.py, tests/test_settlement.py — plus tests/test_import_rows.py newly created (untracked, so not in git diff), plus MEMORY.md written.
+
+So the modification order:
+1. src/ledger/money.py — added `ensure_usable_price` (shared guard) + `format_money` touched
+2. src/ledger/import_rows.py — `parse_price`, `parse_price_checked`, `parse_rows`, `rows_to_tuples` delegate to ensure_usable_price
+3. src/ledger/invoicing.py — temporarily added guard to `build_invoice`, then reverted it at seq 166/171 (the guard was scoped back out because the project's contract says settlement rejects the missing price). Final state: invoicing.py unchanged in the final diff.
+4. src/ledger/settlement.py — `settle_invoice`, `settle_line`, `settle_invoice_checked`
+5. tests/test_import_rows.py — new file with regression tests
+6. tests/test_settlement.py — added tests
+7. MEMORY.md — wrote root cause analysis
+
+Verification commands: 
+- `PYTHONPATH=src python3 -m pytest -q` (full suite) → 2 failed, 39 passed
+- per-file: `PYTHONPATH=src python3 -m pytest tests/test_import_rows.py -q` (15 passed), `tests/test_settlement.py -q` (14 passed)
+- collect-only: `PYTHONPATH=src python3 -m pytest --collect-only -q` etc.
+- Plus the ad-hoc python heredoc script exercising parse_price/parse_rows/settle_* .
+
+The playbook L2 causal repairs record says verify: `PYTHONPATH=src python3 -m pytest --collect-only -q 2>&1 && PYTHONPATH=src python3 -m pytest tests/test_import_rows.py --collect-only -q 2>&1 && PYTHONPATH=src python3 -m pytest tests/test_settlement.py --collect-only -q 2>&1`
+
+Hmm, that's the recorded "verify" from the playbook. And "Verification Cmds": `do PYTHONPATH=src python3 -m pytest -q 2>&1 && PYTHONPATH=src python3 -m pytest "$f" -q 2>&1`.
+
+Let me also check the final answer text of the session to see what was stated about verification. Let me expand the raw at seq 245-255 for the final assistant message. The raw output at 240-255 only showed 1 step (seq 249). The episode ends at seq 255. The final answer text may be in the episode's outcome field, which we already saw: "已修好。下面是排查结论与改动。；根因链（逐段定位，不是单点）".
+
+Let me check the diff level for invoicing.py to confirm the revert, and also check MEMORY.md content for verification notes. Let me search tmem for MEMORY.md content about verification.
+
+Actually, let me do a tmem_search for "MEMORY.md 根因 验证" or expand diff level ofthe episode.
+dsh: reasoning:
+Confirmed the invoicing.py revert. Now, let's confirm the final answer in the session and the exact verification command wording. Let me also check the MEMORY.md diff content around the NaN root cause section for verification notes.
+
+Let me expand the MEMORY.md diff with more chars, or search tmem for "验证" command.
+
+Actually, I have enough. But let me double-check whether the final answer text mentioned specific commands. Let me expand raw seq 245-255 — earlier raw expansion with seq_from=240..255 returned only step 249. Hmm, maybe the raw file doesn't contain the final assistant message. The episode ends at seq 255. Let's check the turn-level expand with a query about verification.
+
+Let me just do one more targeted search to confirm there's no other verification command like a script in `scripts/`.
+dsh: reasoning:
+I now have everything needed. Let me summarize.
+
+Answers:
+
+1) Files modified in order (from episode `ep_e98083fe22` / playbook `tr_01aed48efa`):
+1. `src/ledger/money.py` — added the shared guard `ensure_usable_price()` (+ `import math`, `from .errors import ValidationError`); also touched `format_money`.
+2. `src/ledger/import_rows.py` — `parse_price()` now delegates to `ensure_usable_price`; `parse_rows()` / `rows_to_tuples()` pass row description; `parse_price_checked()` delegates to `parse_price` (now raises ValidationError instead of ValueError).
+3. `src/ledger/invoicing.py` — temporarily added the guard to `build_invoice`, but reverted it (seq 166/171) because the project's pinned contract is that **settlement** rejects missing prices. Final diff shows invoicing.py unchanged.
+4. `src/ledger/settlement.py` — `settle_invoice()`, `settle_line()` validate unit price before conversion; `settle_invoice_checked()` switched from ValueError to ValidationError.
+5. `tests/test_import_rows.py` — new file (15 tests).
+6. `tests/test_settlement.py` — added/rewrote regression tests (14 tests).
+7. `MEMORY.md` — wrote root cause analysis and new baseline.
+
+Final `git diff --stat`: 4 files changed (import_rows.py, money.py, settlement.py, tests/test_settlement.py), plus new tests/test_import_rows.py and MEMORY.md.
+
+2) Verification commands:
+- `PYTHONPATH=src python3 -m pytest -q` → 2 failed, 39 passed (the 2 remaining failures are pre-existing, unrelated: pagination & rates KeyError 'USD:CNY'); the target nan failure is gone.
+- per-file: `PYTHONPATH=src python3 -m pytest tests/test_import_rows.py -q` (15 passed) and `... tests/test_settlement.py -q` (14 passed); stability loop of 3 runs.
+- collect-only: `PYTHONPATH=src python3 -m pytest --collect-only -q` and the two per-file collect-only.
+- Plus ad-hoc python heredoc scripts to check parse_price/parse_rows/parse_price_checked/build_invoice/settle_* raise ValidationError.
+- Also `git diff --stat && git diff src/` to review the final diff.
+
+3) The new unified validation entry function: `ensure_usable_price(value, description="line") -> float` in `src/ledger/money.py` (line 55). Raises `ledger.errors.ValidationError`.
+
+Note the user asked "headless 你可以查阅本项目可用的项目记忆来回答问题，但不要运行任何命令" — I used tmem_search/tmem_expand tools (not bash commands). Good. No commands were run.
+
+Let me present concisely with citations to memory IDs.
+
+One nuance: the "验证命令" — the recorded playbook "verify" field shows collect-only chain, while "Verification Cmds" field shows `do PYTHONPATH=src python3 -m pytest -q 2>&1 && PYTHONPATH=src python3 -m pytest "$f" -q 2>&1`. I'll present the actual commands.
+
+Also note that the two remaining failures (pagination, rates) are the pre-existing baseline failures unrelated to this fix.
+
+Let me write the answer in Chinese since the user wrote inChinese.

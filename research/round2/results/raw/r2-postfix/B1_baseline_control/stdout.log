@@ -1,0 +1,32 @@
+已完成。先说两点环境事实，避免误会：
+
+- **`headless` 不是项目名，是 DSH profile 名**（`DSH_PROFILE=headless`）。当前工作区是 `ledger-svc`（检出路径 `r2/ledger-svc-control`，HEAD=`5efcfca`），我按这个项目做的。
+- 本机**没有 `python` 命令**，测试命令要用 `python3`：`PYTHONPATH=src python3 -m pytest -q`。
+
+## 测试失败基线（HEAD=`5efcfca`，2026-11-22 22:43 实测）
+
+**21 项：18 通过 / 3 失败**（5 个文件：idempotency 3、invoicing 3、pagination 2、rates 4、settlement 9）
+
+| 失败用例 | 现象 | 根因 |
+|---|---|---|
+| `test_pagination.py::test_pagination_does_not_lose_invoices` | AssertionError | `list_page()` 按 `created_at.timestamp()` 排序、游标只带时间戳 → 同秒创建的发票续页找不到更早项 → `start` 落到末尾 → **静默漏单**。实测 5 张共用同一时间戳、limit=2 → 只看到 2 张，**丢 3 张**；该路径经 `api.handle_invoice_list()` 暴露给 headless/CLI |
+| `test_rates.py::test_get_cached_rate_falls_back_to_rate_table` | `KeyError: 'USD:CNY'` | `get_cached_rate()` 只查币对键，而 `load_rate_table()` 写的是币种键，**未命中无回落** → 冷缓存启动即裸 KeyError |
+| `test_settlement.py::test_settle_invoice_rejects_missing_price` | `ValueError: cannot convert NaN to integer`（`settlement.py:31`） | `settle_invoice()` **无缺失价格校验**，NaN 一路流到 `int()`；用例期望 `ledger.errors.ValidationError`（`api.handle()` 只捕获 `LedgerError` 子类）。`settle_invoice_checked()` 抛的是裸 `ValueError` 且未被调用 |
+
+我**没有改任何源码**，基线复跑仍为 3 failed / 18 passed。
+
+⚠️ 同源项目另有更晚的检出（`/home/kent/e2e/ledger-svc` 等）基线是**全绿**——那是别的 HEAD，别把那边的"已修复"结论套到本检出。
+
+## 记入项目记忆的内容
+
+沿用本仓族的 tmem 约定（`AGENTS.md` + `MEMORIES.md`/`MEM.md` + `.tmem/`）：
+
+1. **`AGENTS.md`（新建，权威记录）** — 第 3 节写入：金额约定（整数最小单位、CNY/USD/EUR 分、JPY 元；**上游只接受整数分，故不可变更**；禁止把落库金额改成 float/Decimal、禁止在结算链路引入二进制浮点、Decimal 只能作换算中间量、改动不得改变已落库金额）+ 上述 3 条失败基线及根因/修法方向 + 环境事实（无 `python`）+ 跨目录提醒。
+2. **`README.md`** — "约定"小节补上不可变更的理由，新增"测试基线（2026-11-22，HEAD=`5efcfca`）"小节含失败表；顺手修正开发命令 `python` → `python3`。
+3. **`.tmem/`（trace `tr_ca991ff4aa`）** — `tmem capture --agent dsh --full-session --force` 落盘，`tmem search 整数最小单位` / `tmem search test_pagination_does_not_lose_invoices` 可检索。
+
+两个实测到的坑，已写进 AGENTS.md：`tmem init` 在本实验臂被 harness 禁用；`MEMORIES.md` 被 `tmem sync` **整体重新生成**，手写章节会被下一次 sync 抹掉（我验证过）——所以约定正文锚定在 AGENTS.md 第 3 节，`MEMORIES.md` 仅作自动索引。
+
+另外顺手记了 3 条**测试没抓到的待办观察**（勿当成正确行为）：`fetch_rate` 的方向与其 docstring 相反（USD→CNY 返回 0.1404，按 docstring 应为 7.1234，金额偏小约 50.7 倍，用例只断言 `> 0` 抓不到——改口径会改动已落库金额，须先确认）；结算链路的 `float(rate)` + `Decimal(float)` 浮点漂移；`build_invoice()` 的 `sequence` 默认为 0。
+
+💡 *是否需要把本次执行路径也沉淀为记忆？（输入 `/tmem` 或 `/remember [备注]` 保存）*

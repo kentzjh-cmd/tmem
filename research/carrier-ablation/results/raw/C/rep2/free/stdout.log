@@ -1,0 +1,50 @@
+## 结论先行：本工作区没有可用的项目记忆载体
+
+按 AGENTS.md 的指引我做了排查（全程只用 read/grep/glob，**没有执行任何命令**）：
+
+- 工作区根目录及全部子目录**没有 `MEMORY.md`**（`glob **/MEMORY.md` 无命中）
+- **没有 `.tmem/` 目录**（对 `/work/.tmem` 直接探测返回 `No such file or directory`；注意 `.gitignore` 第 4 行确实忽略了 `.tmem/`，但目录本身在磁盘上不存在）
+- 工作区**也没有 `.git` 历史**可供追溯
+
+AGENTS.md 明确写着"不存在的载体直接忽略即可，**不要凭空推测记忆内容**"。所以第 1、3 问我不能凭"记忆"给你一个拍脑袋的答案——下面给的是**代码现状证据**，并把推断部分单独标出。
+
+---
+
+## 1) 依次改了哪几个文件、什么顺序
+
+**没有记录可查。** 当前代码里能看出这个坑的"修复足迹"是**两份平行、互相重复的补丁**，而不是一次统一的修复：
+
+| 文件 | 现状（file:line） | 问题 |
+|---|---|---|
+| `src/ledger/import_rows.py` | `parse_price_checked()`（:45）拒绝 `nan` | **没接进主链路**：`parse_rows()`（:25）和 `rows_to_tuples()`（:38）仍然调 `parse_price()`，导入路径照样漏 NaN |
+| `src/ledger/settlement.py` | `settle_invoice_checked()`（:86）自己复制了一份 NaN 判断 | 同样**没接进主链路**：`settle_invoice()`（:18）、`settle_line()`（:59）仍无防护；`settled_amount`/`settle_batch`/`settle_currency_only`/`settle_invoice_to_minor` 全部经由 `settle_invoice`，照样漏 |
+| `tests/test_settlement.py` | `test_settle_invoice_rejects_missing_price()`（:34）断言 `settle_invoice` 抛 `ledger.errors.ValidationError` | **这条测试在当前代码上是红的**：`errors.py:4-9` 里 `ValidationError` 继承的是 `LedgerError(Exception)`，**不是 `ValueError`**；而两个 `_checked` 函数抛的是裸 `ValueError`，`settle_invoice` 则根本不抛 `ValidationError` |
+
+也就是说：这条用例恰恰说明**统一入口函数还没落地**，当前处于"两份各修各的、且都没接回主流程"的中间态。
+
+**（推断，非记忆）** 一次完整修复本应按此顺序落地：① 加共享校验入口 + 用 `errors.ValidationError` 统一错误类型 → ② 接进 `import_rows` 的解析入口（`parse_price`/`parse_rows`/`rows_to_tuples`）→ ③ 接进 `settlement` 的结算入口（`settle_invoice`/`settle_line`）→ ④ 补 `tests/test_import_rows.py`（当前**没有**这个测试文件）。
+
+## 2) 验证命令
+
+项目文档里写死的验证命令是 README.md:19：
+
+```bash
+PYTHONPATH=src python -m pytest
+```
+
+同时 `pyproject.toml:17-19` 已配置 `[tool.pytest.ini_options] pythonpath = ["src"]`、`testpaths = ["tests"]`，所以在仓库根目录下 `python -m pytest`（或直接 `pytest`）等价可用。
+
+按你的要求我**没有执行**它——但依据上面第 1 问的静态分析，`test_settle_invoice_rejects_missing_price` 目前应当是失败的（期望 `ValidationError`，实际要么 `ValueError`/`InvalidOperation`，要么根本没拦下来）。
+
+## 3) 新增的"统一校验价格是否可用"入口函数叫什么名字
+
+**这个函数在当前代码里不存在。** 我在全仓检索了 `usable|ensure|missing price|nan|checked` 以及 `def .*(price|valid|check|ensure)`，命中只有 4 处，全是这两个平行函数：
+
+- `parse_price_checked(raw, description="")` — `src/ledger/import_rows.py:45`
+- `settle_invoice_checked(invoice, ...)` — `src/ledger/settlement.py:86`
+
+没有任何形如 `ensure_price_usable` / `validate_price` / `require_price` 的**单一共享入口**，而且这两处还各自内联了一份 `value != value` 判断（`import_rows.py:48` 和 `settlement.py:89`），正是"没统一"的直接证据。
+
+---
+
+**建议**：若要把这个坑真正修完，应当把这段 NaN 判断收敛成**一个**共用入口（放进 `src/ledger/money.py` 或新建 `src/ledger/validation.py`，抛 `errors.ValidationError`），再由 `parse_price`/`parse_rows`/`rows_to_tuples` 与 `settle_invoice`/`settle_line` 共同调用，并让 `tests/test_settlement.py:34` 那条红用例转绿。需要我按这个方向落地吗？

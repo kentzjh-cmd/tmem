@@ -1,0 +1,20 @@
+dsh: reasoning:
+The user says: don't read any files, don't run any commands. Answer from context only.
+
+Let me answer the three questions based on the context provided.
+
+1) Files modified in order: src/ledger/money.py → src/ledger/import_rows.py → src/ledger/settlement.py
+
+2) Verification command: `PYTHONPATH=src python3 -m pytest -q 2>&1 && PYTHONPATH=src python3 -m pytest "$f" -q 2>&1` — also the collect-only commands. The main verification command was `PYTHONPATH=src python3 -m pytest -q 2>&1`.
+
+3) The unified price-availability validation entry function name: from the memory excerpt — `ensure_usable_price()` in src/ledger/money.py. `parse_price()` now goes through `ensure_usable_price()`.
+
+Note also `parse_price_checked()` was changed to delegate (委托) — but the unified entry function is `ensure_usable_price()`.
+
+Let me answer concisely, citing context. Also mention involved files list: MEMORY.md, src/ledger/import_rows.py, src/ledger/invoicing.py, src/ledger/money.py, src/ledger/settlement.py, tests/test_import_rows.py, tests/test_settlement.py. The "改动文件（按修复顺序）" is the three source files.
+
+I should note that invoicing.py was in the involved files list but the fix order was the three. Actually the decision notes say "Let me check the remaining modules for related paths" — invoicing.py was checked. The modified files per the record: money.py → import_rows.py → settlement.py.
+
+Answer in Chinese since the user writes Chinese.
+
+No toolcalls needed.

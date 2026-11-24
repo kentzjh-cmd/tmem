@@ -1,0 +1,1196 @@
+dsh: all_proxy names a SOCKS proxy, which is not supported; connecting directly for that scheme — set an http:// or https:// proxy URL instead
+dsh: reasoning:
+Let me read MEMORIES.md and the source code.
+dsh: reasoning:
+Now let's read the key source files: settlement.py, import_rows.py, errors.py, money.py.
+dsh: reasoning:
+Now let me read the tests and other relevant files: test_settlement.py, invoicing.py, api.py, cli.py, store.py, audit.py, idempotency.py.
+
+Let me first run the test suite to see the baseline.
+dsh: reasoning:
+Baseline confirmed: 3 failed, 18 passed. My task is specifically #3 — the NaN price issue. The task says: "headless 导入的表格里价格单元格为空时会被写成 nan，结算时因此报错（ValueError: cannot convert NaN to integer）。请排查根因并修好，让缺失价格被明确拒绝（用项目自己的校验异常），补上测试，并把排查结论记到项目记忆里。"
+
+So the scope is the missing price / NaN issue only. Not pagination or rates. The baseline allows "按记录更新" (update per record) — i.e., when I fix #3, I move it from §2.1 to a "已修复" section and update the result line to `2 failed, 19 passed` (plus my new tests would add more passed counts).
+
+Let me now look at the whole flow: "headless 导入" — headless import. Let me look at api.py, cli.py, store.py, and other places to find the import path. Let me check whether there's a "headless" reference anywhere.
+
+Also, let me check the other source files to understand the whole import path.
+
+Let me search for "headless" in the repo.
+dsh: reasoning:
+Now let me understand the full picture. The task mentions "headless 导入" (headless import) — the spreadsheet import path. The root cause chain:
+
+1. The spreadsheet exporter writes an empty numeric cell as literal text `nan`.
+2. `import_rows.parse_price` does `float(raw)` → `float("nan")` = nan, no validation.
+3. `parse_rows` / `rows_to_tuples` (the import main path) call `parse_price`, not `parse_price_checked`. So nan propagates into `InvoiceLine.unit_price`.
+4. `build_invoice` does `float(unit_price)` → still nan (no validation there either).
+5. `settle_invoice` sums nan into total, quantize gives NaN, and `int(settled * 10**exponent)` raises bare `ValueError: cannot convert NaN to integer`.
+
+Also `Decimal(line.unit_price)` with nan → Decimal('NaN'); `total.quantize(quantum)` → Decimal('NaN') (quantize of NaN returns NaN in default context? Actually Decimal('NaN').quantize(Decimal('0.01')) raises InvalidOperation? Let me check: In Python, `Decimal('NaN').quantize(Decimal('0.01'))` returns `Decimal('NaN')`. Yes, per the spec, quantize of NaN returns NaN (quiet). Actually, let me verify — Python docs: "If the operand is NaN, the result is NaN" — hmm, for quantize, the spec says: quantize raises InvalidOperation if the result has more digits... For NaN operand, I believe `Decimal('NaN').quantize(Decimal('0.01'))` returns `Decimal('NaN')`. The traceback shows the failure at line 31 `int(settled * (10 ** exponent))` → "cannot convert NaN to integer", which confirms quantize succeeded and produced NaN.
+
+So the fix should be at the validation layer:
+- `settle_invoice` should validate that each line's unit_price is a usable price (not NaN, maybe not None, not inf) and raise `ledger.errors.ValidationError`.
+- The import path should also reject the placeholder early with `ValidationError` (parse_price → ValidationError for nan/empty).
+
+The conventions say: "缺失价格：`settlement.settle_invoice_checked` 已能识别 `nan`，但它抛的是 `ValueError`；`import_rows.parse_price_checked` 也能拒绝空单元格占位符 `nan`，但导入主路径（`parse_rows` / `rows_to_tuples` → `parse_price`）**并没有**走它，导出的空单元格仍会以 `nan` 进入结算。修 #3 时建议沿「校验层」补齐，而不是在换算里特判。"
+
+So the recommended fix:
+1. `parse_price` (import main path) should validate and raise `ValidationError` — probably make `parse_price` delegate to `parse_price_checked` and have `parse_price_checked` raise `ValidationError` instead of `ValueError`.
+2. `settle_invoice` should validate line prices and raise `ValidationError` (the failing test expects `settle_invoice` to raise ValidationError directly).
+3. `settle_invoice_checked` should raise `ValidationError` too (it currently raises `ValueError`).
+
+Important: `ValidationError` should probably be raised instead of ValueError. But note `errors.ValidationError` extends `LedgerError` extends `Exception` — not ValueError. So changing `parse_price_checked` to raise ValidationError changes behavior for callers catching ValueError. Let me check for callers/tests of parse_price_checked. Grep showed no test references to parse_price_checked. There's no tests/test_import_rows.py.
+
+Now, where should the validation live? The conventions say "沿「校验层」补齐，而不是在换算里特判" — add validation at the validation layer, not special-casing in the conversion.
+
+Design:
+- Add a shared validation helper. Where? Maybe in `money.py` — but money.py is about conversions. Perhaps create a helper in `errors.py`? No, errors are exception classes. Maybe put a `validate_price`/`ensure_usable_price` in `money.py` since it's the money primitives module: "Money primitives. The ledger stores every amount as an integer number of minor units...". Hmm.
+
+Actually, a clean approach: add a small validation module or put helper in `money.py`:
+
+```python
+def is_missing_amount(amount) -> bool:
+    ...
+```
+
+Hmm, but there's a circular import concern: money.py doesn't import errors.py currently; errors.py imports nothing. So money.py can import errors.ValidationError safely (errors has no imports). Let me check imports of money.py: only decimal. Adding `from .errors import ValidationError` is fine — errors.py imports nothing from the package.
+
+Alternatively put the check helper in `import_rows.py`? No — settlement needs it too, and settlement shouldn't depend on import_rows.
+
+I think the cleanest:
+- In `money.py`: add `require_usable_amount(amount, description=...)` or name it `validate_amount`. Hmm, but §1.1 says money.py's "约定落点" is to_minor/from_minor/format_money. Adding a validation helper there is acceptable but might dilute. Alternatively create a new module `src/ledger/validation.py` with `require_price(price, description)` raising ValidationError. That seems cleanest and doesn't disturb money.py's money-conversion role. But a new module for one function... Let's consider: the fix touches:
+  - `settlement.settle_invoice` — validate each line's unit_price.
+  - `settlement.settle_line` — also should validate (single line path) — yes, settle_line is used by settle_lines_total. Test `test_settle_line_returns_minor_units` must still pass.
+  - `import_rows.parse_price` — validate raw cell.
+  - `import_rows.parse_price_checked` — raise ValidationError instead of ValueError (keep backwards-compat? maybe make it alias).
+  - `invoicing.build_invoice` — could also validate unit_price so NaN is rejected at assembly time (fail fast at import). That's a good place too: the invoice builder is the boundary between import rows and settlement. But careful: `build_invoice` is called in tests with valid prices.
+
+Hmm, but the failing test builds an invoice with `float("nan")` via `build_invoice` and expects `settle_invoice` to raise ValidationError. If `build_invoice` raised ValidationError, the test would fail at build time (the error would be raised outside the `pytest.raises` block) → test failure! Let's check:
+
+```python
+invoice = build_invoice("INV-1006", [("hosting", "USD", float("nan"), 1)], currency="USD")
+with pytest.raises(ValidationError):
+    settle_invoice(invoice, "USD", "CNY")
+```
+
+Yes — the `build_invoice` call is outside the `pytest.raises` context. So `build_invoice` must NOT raise ValidationError for NaN price, otherwise the test fails. So validation must be in `settle_invoice` (and settle_line).
+
+That's an important constraint. So:
+- `build_invoice`: do not add NaN price rejection (or if we do, we'd break the failing test). Actually wait — should the invoice builder reject missing prices? Arguably yes for real robustness, but it would break the given baseline test. The convention §2.1 row 3 says root cause is at `settlement.py:31` (`settle_invoice`) and the fix should be at the validation layer. So keep `build_invoice` permissive (it only checks quantity and invoice_id) and enforce price validity at settlement time and import time.
+
+So the plan:
+
+1. New module `src/ledger/validation.py`? Or put helper in `money.py`. Let me think about what's most natural for this codebase. The codebase has `errors.py` for exception classes, `money.py` for money primitives. A price-validation helper fits "money" domain: validating that a price is present and finite.
+
+I'll add to `money.py`:
+
+```python
+def is_missing_amount(amount) -> bool:
+    """Return True when ``amount`` cannot be used as a price/amount."""
+```
+
+Hmm, but there's a subtlety: `money.py` deals with `Decimal` conversions. A NaN check via `value != value` works for float; for Decimal('NaN'), `Decimal('NaN') != Decimal('NaN')` → True (Decimal NaN comparison with equality raises InvalidOperation! Actually `Decimal('NaN') == Decimal('NaN')` returns False, but ordering comparisons raise InvalidOperation. `!=` returns True, that's fine — no exception for equality comparisons with NaN; only ordering (<,>) raise InvalidOperation).
+
+Careful: `Decimal('NaN') != Decimal('NaN')` → True. Good.
+`Decimal('sNaN')` — equality works too.
+
+Also `float('nan') != float('nan')` → True. Good.
+
+What about `None`? `None != None` → False, so None would not be detected by the NaN trick. Need explicit None handling.
+
+What about inf? `float('inf')` is not NaN but is not a usable price either — inf * quantity → inf → quantize → InvalidOperation? `Decimal('Infinity').quantize(Decimal('0.01'))` raises InvalidOperation ("quantize result is too large"? Actually for Infinity, quantize raises InvalidOperation). Let's check: In Python's decimal, `Decimal('Infinity').quantize(Decimal('0.01'))` → raises decimal.InvalidOperation. Yes, I believe quantize of Infinity raises InvalidOperation. That's a separate concern; the task focuses on missing price (nan). But being robust: treating inf as invalid price is sensible, though it may be over-reach. The error message could say "invalid price". Hmm. The task says "让缺失价格被明确拒绝" — missing price explicitly rejected. I'll focus on missing/NaN, and treat non-finite (inf) as invalid too since a price of infinity is also not a usable price — but careful: raising ValidationError for inf is safe and doesn't break anything. I'll include it but with a clear message. Actually let me be careful about scope creep. The root cause: empty cell → "nan" → float nan → NaN arithmetic. I'll handle NaN and None primarily, and treat infinity as invalid price too (a one-line addition, clearly justified: quantize would blow up with an equally opaque decimal.InvalidOperation). I think it's justified and low-risk.
+
+2. `import_rows.parse_price`: validate the raw cell → raise ValidationError with description context. `parse_price_checked` currently raises ValueError; I'll make both raise ValidationError, with `parse_price` delegating to `parse_price_checked` (or make parse_price the validating one and keep parse_price_checked as an alias for backwards compat).
+
+Wait — `parse_price(raw)` has no description param; `parse_rows` has row["description"]. Better: `parse_price(raw, description="")`.
+
+Also, `float(raw)` on an empty string `""` raises `ValueError: could not convert string to float: ''`. The exporter writes literal text `nan` for empty numeric cells (per the module docstring). But what if the cell is an empty string? The docstring says the exporter writes empty numeric cell as literal `nan`. But to be robust, the import path should treat an empty/whitespace string cell as a missing price too → ValidationError, rather than a raw ValueError from float(). That's part of "缺失价格被明确拒绝（用项目自己的校验异常）". Yes! This is important: the headless import writes empty cells as `nan`, but the cell may also come through as `""` or `None` depending on the reader. Both should raise ValidationError.
+
+So `parse_price` should:
+- If raw is None or (str and stripped == "") → ValidationError("missing price for ...")
+- Try float(raw) → on ValueError/TypeError → ValidationError(f"invalid price: {raw!r} for ...") — hmm, careful: a non-numeric string like "abc" is a different error than a missing price. Both should be ValidationError though (caller supplied invalid data). I think mapping both to ValidationError is right — "caller supplied invalid data".
+- If result is NaN → ValidationError("missing price for ...")
+- If result is inf → ValidationError("invalid price...")
+
+3. `settlement.settle_invoice`: validate each line's unit_price before doing arithmetic → raise `ValidationError(f"missing price for {line.description}")`. Also `settle_line` similarly.
+
+Where to put the shared check? Both settlement.py and import_rows.py need it. import_rows imports from invoicing (InvoiceLine). settlement imports errors, money, rates.
+
+Option A: put `require_usable_price` in `money.py` (money primitives) and import in both. money.py imports errors → fine, no cycles.
+
+Option B: new module `validation.py`.
+
+I'll go with money.py since it's "money primitives" and both modules already import money stuff (settlement does; import_rows doesn't but can). Hmm, but is money.py the right home? The function is about validating amounts. I think a dedicated small module `src/ledger/validation.py` might be cleaner and more discoverable... but the codebase is small and flat with topical modules. Adding a new module requires updating CONVENTIONS §1.1 table maybe.
+
+Let me weigh: The convention doc says "修 #3 时建议沿「校验层」补齐" — "the validation layer". There isn't a dedicated validation layer module; errors.py holds the exception hierarchy. I'll implement the shared helper in `money.py` as `require_usable_amount` — hmm, name. Let's think about API:
+
+```python
+# money.py
+def is_finite_amount(amount) -> bool:
+    """Return True when ``amount`` is a usable (present, finite) number."""
+
+def require_amount(amount, description: str = "") -> float:
+    """Return ``amount`` when usable, else raise ValidationError."""
+```
+
+Hmm, `require_amount` returning the value is convenient: `price = require_amount(line.unit_price, line.description)`.
+
+Let me design money.py additions:
+
+```python
+from .errors import ValidationError
+
+def is_missing_amount(amount) -> bool:
+    """Return True when ``amount`` is absent or NaN."""
+    if amount is None:
+        return True
+    try:
+        return amount != amount
+    except TypeError:
+        return True
+```
+
+Hmm, `Decimal('NaN') != Decimal('NaN')` → True, fine. For a str "abc", `"abc" != "abc"` → False → not missing, but then float conversion fails. In import path we handle conversion separately.
+
+Better structure for money.py:
+
+```python
+def is_finite_number(value) -> bool:
+    """Return True when ``value`` is a real, finite number."""
+    if value is None or isinstance(value, bool):
+        return False
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return False
+    return number == number and number not in (float("inf"), float("-inf"))
+```
+
+Hmm, using `math.isfinite(float(value))` is cleanest: `math.isfinite` returns False for nan and inf. So:
+
+```python
+import math
+def is_finite_number(value) -> bool:
+    if value is None or isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(float(value))
+    except (TypeError, ValueError):
+        return False
+```
+
+But careful: `float(Decimal('NaN'))` → nan → isfinite False. Good. `float("abc")` → ValueError → False. `float("")` → ValueError → False. `float("nan")` → nan → False. 
+
+But: distinguishing "missing" vs "invalid" for error messages. For empty string / None / nan → "missing price"; for garbage → "invalid price". Let's write two concepts:
+
+In money.py:
+```python
+def is_missing_amount(amount) -> bool:
+    """Return True when the amount is absent or not a real number (e.g. NaN)."""
+```
+Hmm, nan IS "not a real number" but semantically it means "missing" here (the exporter writes nan for an empty cell).
+
+Let me simplify and keep the API tight:
+
+money.py:
+```python
+def amount_is_missing(amount) -> bool:
+    """Return True when ``amount`` stands for an absent value.
+
+    The billing exporter writes an empty numeric cell as the literal text
+    ``nan``; parsed as a float that becomes ``NaN``. ``None`` and empty
+    strings mean the same thing.
+    """
+    if amount is None:
+        return True
+    if isinstance(amount, str):
+        return amount.strip() == "" or amount.strip().lower() == "nan"
+    try:
+        number = float(amount)
+    except (TypeError, ValueError):
+        return False   # not missing, just invalid
+    return math.isnan(number)
+```
+
+Hmm, `float("NaN")` → isnan → True. But `Decimal('Infinity')` → not missing. Then also need "invalid" check for inf.
+
+Maybe simpler: two helpers:
+
+```python
+def is_missing_amount(amount) -> bool  # None, "", "nan", NaN (float/Decimal)
+def is_invalid_amount(amount) -> bool  # not a finite number (garbage, inf)
+```
+
+Hmm, I'm overengineering. Let's define a single public helper used by both layers:
+
+```python
+def require_usable_amount(amount, description: str = "", *, label: str = "price") -> float:
+    """Return ``amount`` as a float, rejecting absent or non-finite values.
+
+    Raises ``ledger.errors.ValidationError`` when the amount is missing
+    (``None``, an empty cell or the ``nan`` placeholder the billing
+    exporter writes) or not a finite number.
+    """
+```
+
+That gives one call site in settlement (`price = require_usable_amount(line.unit_price, line.description)`) and one in import_rows (after float conversion).
+
+Wait: in import_rows, we want to reject a non-numeric string too. If we call `require_usable_amount(raw, description)` with raw="abc", float() raises ValueError → we convert to ValidationError. So `require_usable_amount` should catch conversion errors and raise ValidationError. But then distinguishing missing vs invalid: message differs.
+
+Let me define:
+
+```python
+def require_usable_amount(amount, description: str = "", *, label: str = "price"):
+    """Return ``amount`` as a float after checking it can be settled.
+
+    Raises ValidationError when the amount is missing (None / empty cell /
+    the ``nan`` placeholder) or is not a finite number.
+    """
+    missing = is_missing_amount(amount)
+    try:
+        number = float(amount)
+    except (TypeError, ValueError):
+        raise ValidationError(f"invalid {label} for {description or 'line'}: {amount!r}") from None
+    if missing:
+        raise ValidationError(f"missing {label} for {description or 'line'}")
+    if not math.isfinite(number):
+        raise ValidationError(f"invalid {label} for {description or 'line'}: {amount!r}")
+    return number
+```
+
+Hmm: careful with the order — `is_missing_amount("abc")` should be False so we raise "invalid". `is_missing_amount("")` → True but float("") raises ValueError → we'd raise "invalid price" instead of "missing price". Need to check missing BEFORE conversion:
+
+```python
+    if is_missing_amount(amount):
+        raise ValidationError(f"missing {label} for {description or 'line'}")
+    try:
+        number = float(amount)
+    except (TypeError, ValueError):
+        raise ValidationError(...)
+    if not math.isfinite(number):
+        raise ValidationError(...)
+    return number
+```
+
+where is_missing_amount handles None/empty-str/"nan"-str/NaN-float/NaN-Decimal.
+
+Let me write is_missing_amount:
+
+```python
+def is_missing_amount(amount) -> bool:
+    if amount is None:
+        return True
+    if isinstance(amount, str):
+        text = amount.strip().lower()
+        return text == "" or text == "nan"
+    try:
+        number = float(amount)
+    except (TypeError, ValueError):
+        return False
+    return math.isnan(number)
+```
+
+Good: float('nan') → isnan → True. Decimal('NaN') → float → nan → True. Decimal('Infinity') → isfinite check later → invalid.
+
+Note: bool is a subclass of int; `float(True)` = 1.0 → fine (not missing).
+
+Now, in settlement, the price check must happen BEFORE the currency check? Order matters for the test `test_settle_invoice_rejects_mixed_currency` — that invoice has a valid price (19.99) and mismatched currency → CurrencyMismatch. Fine either way.
+
+But in settle_invoice, where to validate? At the top of the line loop, before currency check or after? Consider an invoice with both a NaN price and mismatched currency — which error? I'd validate price first? Hmm, or currency first (currency check is currently first). To minimize behavioral change for existing passing tests, keep the currency check first and add price validation right after? But then for the failing test, the currency matches ("USD" == "USD") so validation triggers. Either order passes the test. I'll validate the price first actually... hmm.
+
+Let me think about which is better semantically: currency mismatch is a structural/business error; missing price is also. There's no strong argument. I'll keep the existing currency check first to preserve current error precedence for mixed-currency invoices (minimal change), then price validation. Hmm, but actually... A NaN price is a data-integrity failure that arguably should surface first. I'll go with currency check first (preserve existing precedence) — no, wait. Consider the import path: an imported row with an empty price in a different currency... eh, doesn't matter.
+
+Actually, let me reconsider: the primary complaint is "结算时因此报错（ValueError）". The validation should happen as early as possible in settle_invoice — ideally before any arithmetic, and I'd like a missing price to be reported even if another line has a currency mismatch? Meh. Keep it simple: within the loop, check price validity first (data integrity) then currency? Let me look at the existing test expectations once more:
+
+- test_settle_invoice_rejects_mixed_currency: price 19.99 valid → CurrencyMismatch regardless of order. ✓
+
+I'll validate the price first, because "missing price" is a per-line data defect that should be surfaced deterministically, and the currency check depends on the invoice-level base currency. Hmm, but "minimal diff" principle suggests adding the check after the existing currency check. Either is fine. I'll place the price validation first in the loop with a comment, since the whole point is that the arithmetic must never see a NaN. Actually no strong reason... Let me place it first: it reads naturally ("a line without a usable price cannot be settled"), and the currency check right after.
+
+Hmm, wait. There's a subtlety: `settle_invoice` is called by `settle_and_invoice`, `settle_currency_only`, `settle_invoice_to_minor`, `settle_invoice_in_currency`, `settle_batch`, `settled_amount`. And `settle_line` separately (used by settle_lines_total, settle_rounded_lines, settle_lines_with_total). So validating in both `settle_invoice` and `settle_line` covers everything.
+
+Also `settle_invoice_checked` — currently raises ValueError for nan. I'll change it to raise ValidationError (and keep the check). It becomes a thin wrapper: it can just call settle_invoice which now validates. But keep the function for API compatibility — make it raise ValidationError. I'll rewrite it to delegate: since settle_invoice now validates, settle_invoice_checked could just call settle_invoice. But keeping an explicit check in settle_invoice_checked is redundant. I'll keep it as a thin deprecated-ish wrapper delegating to settle_invoice, with a docstring noting validation is now built in. Hmm — but changing its raised exception type from ValueError to ValidationError: any caller catching ValueError would break. ValidationError is not a subclass of ValueError. Let me check if anything catches ValueError around settle_invoice_checked... grep showed no usages of settle_invoice_checked outside settlement.py. Fine.
+
+Also `import_rows.parse_price_checked` raises ValueError → change to ValidationError. Any callers? None besides itself. And `parse_price` → make it validating.
+
+Wait, careful: `parse_price` is used by `parse_rows` and `rows_to_tuples`. If `parse_price` now raises ValidationError for nan, then the import path rejects missing prices early — good, that's the "headless import" fix: the error surfaces at import time with a clear message, before settlement.
+
+But should `parse_price` keep raising for non-numeric garbage? Yes → ValidationError.
+
+Now — "用项目自己的校验异常" = use the project's own validation exception = `ledger.errors.ValidationError`. ✓.
+
+Now let's also consider: does anything else in the codebase produce prices that could be None/nan? `build_invoice` does `float(unit_price)` → if unit_price is None → TypeError. Not our concern, but could be worth handling? `build_invoice` raises ValidationError for quantity <= 0 and missing invoice_id. If a row has quantity as a string... `int(row["quantity"])` in import_rows handles that. Fine.
+
+What about `invoice.amount` property — nan → nan. Not a concern.
+
+Now, tests to add. The task says "补上测试" (add tests). I should add tests for:
+1. `settle_invoice` rejects missing (NaN) price with ValidationError — this already exists as the baseline test (test_settle_invoice_rejects_missing_price) and will now pass.
+2. `settle_line` rejects missing price with ValidationError.
+3. Import path: `parse_rows` / `rows_to_tuples` / `build_invoice_from_rows` reject a row whose price cell is the `nan` placeholder (and empty string) with ValidationError.
+4. `settle_invoice_checked` raises ValidationError (not ValueError).
+5. End-to-end-ish: build invoice from rows with a missing price → settlement refuses with ValidationError, and no NaN reaches settlement.
+6. Ensure integer minor units invariant still holds (existing tests cover; also confirm the validation doesn't change amount semantics).
+7. A regression test that a valid price still settles to int minor units (already exists).
+
+Where to put the new tests? A new file `tests/test_import_rows.py` for the import path tests, plus additions to `tests/test_settlement.py`. Also maybe `tests/test_validation.py` for the money helper.
+
+Let me now check the rest of the source files to make sure I don't miss other import paths (store.py, audit.py, idempotency.py, rates.py, pagination.py, clock.py, __init__.py).
+
+Let me read the remaining files.
+dsh: reasoning:
+Now let me check the .tmem directory and tmem availability, plus check the git history for context on the NaN issue (maybe there's a recent change that introduced it).
+
+Let me check git log for import_rows.py and settlement.py.
+dsh: reasoning:
+There are existing traces. Let me search tmem for relevant keywords like "nan", "缺失价格", "ValidationError" — per AGENTS.md, `tmem search "<关键词>"`.
+
+Also, let me look at the git history: commit `54e1833 feat(import): reject empty price cells` — that's the one that added `parse_price_checked` but didn't wire it into the main path. And `059c3e2 test(settlement): cover rows with missing prices` added the failing test. Let me look at those commits to confirm the root cause narrative.
+dsh: reasoning:
+The memory contains the prior session's convention + baseline recording. Now let me plan the work and write a todo list.
+
+Plan:
+1. Root cause investigation (done mostly) — write it up.
+2. Implement fix:
+   - `src/ledger/money.py`: add amount validation helpers (`is_missing_amount`, `require_usable_amount`) raising `ValidationError`.
+   - `src/ledger/settlement.py`: `settle_invoice` / `settle_line` validate line prices → ValidationError; `settle_invoice_checked` → ValidationError.
+   - `src/ledger/import_rows.py`: `parse_price` (main import path) validates and raises ValidationError; `parse_price_checked` → ValidationError.
+3. Tests: new tests in tests/test_settlement.py and tests/test_import_rows.py (+ maybe tests/test_money.py).
+4. Run full suite; verify integer minor units invariant tests pass; confirm baseline updated (2 failed for pagination & rates).
+5. Update CONVENTIONS.md §2 baseline (move row 3 to fixed section, update counts).
+6. Record findings into project memory: `tmem capture` + `tmem sync`, plus maybe update MEMORIES.md. AGENTS.md says tmem plugin isn't installed so need explicit capture. Also the tmem capture is default-deny (only doc changes → trivial), but we changed source code so it should pass. Also should I add notes to CONVENTIONS.md §2.2? Yes — per convention "修好一条，就把该行从 §2.1 移到「已修复」小节，并同步更新 §2 顶部的结果行".
+
+Let me check tmem capture options first (--help), then start implementing.
+
+Let me also double-check: does `Decimal(line.unit_price)` raise for a nan float? `Decimal(float('nan'))` → Decimal('NaN'). Yes, works.
+
+Now about the validation helper location. Let me reconsider putting it in `money.py` vs a new `validation.py`. 
+
+Given CONVENTIONS §1.1 lists money.py's role as "to_minor / from_minor 是唯一的金额换算入口；format_money 按币种小数位输出", adding an amount-presence check there is a slight extension but still money-related. Alternatively `errors.py` could host... no.
+
+I'll create the helpers in `money.py` since both `settlement.py` and `import_rows.py` already relate to money, and money.py has no dependency on errors yet (adding `from .errors import ValidationError` is safe — errors.py imports nothing).
+
+Hmm, wait. Is there any chance of circular import: errors.py has no imports → safe.
+
+Actually, let me reconsider a dedicated module `src/ledger/validation.py`. Advantages: clear "校验层" home, per CONVENTIONS advice "沿「校验层」补齐". Disadvantages: a new module for 2 functions; but the codebase is small and flat (15 modules). The phrase "校验层" in CONVENTIONS §2.2 refers to `parse_price_checked` / `settle_invoice_checked` — i.e., the existing checked-variants. So the guidance is: route the main paths through the checked functions and make them raise the project's ValidationError.
+
+That's a cleaner interpretation and matches the "minimize new surface" principle:
+- `import_rows.parse_price` → delegate to `parse_price_checked` (main path now goes through the checked variant).
+- `parse_price_checked` → raise `ValidationError` instead of `ValueError`.
+- `settlement.settle_invoice` → delegate the per-line price check to a shared checked helper, e.g. `require_line_price(line)` in settlement.py, and `settle_invoice_checked` → uses the same helper, raising ValidationError.
+
+But then the NaN-detection logic would be duplicated in import_rows and settlement (two places). To avoid duplication, put the primitive check in one place. Both settlement.py and import_rows.py need it; import_rows could import from settlement? No — settlement imports rates; import_rows importing settlement would be heavy and could create a cycle (settlement doesn't import import_rows; invoicing imports import_rows lazily inside function; settlement imports invoicing? no). Actually `import_rows` imports `invoicing` (for InvoiceLine) at module level; `invoicing` imports `import_rows` lazily inside a function. So import_rows → invoicing → (lazy) import_rows is fine. If import_rows imported settlement → settlement imports rates, errors, money → no cycle. But conceptually weird.
+
+Best: put the primitive in `money.py` (the money primitives module) — a single home for "is this amount usable". Both layers call it. That satisfies "沿校验层补齐" (validation lives in the money/validation layer, not in the conversion arithmetic).
+
+Decision: `money.py` gets:
+```python
+def is_missing_amount(amount) -> bool
+def require_usable_amount(amount, description="", label="price") -> float
+```
+
+Hmm, but §1.1 table lists money.py contents; I'll update the table row to mention the new validation entry point, keeping the doc in sync.
+
+Wait, actually — one more consideration about `to_minor`/`from_minor`: `to_minor(Decimal('NaN'))` → `Decimal('NaN') / quantum` → NaN → `to_integral_value` → NaN → `int(NaN)` → ValueError. Same class of bug! Should `to_minor` also reject NaN? The convention says to_minor is the single money conversion entry point. If a NaN ever reaches to_minor, it would raise the same opaque ValueError. Adding a guard in to_minor → ValidationError would be a nice defensive improvement and consistent. But it could change behavior for other callers... Let me check who calls to_minor: grep.
+
+Let me grep for to_minor/from_minor usage.
+
+Also, I want to double check the behavior of `Decimal('NaN').quantize(...)` and `Decimal('Infinity').quantize(...)` in this Python version. Let me run a quick Python check.
+
+Let me do these checks now.
+dsh: reasoning:
+Confirmed behaviors. `to_minor` isn't used anywhere except its definition (no callers). I'll still add a guard there? It has no callers, so adding validation is harmless and defensive. I'll consider it: `to_minor(Decimal('NaN'))` currently raises bare ValueError. Adding the same guard makes the money layer consistent ("the only money conversion entry point rejects unusable amounts with ValidationError"). This directly addresses the class of bug at the conversion layer too — but CONVENTIONS says "而不是在换算里特判" (don't special-case in the conversion). Hmm! That explicitly says NOT to add a special case in the conversion. But the guidance means: don't fix it by special-casing NaN inside the conversion arithmetic; instead validate at the validation layer. Adding a validation guard at the top of to_minor is a validation, not a special case in the arithmetic... but to be safe and aligned with the doc's intent, I'll keep to_minor unchanged (minimal diff, no callers) — actually, hmm.
+
+Let me think about it more concretely: is there a path where NaN reaches to_minor? No callers. So no need. I'll leave to_minor alone to keep the diff focused, and mention it in the memory notes as "adjacent risk" (like CONVENTIONS §2.2 style).
+
+Now, let me write the implementation.
+
+### money.py additions
+
+```python
+"""Money primitives.
+
+The ledger stores every amount as an integer number of minor units so that
+no binary floating point drift can accumulate.
+"""
+
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+import math
+
+from .errors import ValidationError
+
+...
+
+MISSING_CELL_PLACEHOLDER = "nan"
+
+
+def is_missing_amount(amount) -> bool:
+    """Return True when ``amount`` stands for an absent value.
+
+    The billing exporter writes an empty numeric cell as the literal text
+    ``nan``; parsed as a number that becomes ``NaN``. ``None`` and empty
+    strings mean the same thing.
+    """
+    if amount is None:
+        return True
+    if isinstance(amount, str):
+        text = amount.strip().lower()
+        return text == "" or text == MISSING_CELL_PLACEHOLDER
+    try:
+        number = float(amount)
+    except (TypeError, ValueError):
+        return False
+    return math.isnan(number)
+
+
+def require_usable_amount(amount, description: str = "", label: str = "price") -> float:
+    """Return ``amount`` as a float, rejecting values that cannot be settled.
+
+    A missing amount (``None``, an empty cell or the ``nan`` placeholder)
+    and any other non finite number raise ``ledger.errors.ValidationError``
+    instead of blowing up later inside the money arithmetic.
+    """
+    where = description or "line"
+    if is_missing_amount(amount):
+        raise ValidationError(f"missing {label} for {where}")
+    try:
+        number = float(amount)
+    except (TypeError, ValueError):
+        raise ValidationError(f"invalid {label} for {where}: {amount!r}") from None
+    if not math.isfinite(number):
+        raise ValidationError(f"invalid {label} for {where}: {amount!r}")
+    return number
+```
+
+Wait — `float(amount)` where amount is a Decimal → ok. Where amount is a bool → 1.0. Fine.
+
+Edge: amount is a str "abc" → is_missing_amount False → float raises ValueError → ValidationError("invalid price for line: 'abc'"). Good.
+
+Edge: amount is a str "  " → strip → "" → missing → ValidationError("missing price for line"). Good.
+
+Edge: amount = float('inf') → not missing → float ok → not finite → ValidationError("invalid price ..."). Good.
+
+Hmm, one question: `is_missing_amount` for a str "nan" — but what if a legit price cell contains the text "nan"? Not a price. Fine.
+
+### settlement.py changes
+
+```python
+from .errors import CurrencyMismatch, ValidationError
+from .money import DEFAULT_CURRENCY, currency_exponent, require_usable_amount
+```
+
+In `settle_invoice`:
+```python
+    for line in invoice.lines:
+        price = require_usable_amount(line.unit_price, line.description)
+        if line.currency != base_currency:
+            raise CurrencyMismatch(...)
+        rate = ...
+        converted = Decimal(price) * Decimal(rate) * Decimal(line.quantity)
+```
+
+Careful: `Decimal(price)` where price is now a float (from require_usable_amount) — previously `Decimal(line.unit_price)` where unit_price is a float. `require_usable_amount` returns `float(amount)` → same value → `Decimal(float)` conversion identical. ✓ (float→Decimal conversion is exact for the same float value).
+
+Hmm, but one subtlety: `Decimal(line.unit_price)` where unit_price is an int (e.g., 10) gives Decimal(10); with my change, `require_usable_amount` returns float(10) = 10.0 → `Decimal(10.0)` = Decimal('10') — same value exactly (10.0 is exactly representable). For large ints beyond float precision, float() would lose precision! E.g., unit_price = 10**18 → float() → 1e18 exactly representable? 10^18 = 2^18 * 5^18; 5^18 ≈ 3.8e12 < 2^53, so 10^18 is exactly representable as a float. But e.g. 10**20 is not exactly representable as a double? 10^20 = 2^20 * 5^20; 5^20 ≈ 9.5e13 > 2^53 ≈ 9.0e15? No: 5^20 = 95367431640625 ≈ 9.5e13 < 9.007e15 → representable exactly? The requirement is that the value has ≤53 significant bits: 5^20 needs ceil(20*log2(5)) = 47 bits → so 10^20 = 5^20 * 2^20 is exactly representable as a double (47-bit mantissa). Yes, powers of 10 up to 10^22 are exactly representable. But arbitrary large ints (e.g., 2^60+1) would lose precision.
+
+Also Decimal inputs: `Decimal('10.005')` → float → 10.005 (rounds) → Decimal(float) may differ from the original Decimal! E.g. Decimal('0.1') → float 0.1 → Decimal(0.1) = Decimal('0.1000000000000000055511151231257827021181583404541015625'). That would CHANGE the amount semantics — a regression! Unit prices are floats in InvoiceLine (dataclass declares `unit_price: float`), and `build_invoice` does `float(unit_price)`, so in practice unit_price is always a float or int. But `InvoiceLine` could be constructed directly with a Decimal (the dataclass doesn't coerce). Hmm — `InvoiceLine(description, currency, Decimal('10.00'), 1)` → Decimal path → my change would round-trip through float and lose precision → a real behavior change (violates §1 "金额字段的类型、精度、量纲保持不变" in spirit).
+
+To be safe: don't convert the value; only *validate* it and return the original object. I'll design the helper to return the original amount rather than a float:
+
+```python
+def require_usable_amount(amount, description="", label="price"):
+    ...validate...
+    return amount
+```
+
+But then for the import path, `parse_price` needs to return a float (the InvoiceLine field is float). In import_rows, parse_price currently returns `float(raw)`. If raw is a Decimal, float(raw) already loses precision — that's pre-existing behavior in the import path, unchanged by me. Fine.
+
+So: helper validates and returns the ORIGINAL amount (no coercion), and import_rows does its own float conversion as today.
+
+Let me restructure:
+
+money.py:
+```python
+def is_missing_amount(amount) -> bool: ...
+
+def require_usable_amount(amount, description: str = "", label: str = "price"):
+    """Validate that ``amount`` can be settled and return it unchanged."""
+```
+Return the original value → settlement uses `Decimal(price)` exactly as before (`Decimal(line.unit_price)`), preserving precision for Decimal inputs.
+
+But hold on: for a Decimal input, `float(amount)` inside the validation is only used for the finite/NaN check — that doesn't affect the returned value. But there's a subtlety: for a huge Decimal, float(amount) → OverflowError! e.g. Decimal('1e400') → float() raises OverflowError. Let me handle: catch OverflowError too → treat as invalid (not finite). Also `float(Decimal('Infinity'))` → inf, no exception. And `math.isnan(float(...))`. Let me catch (TypeError, ValueError, OverflowError).
+
+Also `is_missing_amount` uses float(amount) — same OverflowError risk → catch it and return False (not missing; then require_usable_amount catches it as invalid). Hmm, but is_missing_amount would then do float() twice. Fine, or I can implement one function that classifies:
+
+```python
+def _classify_amount(amount) -> str:
+    """Return "missing", "invalid" or "ok"."""
+```
+
+Let me write a single internal helper to avoid double conversion:
+
+```python
+def _amount_state(amount) -> str:
+    if amount is None:
+        return "missing"
+    if isinstance(amount, str):
+        text = amount.strip().lower()
+        if text == "" or text == MISSING_CELL_PLACEHOLDER:
+            return "missing"
+    try:
+        number = float(amount)
+    except (TypeError, ValueError):
+        return "invalid"
+    except OverflowError:
+        return "invalid"
+    if math.isnan(number):
+        return "missing"
+    if not math.isfinite(number):
+        return "invalid"
+    return "ok"
+```
+
+Wait: for a str "nan" → missing ✓. For float nan → missing ✓ (isnan). For Decimal('NaN') → float → nan → missing ✓. For "abc" → invalid ✓. For float('inf') → invalid ✓.
+
+Hmm, but the empty-string/None case must be checked *before* conversion — done above.
+
+Then:
+```python
+def is_missing_amount(amount) -> bool:
+    """Return True when ``amount`` stands for an absent value."""
+    return _amount_state(amount) == "missing"
+
+
+def require_usable_amount(amount, description: str = "", label: str = "price"):
+    """Return ``amount`` unchanged after checking that it can be settled.
+
+    Raises ``ledger.errors.ValidationError`` when the amount is missing
+    (``None``, an empty cell or the ``nan`` placeholder written by the
+    billing exporter) or is not a finite number.
+    """
+    state = _amount_state(amount)
+    where = description or "line"
+    if state == "missing":
+        raise ValidationError(f"missing {label} for {where}")
+    if state == "invalid":
+        raise ValidationError(f"invalid {label} for {where}: {amount!r}")
+    return amount
+```
+
+Good. The returned amount is unchanged → no precision change anywhere.
+
+### settlement.py
+
+settle_invoice:
+```python
+    for line in invoice.lines:
+        price = require_usable_amount(line.unit_price, line.description)
+        if line.currency != base_currency:
+            raise CurrencyMismatch(f"line currency {line.currency} != {base_currency}")
+        rate = float(rates_module.fetch_rate(base_currency, quote_currency))
+        converted = Decimal(price) * Decimal(rate) * Decimal(line.quantity)
+```
+
+Hmm — `Decimal(price)`: if price is an int/float → fine. If price is a str (e.g. "10.5" passed directly as unit_price) → Decimal("10.5") works. Previously `Decimal(line.unit_price)` — same. ✓
+
+But careful: `require_usable_amount` returns the original; for a str price "10.5", `Decimal("10.5")` → works as before. ✓
+
+settle_line: same validation.
+
+settle_invoice_checked: rewrite to delegate:
+```python
+def settle_invoice_checked(invoice, base_currency=DEFAULT_CURRENCY, quote_currency=None) -> int:
+    """Settle an invoice and reject lines without a usable price.
+
+    Kept for callers that want the explicit "checked" entry point;
+    :func:`settle_invoice` now rejects missing prices as well.
+    """
+    return settle_invoice(invoice, base_currency, quote_currency)
+```
+
+Hmm, that makes it a trivial alias. Is that OK? It preserves the public API. Alternatively keep the explicit loop raising ValidationError. I think keeping a thin wrapper with a docstring is fine and avoids duplicate logic. But then `settle_invoice_checked` is redundant... The convention note said it "已能识别 nan，但它抛的是 ValueError". Making it raise ValidationError is the fix. If it delegates to settle_invoice, it raises ValidationError ✓.
+
+Actually, I prefer keeping the explicit check in settle_invoice_checked so the function still documents its purpose, but delegating avoids double validation cost. Let me just delegate with a clear docstring — simplest and no duplicated logic.
+
+Hmm, one consideration: `settle_invoice_checked` might be used by external code expecting ValueError... no external code in repo.
+
+### import_rows.py
+
+```python
+"""Import invoice rows exported from the billing spreadsheet.
+
+The exporter writes an empty numeric cell as the literal text ``nan``, so
+every parsed price has to be validated before it reaches settlement.
+"""
+
+from __future__ import annotations
+
+from .errors import ValidationError
+from .invoicing import InvoiceLine
+from .money import require_usable_amount
+
+
+def parse_price(raw, description: str = "") -> float:
+    """Parse one exported price cell.
+
+    Empty cells (written as the literal ``nan``) are rejected with
+    ``ledger.errors.ValidationError`` instead of silently becoming ``NaN``.
+    """
+    require_usable_amount(raw, description)
+    return float(raw)
+```
+
+Hmm: `require_usable_amount(raw, description)` for a str "10.5" → state ok → returns → float("10.5") = 10.5 ✓. For raw = "nan" → missing → ValidationError ✓. For raw = "" → missing → ValidationError ✓. For raw = None → missing → ValidationError ✓. For raw = "abc" → invalid → ValidationError ✓.
+
+But careful: `float(raw)` after validation — for a value like "1e400" → float → inf → hmm! `_amount_state("1e400")` → float("1e400") → inf → not finite → "invalid" → ValidationError. Good (validation catches it before float()). But wait, `float("1e400")` returns inf (no OverflowError for strings). ✓ caught by isfinite.
+
+And a Decimal input → float(raw) may lose precision — pre-existing behavior of parse_price (returns float). Keep.
+
+Hmm, but should parse_price return `float(raw)` or the validated value? Keep `float(raw)` to preserve the current contract (returns float).
+
+But: `require_usable_amount` raises for non-finite; after that, `float(raw)` is safe for str/float/int/Decimal inputs... except Decimal('1e400') → float raises OverflowError. `_amount_state(Decimal('1e400'))` → float() raises OverflowError → "invalid" → ValidationError before we call float(raw). ✓ Good, because require_usable_amount is called first.
+
+Now `parse_price_checked` — keep it as the explicit "checked" variant, raising ValidationError:
+
+```python
+def parse_price_checked(raw, description: str = "") -> float:
+    """Parse a price cell and reject the empty-cell placeholder."""
+    return parse_price(raw, description)
+```
+
+Hmm, that makes parse_price_checked an alias of parse_price. Since parse_price now validates, the "checked" suffix is meaningless. But removing a public function could break callers. There's no external caller in this repo. Options:
+(a) Keep both, with parse_price_checked delegating to parse_price (deprecated alias).
+(b) Make parse_price_checked the validating implementation and parse_price delegate to it.
+
+Option (b) preserves the semantic that the *checked* function is the validating one and makes the main path "go through the checked variant" — exactly what CONVENTIONS §2.2 suggests ("导入主路径并没有走它"). I'll do (b):
+
+```python
+def parse_price(raw, description: str = "") -> float:
+    """Parse one exported price cell (validating, see :func:`parse_price_checked`)."""
+    return parse_price_checked(raw, description)
+
+
+def parse_price_checked(raw, description: str = "") -> float:
+    """Parse a price cell and reject the empty-cell placeholder."""
+    require_usable_amount(raw, description)
+    return float(raw)
+```
+
+Wait, but the signature change of parse_price (adding description) — fine, it's optional.
+
+Hmm, but there's an ordering problem: `parse_rows` and `rows_to_tuples` call `parse_price(row["unit_price"])` — I want them to pass the description for a helpful error message: `parse_price(row["unit_price"], row["description"])`.
+
+Let me now write the code.
+
+Also: `InvoiceLine` import in import_rows is unused? `from .invoicing import InvoiceLine` — used in parse_rows to construct InvoiceLine. Yes, used.
+
+### Tests
+
+New file `tests/test_import_rows.py`:
+
+```python
+import pytest
+
+from ledger.errors import ValidationError
+from ledger.import_rows import parse_price, parse_price_checked, parse_rows, rows_to_tuples
+from ledger.invoicing import build_invoice_from_rows
+
+
+ROWS = [
+    {"description": "hosting", "currency": "USD", "unit_price": "19.99", "quantity": "2"},
+]
+
+
+def test_parse_price_rejects_nan_placeholder():
+    with pytest.raises(ValidationError):
+        parse_price("nan", "hosting")
+
+
+def test_parse_price_rejects_empty_cell():
+    with pytest.raises(ValidationError):
+        parse_price("", "hosting")
+
+
+def test_parse_price_rejects_missing_cell():
+    with pytest.raises(ValidationError):
+        parse_price(None, "hosting")
+
+
+def test_parse_price_rejects_garbage():
+    with pytest.raises(ValidationError):
+        parse_price("n/a", "hosting")
+
+
+def test_parse_price_returns_float_for_valid_cell():
+    assert parse_price("19.99", "hosting") == 19.99
+
+
+def test_parse_rows_rejects_row_with_empty_price():
+    rows = [dict(ROWS[0], unit_price="nan")]
+    with pytest.raises(ValidationError):
+        parse_rows(rows)
+
+
+def test_rows_to_tuples_rejects_row_with_empty_price():
+    rows = [dict(ROWS[0], unit_price="nan")]
+    with pytest.raises(ValidationError):
+        rows_to_tuples(rows)
+
+
+def test_build_invoice_from_rows_rejects_empty_price():
+    rows = [dict(ROWS[0], unit_price="nan")]
+    with pytest.raises(ValidationError):
+        build_invoice_from_rows("INV-2001", rows, "USD")
+
+
+def test_imported_rows_settle_to_integer_minor_units():
+    invoice = build_invoice_from_rows("INV-2002", ROWS, "USD")
+    settled = settle_invoice(invoice, "USD", "CNY")
+    assert isinstance(settled, int)
+```
+
+And in tests/test_settlement.py add:
+
+```python
+def test_settle_line_rejects_missing_price():
+    invoice = build_invoice("INV-1014", [("hosting", "CNY", float("nan"), 1)], currency="CNY")
+    with pytest.raises(ValidationError):
+        settle_line(invoice.lines[0], "CNY", "CNY")
+
+
+def test_settle_invoice_checked_raises_validation_error():
+    ...
+def test_settle_lines_total_rejects_missing_price():
+def test_settle_invoice_rejects_none_price():
+def test_settle_invoice_accepts_valid_price_after_rejection()  # ensures validation doesn't break normal settlement
+```
+
+Also maybe a test file `tests/test_money.py` for the new helpers:
+```python
+def test_is_missing_amount_detects_placeholder():
+def test_require_usable_amount_returns_value_unchanged():
+def test_require_usable_amount_raises_validation_error():
+```
+
+Also an end-to-end test that the whole headless import → settlement flow rejects missing price: build invoice from rows with nan → ValidationError at import (before settlement).
+
+Also test that no NaN reaches settlement: e.g. `settle_invoice` with a nan line raises ValidationError, not ValueError. Use `pytest.raises(ValidationError)` — but note ValidationError is not a ValueError, so `pytest.raises(ValueError)` would NOT catch it. Good — that's the point: use the project's own exception.
+
+I should also add a test asserting that the exception type is exactly ValidationError (not a subclass of ValueError). E.g.:
+
+```python
+def test_missing_price_raises_project_validation_error():
+    with pytest.raises(ValidationError):
+        settle_invoice(...)
+    # the project exception is not a builtin ValueError
+    assert not issubclass(ValidationError, ValueError)
+```
+
+Hmm, that's a bit meta but it guards the "用项目自己的校验异常" requirement. I'll include a check that the raised error is a `LedgerError` and NOT a `ValueError`:
+
+```python
+with pytest.raises(ValidationError) as excinfo:
+    settle_invoice(invoice, "USD", "CNY")
+assert not isinstance(excinfo.value, ValueError)
+```
+
+Good.
+
+### CONVENTIONS.md update
+
+Per §2.3: "修好一条，就把该行从 §2.1 移到「已修复」小节，并同步更新 §2 顶部的结果行（N failed, M passed）" and "新增失败必须先记入本表再修".
+
+New baseline: 2 failed, N passed. Let me compute the final counts after adding tests.
+
+Also update §1.1 table to add the new money.py validation entry and import_rows.py / settlement.py rows? §1.1 lists convention landing spots. I'll add rows for `src/ledger/import_rows.py` and update `src/ledger/money.py` row to mention the price validation entry point, and add `src/ledger/errors.py` row (ValidationError). That documents the "校验层".
+
+Also §2.2 "现状线索与相邻风险" — the bullet about 缺失价格 should be updated to reflect the fix (or moved to the fixed section). I'll rewrite that bullet to note it's now fixed at both layers, and record the remaining adjacent risk (to_minor still doesn't reject NaN; no callers today).
+
+### Memory capture
+
+Per AGENTS.md:
+```bash
+tmem capture --agent dsh --intent "<一句话说明：做了什么 + 结论 + 关键文件>"
+tmem sync
+```
+Since we changed source code, the default-deny gate should pass (not trivial). Let me check `tmem capture --help` for options.
+
+Let me also check the .tmem/traces content to understand format and whether MEMORIES.md §1 gets a new entry after sync.
+
+Let me now start implementing. First, create the todo list.
+
+One more thought on where the shared helper lives. Let me double check that adding `from .errors import ValidationError` to money.py doesn't create a cycle: errors.py imports nothing → fine.
+
+Let me write the code now.
+
+Also: should `settle_invoice` validate before or after the currency check? I said price first. Let me double check `test_settle_invoice_rejects_mixed_currency`: invoice currency "GBP" for the invoice, line currency "USD", base_currency "GBP" → line.currency ("USD") != base_currency ("GBP") → CurrencyMismatch ✓ (price is valid anyway).
+
+Now also consider `settle_invoice` when `invoice.lines` is empty → total = Decimal(0) → settled 0 → int 0 ✓ unchanged.
+
+Let me write the code.
+
+Another consideration: `settle_line` — the price validation there: `require_usable_amount(line.unit_price, line.description)`.
+
+Let me write everything now.
+
+Regarding `Decimal(price)`: `price` may be a str "19.99" if a caller sets unit_price to a string (InvoiceLine doesn't coerce). `Decimal("19.99")` works ✓.
+
+Now, the label for error messages: "missing price for hosting" — matches the existing style in settle_invoice_checked (`f"missing price for {line.description}"`). Good, keep that wording for consistency.
+
+Let me write the code.
+dsh: reasoning:
+Let me implement money.py changes.
+dsh: reasoning:
+Wait — there's an issue with `parse_price` returning `parse_price_checked(raw, description)` which returns `float(raw)`. Fine.
+
+But `require_usable_amount(raw, description)` returns raw unchanged and then `float(raw)` is called — for a Decimal input this loses precision (pre-existing behavior of parse_price). OK.
+
+Hmm, one issue: `require_usable_amount(raw, description)` — the label defaults to "price" ✓.
+
+Now let me run the tests to see the state.
+dsh: reasoning:
+The target test now passes. Baseline is now 2 failed (pagination + rates — out of scope for this task), 19 passed.
+
+Now let me add the tests. Let me update the todo list first.
+
+Tests to add:
+1. `tests/test_import_rows.py` — new file for the import path.
+2. `tests/test_settlement.py` — additional settlement-path tests.
+3. `tests/test_money.py` — new file for the money validation helpers.
+
+Let me look at the existing test files' style first (test_pagination.py, test_invoicing.py, test_rates.py) to match style.
+dsh: reasoning:
+Now let me write the tests. I'll create `tests/test_import_rows.py` and `tests/test_money.py`, and extend `tests/test_settlement.py`.
+
+Style: module-level imports of the project exceptions (test_invoicing.py imports ValidationError at top level; test_settlement.py imports inside functions — mixed style). I'll use top-level imports for new files, and inside-function imports in test_settlement.py to match that file's existing style for the new tests.
+
+Let me write tests/test_import_rows.py.
+
+Note: the exporter writes empty numeric cells as the literal text "nan". The rows are dicts with description/currency/unit_price/quantity.
+
+Tests:
+- parse_price rejects the "nan" placeholder → ValidationError, and not ValueError.
+- parse_price rejects an empty cell ("") → ValidationError.
+- parse_price rejects a None cell → ValidationError.
+- parse_price rejects a non numeric cell → ValidationError.
+- parse_price returns a float for a valid cell.
+- parse_rows rejects a row whose price cell is "nan" → ValidationError.
+- rows_to_tuples rejects the same.
+- build_invoice_from_rows rejects the same (headless import path).
+- build_invoice_from_rows with a valid row → settles to int minor units (guards against a regression where the fix broke the happy path).
+- the error message mentions the description (so the operator knows which row is broken).
+
+Also a test that the import path rejects the missing price *before* it can reach settlement (i.e. the NaN never becomes an InvoiceLine): e.g. `assert all(line.unit_price == line.unit_price for line in parse_rows(rows))` — for valid rows. Better: assert that parse_rows raises rather than returning a line with NaN.
+
+Let me write it.
+
+For test_money.py:
+- is_missing_amount detects: None, "", "  ", "nan", "NaN", float("nan"), Decimal("NaN").
+- is_missing_amount returns False for 0, 10.0, "19.99", Decimal("1.5").
+- require_usable_amount returns the value unchanged (identity for Decimal → preserves precision).
+- require_usable_amount raises ValidationError for missing values.
+- require_usable_amount raises ValidationError for invalid values (inf, "abc").
+- require_usable_amount error is not a builtin ValueError.
+
+And in test_settlement.py:
+- test_settle_line_rejects_missing_price
+- test_settle_lines_total_rejects_missing_price
+- test_settle_invoice_rejects_missing_price_uses_project_error (assert not isinstance ValueError)
+- test_settle_invoice_checked_rejects_missing_price (ValidationError)
+- test_settle_batch_rejects_missing_price
+- test_settle_invoice_accepts_valid_price_after_nan_line_rejected (regression guard: a good line still settles)
+- test_settle_invoice_rejects_none_price
+- test_settle_invoice_rejects_infinite_price
+
+Also an integration test for the headless flow: rows → build_invoice_from_rows → settle_invoice. Where should that live? tests/test_import_rows.py is fine.
+
+Let me write the files now.
+dsh: reasoning:
+Now extend tests/test_settlement.py with the settlement-path tests. Note `Decimal("NaN")` in the parametrize — `is_missing_amount(Decimal("NaN"))` → float(Decimal('NaN')) → nan → math.isnan → True ✓.
+
+Careful with `require_usable_amount(price, "hosting") is price` — the function returns `amount` unchanged ✓.
+
+Now test_settlement.py additions.
+dsh: reasoning:
+Interesting: `build_invoice` with `unit_price=None` → `float(None)` → TypeError (a bare TypeError, not ValidationError). This is another symptom of the same class of problem: the invoice builder doesn't validate the price, so a None price produces an opaque `TypeError` instead of the project's `ValidationError`.
+
+Should I fix `build_invoice` to validate the price with ValidationError? Careful: the baseline test `test_settle_invoice_rejects_missing_price` builds an invoice with `float("nan")` OUTSIDE the `pytest.raises` block — so `build_invoice` must NOT raise for NaN. If I add price validation to `build_invoice`, that baseline test breaks.
+
+Hmm, but wait: would it? The baseline test:
+```python
+invoice = build_invoice("INV-1006", [("hosting", "USD", float("nan"), 1)], currency="USD")
+with pytest.raises(ValidationError):
+    settle_invoice(invoice, "USD", "CNY")
+```
+If build_invoice raised ValidationError for the NaN price, the error would be raised at the build_invoice line → the test fails with ValidationError (not caught). So yes, it breaks the baseline test. The CONVENTIONS doc says the fix should be at the settlement validation layer, and the baseline test is authoritative. So `build_invoice` must keep accepting NaN prices.
+
+But for `None`: `float(None)` → TypeError. That's a different case than NaN. Should build_invoice reject None with ValidationError? That would be an improvement (None price → clear ValidationError instead of TypeError). But it introduces an inconsistency: NaN is accepted by build_invoice, None is rejected. Hmm.
+
+Actually, think about where None can come from: the import path. `parse_price` now rejects None cells with ValidationError at import time. So a None price shouldn't reach build_invoice from the import path. But a direct API caller (`api.handle` with lines containing None) could.
+
+Options:
+(a) Don't touch build_invoice; change my test to construct the InvoiceLine directly (bypassing build_invoice) for the None case.
+(b) Make build_invoice reject unusable prices with ValidationError — but that breaks the baseline NaN test.
+
+Hmm, what if build_invoice rejects None but allows NaN? Inconsistent and weird.
+
+Alternative (c): make build_invoice's price handling robust: `float(unit_price)` raising TypeError for None → could convert to ValidationError("missing price for ..."). But again, consistency with NaN...
+
+Hmm, actually, hold on. Let me reconsider (b) more carefully. What if `build_invoice` validated the price but the baseline test were updated? No — CONVENTIONS says the baseline is authoritative and the failing test expects `settle_invoice` to raise. Modifying the baseline test would be "基线悄悄漂移". The task says "让缺失价格被明确拒绝（用项目自己的校验异常）" — the existing failing test defines the expected contract: settlement rejects it. If build_invoice rejected it first, the test would need modification — that contradicts the recorded baseline expectation. So keep build_invoice as is.
+
+So for the None-price case, I'll construct the line directly via InvoiceLine (bypassing build_invoice) in the test, and additionally handle the None case in build_invoice? Let me think about whether to touch build_invoice at all.
+
+`build_invoice` with a None price raises `TypeError: float() argument must be a string or a real number, not 'NoneType'`. This is an opaque error of the same family. Should I fix it? The user's request focuses on the empty-cell → nan case. A None price is a different input. But "让缺失价格被明确拒绝（用项目自己的校验异常）" — "missing price" generally.
+
+I think a defensible, minimal-but-complete approach: in `build_invoice`, keep NaN acceptance (required by the baseline test) but convert the float() TypeError into a ValidationError for prices that cannot be interpreted as a number at all (None, non-numeric strings). Hmm, but "float(unit_price)" for a str "abc" → ValueError → also opaque.
+
+Hmm, hmm. But wait: is it better to be consistent? Let me reconsider — what if build_invoice validates the price with `require_usable_amount` but... no, NaN would then raise.
+
+OK here's another thought: maybe I should make `build_invoice` reject *unparseable* prices (TypeError/ValueError from float()) with ValidationError, while NaN floats pass through (float("nan") is parseable). That's a coherent rule: "the price must be a number" (structural) vs "the price must be present/finite" (semantic, checked at settlement). NaN is a number that isn't usable — the settlement layer rejects it. None/"abc" aren't numbers at all → the builder rejects them.
+
+That gives:
+- build_invoice: price must be convertible to float → else ValidationError("invalid price for hosting: None").
+- settlement: price must be present & finite → else ValidationError("missing price for hosting").
+
+This is coherent, doesn't break the baseline test, and my None test would then expect ValidationError from build_invoice — but wait, my test `test_settle_invoice_rejects_a_missing_price` builds with None and expects settle_invoice to raise. If build_invoice raises ValidationError for None, the test fails at build time.
+
+Hmm. So for the None-price case, where should the rejection happen? Honestly, rejecting None at the builder is *better* (fail fast, earlier). But then the test should assert the builder raises.
+
+Let me reconsider whether to modify build_invoice at all. Scope discipline: the task is about the empty-cell → nan → settlement crash. The None price is an adjacent case. Two options:
+
+Option A (minimal): Don't touch build_invoice. In the test, use `InvoiceLine` directly for the None case:
+```python
+line = InvoiceLine("hosting", "CNY", None, 1)
+invoice = Invoice("INV-1016", "CNY", [line])
+with pytest.raises(ValidationError):
+    settle_invoice(invoice, "CNY", "CNY")
+```
+This tests the settlement layer's None handling without touching the builder.
+
+Option B: Also harden build_invoice to raise ValidationError for non-numeric prices (None, "abc"), keeping NaN accepted.
+
+I lean toward Option A + a small addition to build_invoice for the *non-numeric* case only... Hmm, but is that inconsistent enough to confuse? Let me think about how a reviewer would see it:
+
+```python
+built.append(InvoiceLine(description, line_currency, float(unit_price), int(quantity)))
+```
+→
+```python
+try:
+    price = float(unit_price)
+except (TypeError, ValueError):
+    raise ValidationError(f"invalid price for {description}: {unit_price!r}") from None
+built.append(InvoiceLine(description, line_currency, price, int(quantity)))
+```
+
+This is a small, clearly-good hardening: an opaque TypeError becomes the project's ValidationError. And it doesn't touch NaN (float('nan') parses fine → NaN → settlement rejects it). I think this is a net positive and directly serves "让缺失价格被明确拒绝（用项目自己的校验异常）" — a None price is literally a missing price, and today it produces a bare TypeError.
+
+Hmm, but there's a risk: does any existing test rely on build_invoice raising TypeError for a bad price? Let me check the test files: test_invoicing.py has quantity tests only. No test for a bad price type. Fine.
+
+But hmm, one more consideration: the CONVENTIONS §1.1 table doesn't mention build_invoice price behavior. And §2.2 mentions adjacent risks. Adding a ValidationError for a non-numeric price in build_invoice doesn't violate §1 (amount storage unchanged).
+
+I'll do Option B — but keep NaN accepted (documented in the docstring) since the settlement layer is where "missing" (empty cell) is rejected per the baseline contract.
+
+Hmm, wait. Actually, let me reconsider once more. Is it weird that build_invoice accepts float('nan') but rejects None? A reviewer might ask "why not validate nan here too?" Answer: because the recorded baseline test expects `settle_invoice` to raise ValidationError for a NaN price, i.e. the contract places "missing price" detection at the settlement boundary. I'll document this in the CONVENTIONS notes and in the code comment so the asymmetry is intentional and explicit.
+
+Actually — I can make it cleaner: in build_invoice, treat *both* None and NaN as "not convertible"? No: NaN IS convertible by float(). The rule "the price must be convertible to a float" cleanly explains both behaviors:
+- None → not convertible → ValidationError (invalid price).
+- "abc" → not convertible → ValidationError (invalid price).
+- nan → convertible → passes to settlement → settlement rejects as missing.
+
+That's a clean, defensible rule. Let me implement it and document it in the docstring.
+
+Then my test `test_settle_invoice_rejects_a_missing_price` (None) needs restructuring: the None price is rejected by build_invoice, not settle_invoice. Let me split into:
+- `test_build_invoice_rejects_a_none_price` → ValidationError from build_invoice (in test_invoicing.py? or test_settlement.py). I'll put it in test_invoicing.py since it's about the builder.
+- `test_settle_invoice_rejects_a_none_price` → build an Invoice with a None price directly (via InvoiceLine/Invoice) and assert settle_invoice raises ValidationError. This covers the settlement layer's None handling (for invoices that didn't come through build_invoice).
+
+Let me now make these changes.
+
+Also note `Invoice` dataclass import in test_settlement.py — I'd import `from ledger.invoicing import Invoice, InvoiceLine, build_invoice`. The file currently imports `from ledger.invoicing import build_invoice` at the top. I'll add Invoice/InvoiceLine to that top import.
+
+Let me implement.
+dsh: reasoning:
+Now add a test for build_invoice rejecting a None price in test_invoicing.py.
+
+Also I should double check `Invoice("INV-1016", "CNY", [InvoiceLine(...)])` — the Invoice dataclass signature is (invoice_id, currency, lines, created_at=None, sequence=0) ✓.
+
+Let me add the invoicing test.
+dsh: reasoning:
+Now: 2 failed (pagination + rates — out of scope), 59 passed.
+
+Let me verify:
+1. The integer minor units invariant tests pass: `test_settle_invoice_returns_integer_minor_units`, `test_settle_line_returns_minor_units` ✓ (they're in the 59 passed). Let me confirm explicitly.
+2. Verify the actual end-to-end behavior of the headless import: a spreadsheet row with an empty price cell → ValidationError with a helpful message; no ValueError.
+
+Let me also verify that the NaN can't sneak in through other paths, e.g. `settle_and_invoice` (invoicing) → settle_invoice ✓; `api.handle_settle` → settle_and_invoice ✓; `cli.cmd_settle` → settle_and_invoice ✓.
+
+Let me run a quick manual verification script demonstrating the fixed behavior (the "headless import" scenario), and also confirm the settlement of a valid imported row still gives the right integer minor units.
+
+Also double check: does `settle_invoice` still return int for all paths? Yes.
+
+Let me run the invariant tests explicitly and a demo script.
+dsh: reasoning:
+Everything works:
+- Import path rejects the empty cell with `ValidationError` ("missing price for hosting").
+- Settlement rejects NaN prices with `ValidationError` (project's own exception, not a builtin ValueError).
+- Happy path still settles to integer minor units (561 = int).
+
+Let me double check the 561 value: 19.99 USD * 2 = 39.98 USD → CNY rate = CNY/USD = 1/7.1234 → 39.98/7.1234 = 5.6122... → 5.61 CNY → 561 minor units ✓.
+
+Now let me review the full diff, then update CONVENTIONS.md and capture memory.
+
+Let me update the todos.
+dsh: reasoning:
+The diff looks good. A few review points:
+
+1. `import_rows.py` now imports `from .money import require_usable_amount` — and `money.py` imports `from .errors import ValidationError`. `import_rows` imports `invoicing` which imports `money` — no cycle. ✓
+
+2. `parse_price` now delegates to `parse_price_checked` — one direction only, no recursion issue. ✓
+
+3. `settle_invoice`: the price validation happens before the currency check. Note `require_usable_amount` is called per line before the currency check — for a mixed-currency invoice with a valid price, CurrencyMismatch still raised ✓ (test passes).
+
+4. One thing to double check: `Decimal(price)` where price could be a str (if someone set unit_price="19.99" directly on InvoiceLine). `Decimal("19.99")` ✓ works. Previously the same. ✓
+
+5. `money.py` now imports `math` — fine.
+
+Now, one design question: should `is_missing_amount` be exported/used anywhere else? It's used in tests and is a useful public predicate. Fine.
+
+Another consideration — `_amount_state` returns "invalid" for `float(amount)` OverflowError. And for a str that isn't numeric → invalid ✓.
+
+Edge case: `amount` is a `Decimal("sNaN")` → float → nan? `float(Decimal('sNaN'))` → nan ✓ (no exception). Actually, let me verify: float(Decimal('sNaN')) raises ValueError? Let me check. In Python, `float(Decimal('sNaN'))` → raises ValueError("cannot convert signaling NaN to float")? Let me test. If it raises ValueError, my code catches (TypeError, ValueError, OverflowError) → "invalid" → ValidationError. That's acceptable (sNaN is not a normal value).
+
+Let me verify quickly to make sure no unexpected exception escapes.
+
+Also check `float(Decimal('Infinity'))` → inf → "invalid" ✓.
+
+Let me run a quick sanity script on edge cases.
+
+6. Another check: `require_usable_amount` returns the original amount — in settlement I use `Decimal(price)`. If price is a bool True → Decimal(True) → TypeError! Hmm: `Decimal(True)` → TypeError: conversion from bool to Decimal is not supported. Before my change, `Decimal(line.unit_price)` had the same problem (bool price) — unchanged behavior. But `_amount_state(True)` → float(True) = 1.0 → "ok" → passes → then Decimal(True) raises TypeError. Same as before my change (pre-existing). Edge case with a bool price is unrealistic; but I could make it stricter by rejecting bools. Let me not over-engineer; but hmm, `is_missing_amount(True)` → False → ok. It's fine — behavior unchanged from before.
+
+Actually, let me reconsider: should `_amount_state` treat bool as invalid? A price of True is nonsense. `float(True)` = 1.0 → "ok" → settlement does `Decimal(True)` → TypeError → opaque error. Before my change: identical TypeError. So no regression, but I could improve. I'll leave it — out of scope, and the baseline doc says only NaN.
+
+Hmm, but "让缺失价格被明确拒绝" — a bool is not a missing price. Leave it.
+
+Let me now double check the sNaN behavior and run a broader edge-case sanity check.
+dsh: reasoning:
+All edge cases behave sensibly. Note `Decimal('sNaN')` → invalid (float(sNaN) raises ValueError → caught → invalid). Good.
+
+Now let's update CONVENTIONS.md per §2.3:
+- Move row 3 from §2.1 to a "已修复" section.
+- Update the §2 result line: `2 failed, 59 passed` (61 tests total).
+- Update §1.1 table to document the new validation entry points (money.py, import_rows.py, invoicing.py, errors.py).
+- Update §2.2 (the "缺失价格" bullet) to reflect the new state.
+
+Wait — the §2 header says "基线时间: 2026-11-23 23:00 (+08:00)", "基线 commit: 035aa40..." and "结果: 3 failed, 18 passed (共 21 条用例)". I need to update it to the new state: 2 failed, 59 passed (61 条用例). The convention says "修好一条，就把该行从 §2.1 移到「已修复」小节，并同步更新 §2 顶部的结果行（N failed, M passed）". So yes, update the result line. Should I update the baseline time/commit? The baseline commit is the commit at which the baseline was recorded — since my change isn't committed yet, I'll keep the commit reference but note the new state. Hmm, better: update the baseline to reflect the current working tree state, marking that it's uncommitted. Let me write:
+
+```
+- **基线时间**：2026-11-23 23:00 (+08:00)（初始基线）→ 2026-11-24 更新（见 §2.3 已修复）
+- **基线 commit**：`035aa40be22aae9cae458bc5bd118536cb11347b`（merge feature/rates-cache）
+- **执行命令**：`python3 -m pytest -v`（仓库根目录执行；`pyproject.toml` 已配置 `pythonpath=["src"]`、`testpaths=["tests"]`）
+- **结果**：`2 failed, 59 passed`（共 61 条用例）
+```
+
+Let me check the current date on the machine to record accurately.
+
+Also, §2.3 says "修好一条，就把该行从 §2.1 移到「已修复」小节" — I need to create a §2.3 「已修复」 subsection (currently §2.3 is "基线使用说明"). I'll insert a new "### 2.3 已修复（按记录更新）" and renumber the current §2.3 → §2.4. Careful with renumbering: §2.1 当前失败的用例, §2.2 现状线索与相邻风险, §2.3 基线使用说明. I'll add the 已修复 section as §2.3 and move 基线使用说明 to §2.4.
+
+Let me check the date first, then write the update.
+dsh: reasoning:
+Now, also update README.md? It's modified already (from a previous session presumably — `M README.md` was in the initial git status before my changes). Let me check what the README modification is — it was already modified before I started (the initial git status showed `M README.md` and untracked AGENTS.md, CONVENTIONS.md, MEM.md, MEMORIES.md). So README was modified in the previous session (it links to CONVENTIONS.md). I don't need to change it. Actually, maybe I should add a line about the price validation to README's 约定 section. It's a small doc addition; the README lists conventions. Let me add a bullet: "价格缺失（导出占位符 `nan`）在导入/结算时被 `ValidationError` 明确拒绝". That's helpful and consistent.
+
+Let me check the README diff first to see the previous session's change.
+dsh: reasoning:
+Now, the final full test run to confirm the counts match what I wrote in CONVENTIONS.md (2 failed, 59 passed, 61 total).
+
+Then the memory capture. Let me check `tmem capture --help` first.
+
+Let me run both in parallel.
+dsh: reasoning:
+Test counts match: 2 failed, 59 passed, 61 collected. ✓ CONVENTIONS.md updated correctly.
+
+Now the memory capture. Per AGENTS.md:
+```bash
+tmem capture --agent dsh --intent "<一句话说明：做了什么 + 结论 + 关键文件>"
+tmem sync
+```
+
+Let me check `tmem capture --help` specifically (the help shown was for the top-level `tmem` since `capture --help` printed the main help?). Actually it printed the main parser help — odd. Let me run `tmem capture -h` or `tmem help capture`.
+
+Let me try `tmem capture --agent dsh --intent "..."` directly with a good intent line.
+
+The intent should summarize: what was done + conclusion + key files.
+
+Intent: "排查并修复 headless 导入空价格单元格（导出占位符 nan）导致结算抛裸 ValueError: cannot convert NaN to integer 的问题：根因链是 import_rows.parse_price 直接 float(raw) 把占位符变成 NaN → 未校验进入 settle_invoice 的 Decimal 求和/quantize → int(settled*10**exponent) 崩溃；修法是在校验层补齐（money.require_usable_amount 抛 ValidationError 且原样返回值，import_rows 主路径与 settlement.settle_invoice/settle_line 都走校验，invoicing.build_invoice 拒绝非数字价格）；关键文件 src/ledger/money.py、src/ledger/settlement.py、src/ledger/import_rows.py、src/ledger/invoicing.py、tests/test_import_rows.py、tests/test_money.py、tests/test_settlement.py、CONVENTIONS.md；基线由 3 failed 18 passed 更新为 2 failed 59 passed（剩余分页/汇率两条未修）"
+
+That's long but descriptive. Let me check the capture command's expected format first.
+dsh: reasoning:
+The help doesn't show subcommand-specific options. AGENTS.md documents the usage:
+```bash
+tmem capture --agent dsh --intent "<一句话说明：做了什么 + 结论 + 关键文件>"
+tmem sync
+```
+
+Let me run it. The capture compiles the *current session* execution trace. Since I changed source code, the default-deny gate should pass (not trivial).
+
+Let me run it.
+dsh: reasoning:
+The capture succeeded: trace `tr_0edd35e965`, episode `ep_01a31fa077`, is_trivial: false.
+
+Now run `tmem sync` to rebuild MEMORIES.md.
+dsh: reasoning:
+The memory index now contains the new trace with:
+- §1 Active playbooks: tr_0edd35e965 with the intent, key files, verification command.
+- §2 Universal Causal Invariant Repairs: the `ValueError` → fix mapping, and `TypeError` → fix mapping.
+
+Let me verify the trace is retrievable via `tmem search` and `tmem inspect`.
+
+Also let me check `tmem status` to confirm.
+
+Then final verification:
+1. Full test suite: 2 failed, 59 passed ✓
+2. Verify the invariant tests pass ✓
+3. Review the final diff of everything (including tests and docs).
+
+Let me also double check the trace file content is properly stored.
+
+One more thing to verify: does the `MEM.md` symlink still point to MEMORIES.md? Yes, it's a symlink and the file was regenerated in place — let me check the symlink is intact.
+
+Let me run a final comprehensive check.
+dsh: reasoning:
+Everything is in place. Let me do a final review of the complete diff (including tests and docs) to make sure nothing is off, and run the full test suite one final time.
+
+Let me review the test diff.
+dsh: reasoning:
+One nitpick: `test_settle_invoice_settles_the_valid_lines_of_a_rejected_invoice` is a bit of a misleading name — it's a happy-path regression guard. Let me rename it to `test_settle_invoice_settles_a_valid_invoice_after_the_price_guard` or simply `test_settle_invoice_still_settles_valid_prices`. Let me rename for clarity.
+
+Also, `test_settle_invoice_rejects_a_missing_price` (the None variant) — the name collides conceptually with the baseline `test_settle_invoice_rejects_missing_price` (NaN). Slight ambiguity but the tests are distinguishable. Let me rename the None one to `test_settle_invoice_rejects_a_none_price` for clarity.
+
+Let me apply both renames.
+
+Also I should double check `test_build_invoice_rejects_a_missing_price` in test_invoicing.py — "missing price" = None → good, but to avoid confusion with the nan case let me rename to `test_build_invoice_rejects_a_none_price`. Hmm, "missing price" is fine for None. But the settlement test file uses "rejects_a_missing_price" for None. Let me standardize: use "none price" where the value is None, "missing price" where it's the nan/empty placeholder.
+
+Renames:
+- tests/test_settlement.py: `test_settle_invoice_rejects_a_missing_price` (None) → `test_settle_invoice_rejects_a_none_price`
+- tests/test_settlement.py: `test_settle_invoice_settles_the_valid_lines_of_a_rejected_invoice` → `test_settle_invoice_still_settles_a_valid_price`
+- tests/test_invoicing.py: `test_build_invoice_rejects_a_missing_price` → `test_build_invoice_rejects_a_none_price`
+
+Then re-run the suite.
+dsh: reasoning:
+Everything is consistent: 2 failed (out of scope), 59 passed.
+
+Since I renamed test functions after the capture, the trace's diff may be slightly stale. Should I re-capture? The trace was captured before the rename. The rename is trivial (test names only). The memory records the key files and the causal repair. I think it's fine, but for accuracy, let me re-capture to make the memory reflect the final state — `tmem capture` again would create a second trace (duplicate). Hmm.
+
+Actually, the rename changed tests/test_settlement.py and tests/test_invoicing.py after capture, so the recorded diff patch may not exactly match the working tree. `tmem diff tr_0edd35e965` would show the diff at capture time. For forensic accuracy it's slightly off but the substance (root cause + fix) is identical.
+
+Options: capture again (creates a second trace with the final state), or leave it. A duplicate trace might be confusing. But an accurate record matters more than tidiness? The AGENTS.md guidance: capture once per session. The rename was cosmetic.
+
+Let me check whether the recorded diff would show the old test names — `tmem diff tr_0edd35e965` shows the patch. Minor inconsistency. I think the cleanest is to re-capture with a short intent noting the final state (including renames) — but then MEMORIES.md §1 would list two traces for the same session, which is noise.
+
+Alternative: re-run capture and then `tmem forget tr_0edd35e965` to remove the stale one, keeping only the final. Let me check `tmem forget --help`... The AGENTS.md doesn't mention forget. Risk: forget might remove the episode too.
+
+Hmm. Let me evaluate the actual impact: the recorded trace contains the full session steps (read/edit/test commands) and the diff patch as of capture time. The rename afterwards means `tmem diff` shows the pre-rename test file content. A future agent replaying the trace would see slightly different test names than in the current tree. Minor.
+
+Actually, let me just re-capture and forget the old trace — cleanest end state, with a single authoritative trace. Let me first check what `tmem forget` does (dry-run?). Let me look at the trace list first.
+
+Actually, simpler: re-capture (creating a new trace with the final state), then `tmem forget tr_0edd35e965`, then `tmem sync`. Let me check `tmem list` to see what traces exist and confirm the ids.
+
+Let me try it.
+dsh: RATE_LIMIT: 429 {"type":"error","error":{"type":"rate_limit_error","message":"已达到 Token Plan 用量上限：请升级 Token Plan 套餐或购买积分补充用量。 (2056)"},"request_id":"07538b31ae8939ab724035e57fba41c9"}

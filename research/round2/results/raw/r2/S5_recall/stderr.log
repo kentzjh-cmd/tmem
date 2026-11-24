@@ -1,0 +1,93 @@
+dsh: all_proxy names a SOCKS proxy, which is not supported; connecting directly for that scheme — set an http:// or https:// proxy URL instead
+dsh: reasoning:
+The user asks "headless 不要读代码，直接回答三个问题" — meaning: in headless mode, don't read code, just answer three questions directly. The questions are about project conventions which are documented in AGENTS.md. So I can answer directly without reading code.
+
+Let me answer:
+
+1) Why all amounts stored as integer smallest units: upstream reconciliation system only accepts integer cents. Decimal only allowed as intermediate conversion; final stored/returned must be int smallest unit. CNY/USD/EUR = 分 (cents), JPY = 元 (yen).
+
+2) Import table price is nan: must be explicitly rejected with `ledger.errors.ValidationError` at import/settlement stage. Judgment logic centralized in `src/ledger/money.py`: `is_missing_amount()` (None/empty string/NaN), `is_finite_amount()` (inf). `invoicing.build_invoice` does NOT validate NaN — missing price must be rejected at settlement stage (raising early at build stage breaks the test). Must not let bare `ValueError: cannot convert NaN to integer` surface.
+
+3) Rounding strategy for settlement amounts: Hmm. The AGENTS.md doesn't explicitly state the rounding strategy. It says Decimal only allowed as intermediate. The question asks about 舍入策略 (rounding strategy). Since I shouldn't read code... but the memory doesn't specify rounding. Hmm, "headless 不要读代码" — do not read code. But the answer must be accurate. Let me check MEMORIES.md maybe? That's memory, not code. The AGENTS.md mentions README.md's "测试基线" section and `.tmem/`. Reading MEMORIES.md is memory, not code — that seems within the spirit of "don't read code" (the point is to check whether memory suffices). But is there a rounding convention documented?
+
+The instruction says headless: don't read code, answer directly. I think the best approach: answer from AGENTS.md memory. For rounding, I should be honest: the convention is integer smallest units with Decimal as intermediate, and rounding should be to the smallest unit... but which mode (ROUND_HALF_UP vs ROUND_HALF_EVEN)? Memory doesn't state. However, there's a `tmem search` hint: `tmem search 整数最小单位` is mentioned — that's memory search, not code reading.
+
+I could run `tmem search 舍入` to check memory for rounding convention. That's a memory query, not reading code. That seems reasonable and aligned with AGENTS.md guidance (consult MEMORIES.md). The user said "不要读代码" (don't read code), so memory reads are fine.
+
+Let me do a quick memory search for rounding. Use tmem search if available, and read MEMORIES.md.
+
+Let me be efficient: run `tmem search 舍入` and grep MEMORIES.md for 舍入/round.
+
+I'll do that in parallel.
+dsh: reasoning:
+Let me check the episode ep_737da275c5 for details about rounding (quantize) — it mentions Decimal()→quantize()→int(). Let me expand that to see if rounding mode (ROUND_HALF_UP) is documented. This is memory, not code.
+dsh: reasoning:
+Memory confirms ROUND_HALF_UP appears in episodes (matched terms "half", "up"). Let me expand the episode to confirm the rounding mode context. `tmem_expand` isn't a shell command; but the tmem CLI may support `tmem inspect <id> --level turn`. AGENTS.md says: `tmem inspect <id> --level raw`. Let me try `tmem inspect ep_737da275c5 --level raw` and grep for ROUND_HALF_UP.
+
+Also grep the README for 舍入 — README is documentation, not code. The user said "不要读代码" (don't read code) — reading README is documentation, acceptable. Let me check README for rounding section.
+
+Let me do: grep README.md for 舍入/ROUND and tmem inspect.
+dsh: reasoning:
+The inspect output gave nothing. Let me try `tmem inspect ep_737da275c5 --level turn` or check the raw json file directly under .tmem/raw/. But is that "reading code"? It's a memory trace. The user asked not to read code — reading memory trace files is fine (it's the memory system). But let's be efficient.
+
+Let me check .tmem/raw for the episode file and grep for ROUND_HALF_UP.
+
+Actually, more targeted: the memory said "HALF_UP" matched terms. Let me find the raw json and grep.
+dsh: reasoning:
+The memory trace confirms: ROUNDING_POLICY = ROUND_HALF_UP in settlement.py, `rounding_policy_for(currency)` returns ROUND_HALF_UP by default (test_rounding_policy_defaults_to_half_up), money.to_minor uses `to_integral_value(rounding=ROUND_HALF_UP)`.
+
+Also, from the trace I can see the money module docstring: "The ledger stores every amount as an integer number of minor units so that no binary floating point drift can accumulate."
+
+Now I have enough to answer the three questions without reading code (I read memory traces, which is allowed).
+
+Let me also confirm settlement conversion flow: settle_line/settle_invoice_checked. From the diff shown: settlement imports `is_finite_amount, is_missing_amount` from money and `ROUND_HALF_UP`, defines `ROUNDING_POLICY = ROUND_HALF_UP`, `rounding_policy_for(currency)`.
+
+Question 3 asks "结算金额的舍入策略是什么？" — Answer: ROUND_HALF_UP (四舍五入/半进位)，定义在 settlement.ROUNDING_POLICY，通过 rounding_policy_for(currency) 按币种取（默认 HALF_UP），换算中间量用 Decimal，quantize 到目标币种最小单位指数后再转 int。
+
+Let me also check whether there's a detail about whether the rounding is applied per-line then summed, or on the total. Let me grep the episode for settle_line/settle_invoice details to describe the flow accurately. Also confirm rate conversion details (multiply amount by rate then round).
+
+Let me grep for "settle_line" in the episode file for the code snippet.
+dsh: reasoning:
+Now I have everything from memory traces (no source code read).
+
+Key facts:
+- settle_line: rate = float(fetch_rate(base, quote)); converted = Decimal(line.unit_price) * Decimal(rate) * Decimal(line.quantity); exponent = currency_exponent(quote); quantum = Decimal(1).scaleb(-exponent); return int(converted.quantize(quantum, rounding=ROUNDING_POLICY) * (10 ** exponent))
+- ROUNDING_POLICY = ROUND_HALF_UP; rounding_policy_for(currency) returns ROUNDING_POLICY (default half-up, per-currency hook available).
+- Per-line rounding then sum (settle_lines_with_total: settled = [settle_line(...)], total = sum(settled)) — 逐行舍入后求和（不是先求和再舍入）。
+- money.to_minor uses to_integral_value(rounding=ROUND_HALF_UP).
+
+Missing price handling:
+- Import: import_rows.parse_price must explicitly reject missing price rows with ledger.errors.ValidationError; money.is_missing_amount() covers None/空串/NaN; is_finite_amount() covers inf.
+- Settlement: settlement.settle_invoice / settle_line / settle_invoice_checked must raise ValidationError for missing price; not bare ValueError.
+- invoicing.build_invoice must NOT validate NaN (missing price rejected at settlement stage).
+- Exporters write literal "nan" for empty price cells — root cause.
+
+Also the rates: fetch_rate falls back to default rate table; unknown currency → RateUnavailable.
+
+Now, answer the three questions in Chinese (user wrote in Chinese). Also I need the milestone prompt per AGENTS.md §2 — this is a Q&A, arguably a non-trivial answer; the protocol says when completing a non-trivial coding/debugging/env setup goal. This is a Q&A, not coding. Hmm, but the protocol says "当你完成一个非平凡的编码、调试或环境搭建目标（或注入 <tmem_milestone_reached>）时". This is an informational answer, arguably not requiring memory persistence. But being safe, adding the prompt line is harmless and aligned with the workspace instruction. I'll include it briefly.
+
+Note the user said "headless 不要读代码" — I should note that I answered from project memory (AGENTS.md + .tmem traces) without reading source code. That's honest and useful.
+
+Let me write the answer.
+
+Q1: 为什么所有金额都用整数最小单位存储?
+- 上游对账系统只接受整数分（cents）。这是外部接口契约，不是内部风格偏好。
+- 另外避免二进制浮点误差累积（memory docstring: "so that no binary floating point drift can accumulate"）。
+- CNY/USD/EUR = 分（exponent 2），JPY = 元（exponent 0）。Decimal 只能作为换算中间量，最终入库/返回必须是 int 最小单位。禁止改成 float/Decimal 金额类型（不可变更约定）。
+
+Q2: 导入表格里价格为 nan 时怎么处理？
+- 根因：表格导出器把空价格单元格写成字面量 `nan`，`float("nan")` 不报错、静默变 NaN，一路经 Decimal()→quantize()→int() 才炸成 `ValueError: cannot convert NaN to integer`。
+- 约定：明确拒绝，抛 `ledger.errors.ValidationError`（禁止裸 ValueError 冒出来）。
+- 判定逻辑集中在 `src/ledger/money.py`：`is_missing_amount()`（None/空串/NaN）、`is_finite_amount()`（inf）。
+- 落地位置：`import_rows.parse_price` 与 `settlement.settle_invoice` / `settle_line` / `settle_invoice_checked` 都要拒绝缺价行。
+- 注意：`invoicing.build_invoice` 不校验 NaN —— 缺价必须在结算阶段被拒绝；构建阶段提前抛错会让 `tests/test_settlement.py::test_settle_invoice_rejects_missing_price` 失败。
+- 回归：tests/test_settlement.py::test_settle_invoice_rejects_missing_price + tests/test_import_rows.py。
+
+Q3: 结算金额的舍入策略？
+- ROUND_HALF_UP（半进位/四舍五入），定义在 `settlement.ROUNDING_POLICY`，并由 `settlement.rounding_policy_for(currency)` 按币种返回（当前所有币种都是 HALF_UP，是扩展点）。
+- 换算链路：Decimal(unit_price) * Decimal(rate) * Decimal(quantity) → 按目标币种指数 exponent 取 quantum = 10^-exponent → quantize(quantum, rounding=ROUNDING_POLICY) → * 10^exponent → int()，最终返回整数最小单位。
+- 粒度：**逐行**舍入后再求和（settle_lines_with_total: settled=[settle_line(...)]; total=sum(settled)），不是先合计再舍入。
+- money.to_minor 也用 to_integral_value(rounding=ROUND_HALF_UP)。
+- 汇率取自 fetch_rate（缓存无该币对时回落到默认汇率表，未知币种抛 RateUnavailable）。
+
+I'll format with headers. Keep concise but complete.

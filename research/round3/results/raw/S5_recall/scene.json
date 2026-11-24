@@ -1,0 +1,27 @@
+{
+  "scene": "S5_recall",
+  "workspace": "exp",
+  "workspace_path": "/home/kent/e2e/r3/ledger-svc",
+  "intent": "消费侧：只问不查，检验记忆是否被模型真正使用",
+  "model": true,
+  "dsh_home": "/home/kent/.dsh",
+  "exit_code": 0,
+  "elapsed_sec": 16.8,
+  "stdout_bytes": 2289,
+  "stderr_bytes": 4508,
+  "command": "dsh --profile headless --patch /home/kent/e2e/r3/ledger-svc/.dsh/tmem.patch.yml headless <task>",
+  "transcript_path": "/home/kent/.dsh/sessions/--home-kent-e2e-r3-ledger-svc--/session-4a783678-206b-4441-9fe5-402181e8565e/session.v4.jsonl.zstd",
+  "transcript_stats": {
+    "bytes": 39594,
+    "node_single_frame_bytes": 183,
+    "node_single_frame_lines": 1,
+    "zstd_dc_bytes": 145079,
+    "zstd_dc_lines": 40,
+    "is_multiframe": true
+  },
+  "capture_exit": 1,
+  "capture": {
+    "status": "skipped",
+    "reason": "no_effective_actions"
+  }
+}

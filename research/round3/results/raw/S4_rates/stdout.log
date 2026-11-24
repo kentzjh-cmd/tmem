@@ -1,0 +1,32 @@
+已完成。
+
+## 根因
+
+`src/ledger/rates.py` 的进程级缓存 `RATE_CACHE` 里**混放两种键**：
+
+| 键类型 | 来源 | 例子 |
+| :--- | :--- | :--- |
+| 单币种键 | `load_rate_table()` / `refresh_rate_table()` 加载的汇率表 | `"USD"` → `7.1234` |
+| 币对键 | `fetch_rate()` 派生后写回 | `"USD:CNY"` → `0.14038…` |
+
+旧的 `get_cached_rate()` 直接 `RATE_CACHE["base:quote"]`，而币对键要等 `fetch_rate()` 派生后才存在 —— 冷缓存下必然 `KeyError: 'USD:CNY'`。同文件的 `rate_for_pair()` 早就是「先查缓存、未命中再取表」，两个 API 行为不一致。
+
+## 修改
+
+**`src/ledger/rates.py`** —— 三个查汇率的入口统一走 `_lookup_rate()`：先查币对缓存，未命中则由 `_effective_rate_table()`（已加载的表覆盖 `DEFAULT_RATES`，表里没有的币种继续用内置默认值）推导并写回缓存：
+
+- `get_cached_rate()` 不再抛裸 `KeyError`，改为回落到汇率表；
+- 表里完全没有的币种抛项目自己的 `RateUnavailable`（`no base rate for X`），而不是 `KeyError`；
+- 顺带修掉一个同族缺陷：`fetch_rate()` 以前只看 `DEFAULT_RATES`，`refresh_rate_table()` 刷进去的新表对换算毫无影响 —— 现在刷新汇率真的生效。
+
+**测试**（`tests/test_rates.py` +12 条、`tests/test_settlement.py` +3 条、`tests/test_cli.py` +1 条）：冷缓存回落、回落值等于汇率表值、缓存命中优先、回落后写回缓存、未知币种抛 `RateUnavailable` 而非 `KeyError`、刷新表优先、三个入口结果一致，外加 headless 结算/CLI 的冷缓存回归。测试用 `autouse` fixture + `cold_rate_cache` fixture 隔离全局缓存，避免污染其他用例。
+
+**文档**：`CONVENTIONS.md` 新增 §1.4「汇率缓存回退约定」，§2 失败基线刷新为 `0 failed, 69 passed`（基线清空，新增 §2.2 记录本次修复）；`README.md` 补一条约定。
+
+## 验证
+
+- `python3 -m pytest` → **69 passed**（改前为 1 failed, 52 passed）
+- 把 `rates.py` 临时回退到改前版本 → 新用例 **10 failed**，确认它们真的能抓到这个 bug
+- 差分对比改前/改后的结算输出（USD→CNY、CNY→CNY、EUR→JPY 等4 组）：**完全一致**，全部仍是 `int` 最小单位（`280624 / 2000 / 5 / 999`），金额换算逻辑一行未动
+
+💡 *是否需要将本次有效执行路径沉淀为记忆？（输入 `/tmem` 或 `/remember [备注]` 保存）*

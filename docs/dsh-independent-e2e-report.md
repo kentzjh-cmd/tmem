@@ -610,6 +610,24 @@ G9 检查"仓库 tracked 无改动"。两次判 FAIL 的**唯一脏文件都是�
 
 > **两份判定都已归档**（`research/round3/results/`）：`metrics-r3-first-pass-dirty-tree.json`（00:08，6/9，G9 FAIL，脏文件 = 当时正在撰写的 `docs/dsh-memory-carrier-ablation.md`）与 `metrics-r3-recheck-clean-tree.json`（20:53 在干净工作树上同脚本同阈值复算，**7/9，G9 PASS**，`repo_tracked_dirty = []`）。两次判定的其余八道门槛取值逐项相同，差异**只在 G9**。
 
+#### 证据链：门槛结论可回溯到归档的真实会话轨迹
+
+Round 3 每一场真实会话的**原始轨迹**已随仓归档（`research/round3/results/raw/<场次>/`）：完整会话转录（`session.v4.jsonl.zstd`，即含工具调用与注入块的会话流水）、场景元数据（`scene.json`）、标准输出与错误；`raw_manifest.json` 记录每个文件的 sha256。`research/carrier-ablation/verify_report_numbers.py` 会**从归档转录重算**判定所用的轨迹级事实，并与归档判定逐项对账——下面两列都是从转录重算出来的，不是转述：
+
+| 场次 | 归档轨迹目录 | 转录事件数 | 该场写入的文件（由转录重算） | elapsed（秒） |
+| :--- | :--- | ---: | :--- | ---: |
+| `S1_baseline` | `research/round3/results/raw/S1_baseline/` | 277 | `CONVENTIONS.md`、`README.md` | 124.6 |
+| `S2_nan_repair` | `research/round3/results/raw/S2_nan_repair/` | 354 | `CONVENTIONS.md`、`README.md`、`src/ledger/{cli,import_rows,invoicing,money,settlement}.py`、`tests/test_{cli,import_rows,invoicing,money,settlement}.py` | 171.3 |
+| `S3_pagination` | `research/round3/results/raw/S3_pagination/` | 248 | `CONVENTIONS.md`、`README.md`、`src/ledger/pagination.py`、`tests/test_pagination.py` | 104.9 |
+| `S4_rates` | `research/round3/results/raw/S4_rates/` | 276 | `.rates_diff_check.py`、`CONVENTIONS.md`、`README.md`、`src/ledger/rates.py`、`tests/test_{cli,rates,settlement}.py` | 200.5 |
+| `S5_recall` | `research/round3/results/raw/S5_recall/` | 40 | （无写入；该场 `session_captured=false`，即 G1 唯一漏掉的纯 Q&A 场） | 16.8 |
+| `S6_l2_transfer` | `research/round3/results/raw/S6_l2_transfer/` | 113 | （无写入；该场验证注入块携带先前修复，G8） | 41.5 |
+| `S6b_l2_transfer_controlled` | `research/round3/results/raw/S6b_l2_transfer_controlled/` | 203 | `CONVENTIONS.md`、`README.md`、`src/ledger/bulk.py`、`tests/test_bulk.py` | 101.6 |
+
+**机器对账的实测结果**：6 个主场次的 `elapsed_sec` 与 G9 判定里的 `session_elapsed_sec`（`[124.6, 171.3, 104.9, 200.5, 16.8, 41.5]`）逐项相同；每场"被写入的文件"由转录的 `edit`/`write` 调用重算得到（排除 `.tmem/` 记忆库内部文件与工作区外的临时文件），与判定中记录的 `session_edited_files` **全部一致**；判定里出现的同一场次的**每一份副本**都必须一致（该场次同时出现在多个门槛的 detail 里，合并会掩盖不一致，因此校验器逐份比对）。
+
+**Round 1 / Round 2 的证据也已归档**，但归属口径不同，特此披露：Round 1 的 5 份判定（`research/round1/results/`）、Round 2 的 5 份判定与 H6′（`research/round2/results/`）随仓入库，因此本表 Round-2 列的取值同样可由归档判定校验；**Round 2 的两套原始轨迹目录（`raw-r2` 与 `raw-r2-postfix`）也一并归档**（`research/round2/results/raw/`），但判定里注入块记录的 session id **同时出现在两套目录中**，无法证明哪一套产生了 `metrics-r2.json`——因此清单标注 `bound_to_verdict=false`，**不对 Round 2 的任何结论主张具体归属**，只声明文件完整性。
+
 #### Round 2 → Round 3 的净变化（结论层面）
 
 1. **N12 修复的正面证据**：Round 3 的 A 臂会话由**工作区副本**挂载（`tmem init` 写出的独立文件），修复后 `tmem_search`/`tmem_expand` **正常注册**（见 §3.12 的三向对照与本轮 A 臂的挂载审计 `mount=YES`），"注入照常但工具永不注册"的半挂载状态不再出现。

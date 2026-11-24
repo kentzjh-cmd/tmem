@@ -1,0 +1,30 @@
+## 结论：修复已在工作区落地并生效，本次我做的是端到端复核
+
+`parse_price` 拒绝 nan 的改动在之前的已验证会话（trace `tr_e66fe4c00d`）中已经实现并留在工作区（未提交，`git status` 显示 `src/ledger/*` 为 modified）。我没有只信测试数量，而是把每条边界都实跑了一遍。
+
+### 实现链路
+
+| 位置 | 作用 |
+|---|---|
+| `src/ledger/money.py:55` | `validate_price()` — 唯一单价合法性入口：NaN → `missing price`，inf → `non-finite price`，不可解析 → `invalid price`，统一抛 `ledger.errors.ValidationError` |
+| `src/ledger/import_rows.py:13` | `parse_price()` 改为委派 `validate_price` |
+| `src/ledger/import_rows.py:23,38` | `parse_rows()` / `rows_to_tuples()` 都走 `parse_price`，headless 导入在**出问题的行上**直接失败 |
+| `src/ledger/import_rows.py:51` | `parse_price_checked()`（历史裸 `ValueError` 的那个 helper）现为别名，同样抛 `ValidationError` |
+| `src/ledger/settlement.py:30,70,96` | 结算边界再拦一次：`settle_invoice` / `settle_line` / `settle_invoice_checked` |
+| `src/ledger/invoicing.py:40` | `build_invoice` 只校验能否转 float，**故意不**在此处拒 nan——否则 `test_settle_invoice_rejects_missing_price` 里在 `pytest.raises` 块外建发票就会失败 |
+| `src/ledger/cli.py:63` | `main()` 捕获 `LedgerError` → 退出码 1 |
+
+### 验证结果
+
+- **全量测试**：`69 passed in 0.11s`，0 失败。
+- **坏值扫描**（14 种变体：`"nan"` / `"NaN"` / 带空格 `"  nan  "` / `float('nan')` / `Decimal('NaN')` / `±inf` / `None` / `""` / `"   "` / 乱码 / dict / list）全部落到 `ValidationError`，**没有一个泄漏成裸 `ValueError`/`TypeError`**；合法单元格（str / float / Decimal / 0）解析正常。
+- **完整 headless 路径**：`build_invoice_from_rows("INV-1", [含 nan 行])` → `ValidationError: missing price for empty`，NaN 进不了发票、更进不了结算算术。
+- **CLI headless**：`--amount nan` → stderr `error: missing price for item`，exit=1；`--amount 10.00 --quantity 2` → `20.00 CNY`，exit=0。
+
+### 顺带确认
+
+`CONVENTIONS.md` §2 的失败基线已更新为 `0 failed, 69 passed`，与当前实测一致，没有漂移；README §约定 也已写明「缺失单价在导入与结算两处被明确拒绝」。
+
+本次会话未产生代码改动——目标逻辑本就存在且经验证为正确。
+
+💡 *是否需要将本次有效执行路径沉淀为记忆？（输入 `/tmem` 或 `/remember [备注]` 保存）*

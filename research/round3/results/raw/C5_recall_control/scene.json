@@ -1,0 +1,27 @@
+{
+  "scene": "C5_recall_control",
+  "workspace": "control",
+  "workspace_path": "/home/kent/e2e/r3/ledger-svc-control",
+  "intent": "对照组：同样的问题，但没有 tmem，用于测量基线可答性",
+  "model": true,
+  "dsh_home": "/home/kent/.dsh",
+  "exit_code": 0,
+  "elapsed_sec": 34.5,
+  "stdout_bytes": 1383,
+  "stderr_bytes": 12548,
+  "command": "dsh --profile headless headless <task>",
+  "transcript_path": "/home/kent/.dsh/sessions/--home-kent-e2e-r3-ledger-svc-control--/session-26de09c2-bd70-4206-8fbd-fe2a2eca31a3/session.v4.jsonl.zstd",
+  "transcript_stats": {
+    "bytes": 37111,
+    "node_single_frame_bytes": 191,
+    "node_single_frame_lines": 1,
+    "zstd_dc_bytes": 116198,
+    "zstd_dc_lines": 54,
+    "is_multiframe": true
+  },
+  "capture_exit": 1,
+  "capture": {
+    "status": "skipped",
+    "reason": "no_effective_actions"
+  }
+}

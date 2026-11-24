@@ -1,0 +1,47 @@
+三个问题都能在项目自己的约定文件 `CONVENTIONS.md`（及 tmem 记忆 `tr_e66fe4c00d`）里查到，未读源码。
+
+---
+
+### 1) 为什么所有金额都用整数最小单位存储？
+
+**因为上游对账系统只接受整数分（integer cents），不接受浮点数或十进制金额。这是一条硬性不变量，明确写了"不能改"。**
+
+- 币种小数位：`src/ledger/money.py:CURRENCY_EXPONENT` —— CNY / USD / EUR = 2 位（分），JPY = 0 位（元）。
+- 任何重构都不得把存储层改成 `float` / `Decimal`；对外输出（API / CLI / 对账文件）必须始终是 `int` 最小单位。
+- 换算入口唯一：`money.to_minor()` / `from_minor()` / `format_money()`。
+- 结算侧：`settle_invoice` / `settle_line` / `settle_lines_total` / `settle_batch` 一律返回 `int` 最小单位；`settled_amount()` / `settle_rounded_lines()` 只在展示层转回 `Decimal`。
+- 汇率表是 `Decimal`，只做换算中间过程，不得直接作为金额输出。
+
+### 2) 导入表格里价格为 `nan` 时怎么处理？
+
+**必须在数据入口显式拒绝，并抛项目自己的 `ledger.errors.ValidationError`，绝不让 `nan` 流入结算算术。**
+
+背景：计费表格导出的空单元格会被写成字面量文本 `nan`，`float("nan")` 静默通过，一路走到 `int(settled * 10 ** exponent)` 才炸成 `ValueError: cannot convert NaN to integer`，报错点离真正出问题的表格行很远。
+
+| 位置 | 约定 |
+| :--- | :--- |
+| `money.validate_price(value, description)` | 唯一单价合法性入口：NaN → `missing price for <desc>`；非有限 → `non-finite price`；无法转数字 → `invalid price`；一律 `ValidationError` |
+| `import_rows.parse_price()` / `parse_rows()` / `rows_to_tuples()` | 全部走 `validate_price`，headless 导入**在出问题的行上直接失败**；`parse_price_checked()` 保留为别名，同样抛 `ValidationError` |
+| `settlement.settle_invoice()` / `settle_line()` | 算术之前逐行校验；`settle_invoice_checked()` 不再抛裸 `ValueError` |
+| `invoicing.build_invoice()` | 只校验发票级数据与"单价能否转 float"；**不**在此拒绝 `nan`（因为 `test_settle_invoice_rejects_missing_price` 在 `pytest.raises` 块之外构造发票，`build_invoice` 必须接受 `nan`） |
+| `cli.main()` | 捕获 `LedgerError`，打印 `error: ...` 并返回退出码 1，不抛栈 |
+
+注意该约定"只做拦截"，不改动任何金额换算逻辑，输出仍是 `int` 最小单位。
+
+### 3) 结算金额的舍入策略？
+
+**`ROUND_HALF_UP`**（定义在 `settlement.ROUNDING_POLICY`，由 `rounding_policy_for()` 暴露；`money.to_minor()` 也用它）。
+
+配套规则：
+- 结算算术走 `Decimal`，最终一步量化成 `int` 最小单位；`settled_amount()` / `settle_rounded_lines()` 仅在展示层转回 `Decimal`。
+- 汇率换算只在中间过程用 `Decimal`，最终结果仍是 `int`。
+
+两个**已记录但尚未修复**的风险点（修的时候不得以破坏 int 最小单位约定为代价）：
+- `settlement.py:31/:71` 把 `Decimal` 汇率先 `float()` 降级再相乘，存在二进制浮点漂移；
+- `settlement.py:37/:75` 的 `int(settled * 10 ** exponent)` 依赖"先 `quantize` 再乘回"，JPY（exponent=0）路径未覆盖。
+
+---
+
+补充一句状态：约定文件里的失败基线已清空，最近一次 `python3 -m pytest` 是 **0 failed, 69 passed**（基线 commit `035aa40b`）。注意本机没有 `python`，只能用 `python3`。
+
+💡 *是否需要将本次执行路径沉淀为记忆？（输入 `/tmem` 或 `/remember [备注]` 保存）*

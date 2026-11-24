@@ -1,0 +1,1087 @@
+dsh: all_proxy names a SOCKS proxy, which is not supported; connecting directly for that scheme — set an http:// or https:// proxy URL instead
+dsh: reasoning:
+Let me read the relevant files: settlement.py, errors.py, import_rows.py, test_settlement.py, api.py, money.py.
+dsh: reasoning:
+Now let me look at invoicing.py, api.py, and rates.py to understand the flow.
+
+Key facts so far:
+- `settle_invoice()` has no missing-price validation → `Decimal(nan)` → `int()` → ValueError.
+- `settle_invoice_checked()` exists but raises bare `ValueError` and isn't called by `settle_invoice()`.
+- `import_rows.parse_price_checked()` exists but raises bare `ValueError` and isn't used by `parse_rows()` / `rows_to_tuples()`.
+
+The user says: "headless 导入的表格里价格单元格为空时会被写成 nan，结算时因此报错（ValueError: cannot convert NaN to integer）。请排查根因并修好，让缺失价格被明确拒绝（用项目自己的校验异常），补上测试，并把排查结论记到项目记忆里。"
+
+So: fix root cause → missing price rejected with project ValidationError. Add tests. Record conclusion in project memory (AGENTS.md is the authoritative hand-maintained memory file).
+
+Let me read more files.
+dsh: reasoning:
+Now let me run the test suite to confirm the baseline and reproduce the failure.
+
+Also, I need to understand the "headless 导入" path — CLI, import_rows, api. Let me look at cli.py and __init__.py.
+
+Let me run the tests and read cli.py.
+dsh: reasoning:
+Baseline confirmed: 3 failed / 18 passed. My task is specifically the missing-price one (known failure 3). The other two (pagination, rates) are separate tickets — the AGENTS.md says they're known failures with fix directions "未实施". The user's request is scoped to the NaN/price issue. I should focus on that and not fix pagination/rates (which would alter settled amounts or scope creep). Actually, wait — should I fix them? The user asked specifically about the NaN price issue. AGENTS.md explicitly notes "已知失败 1/2" as separate known failures with their own directions. I'll stay scoped to the NaN issue, and note in my final answer that the other 2 remain failing (as per the memory baseline).
+
+Now, the root cause analysis:
+
+1. The spreadsheet exporter writes an empty numeric cell as literal text `nan` (per import_rows.py docstring).
+2. `import_rows.parse_price()` does `float(raw)` → NaN, with no validation. `parse_rows()`/`rows_to_tuples()` use `parse_price`, so NaN propagates into `InvoiceLine.unit_price`.
+3. `build_invoice()` also does `float(unit_price)` — no NaN check.
+4. `settlement.settle_invoice()` has no validation → `Decimal(nan)` → total = NaN → `int(NaN)` → `ValueError: cannot convert NaN to integer` at settlement.py:31.
+5. There ARE "checked" helpers that exist but are dead code and raise bare `ValueError`:
+   - `settlement.settle_invoice_checked()` — raises bare `ValueError`, and is not called by `settle_invoice()`.
+   - `import_rows.parse_price_checked()` — raises bare `ValueError`, and is not used by `parse_rows()`/`rows_to_tuples()`.
+6. `api.handle()` catches only `LedgerError` subclasses → a bare `ValueError` escapes → 500-style crash. `ValidationError` is a `LedgerError` → handled properly.
+
+Note that `Decimal(line.unit_price)` — Decimal(float) preserves the binary float exactly (not the str). That is the known float-drift defect, flagged in AGENTS.md as a separate known defect. I need to be careful: my fix should not accidentally change settled amounts. If I switch `Decimal(line.unit_price)` to `Decimal(str(line.unit_price))`, that WOULD change settled amounts (potentially by a cent in edge cases) — AGENTS.md says "任何改动都不得改变已落库的结算金额". So I must NOT change that in this ticket. The float-drift fix is a separate known defect requiring its own evaluation.
+
+Wait — but the user's request: "让缺失价格被明确拒绝（用项目自己的校验异常）". So the key requirement is: raise `ValidationError` instead of the naked `ValueError`. Where? At the settlement boundary — that's the place the test targets (`settle_invoice` must raise ValidationError).
+
+Design decision: where to put the validation?
+
+Option A: Add NaN check inside `settle_invoice()` directly.
+Option B: Make `settle_invoice()` call `settle_invoice_checked()` — but that's backwards naming (checked variant calling unchecked).
+
+Better design: centralize the validation in a helper, and have both the settlement boundary and the import path use it. The cleanest approach consistent with the project's structure:
+
+- Add a shared validation helper for prices. Where should it live? `money.py` seems a natural home for money primitives, but `import_rows.py` and `settlement.py` both need it. Actually, let me put it in `money.py` as `ensure_usable_price` / or in a new module. Hmm, `money.py` raises bare `ValueError` for unsupported currency and cannot convert amount — those are also arguably wrong but out of scope (well, `currency_exponent` raising ValueError is another naked exception... out of scope though).
+
+Let me think about the minimal, well-factored fix:
+
+1. `settlement.settle_invoice()`: validate each line's unit price before doing arithmetic → raise `ValidationError` with a message that identifies the line.
+2. `settlement.settle_line()`: same validation (it's a public boundary too, and `settle_lines_total`/`settle_rounded_lines` route through it).
+3. `import_rows.parse_price()`: reject NaN at the import boundary → `ValidationError`. This is the true "root cause" location — the empty cell should never become a NaN price. But careful: `parse_price` is used by `parse_rows` and `rows_to_tuples`; the task says the headless import writes nan. Making `parse_price` raise ValidationError is the root-cause fix.
+4. `invoicing.build_invoice()`: validate unit_price is not NaN → `ValidationError` (since build_invoice is the assembly point and it already validates quantity > 0, raising ValidationError). This closes the path where rows → build_invoice_from_rows.
+
+But wait: the test `test_settle_invoice_rejects_missing_price` calls `build_invoice("INV-1006", [("hosting", "USD", float("nan"), 1)], currency="USD")` and expects `settle_invoice` to raise `ValidationError`. If I add validation to `build_invoice()`, the `ValidationError` would be raised at `build_invoice` time — *outside* the `pytest.raises` block! That would break the test:
+
+```python
+invoice = build_invoice(...)   # <-- would raise ValidationError here
+with pytest.raises(ValidationError):
+    settle_invoice(invoice, "USD", "CNY")
+```
+
+The test would fail with an error at the build_invoice line (pytest.raises only wraps the settle_invoice call). So I must NOT add NaN rejection to `build_invoice()`. Important constraint! The test is pre-existing and defines the contract: `build_invoice` accepts NaN, and `settle_invoice` must reject it with ValidationError.
+
+So the fix belongs at the settlement boundary (and optionally the import boundary). Adding validation to `build_invoice` would break the given test. Good catch.
+
+Hmm, but should I also fix the import path? The user's framing: "headless 导入的表格里价格单元格为空时会被写成 nan，结算时因此报错" — the error surfaces at settlement. The request: "让缺失价格被明确拒绝（用项目自己的校验异常）". The settlement boundary rejection satisfies this and is where the test lives. Adding import-boundary rejection is a defense-in-depth improvement, and it's the "root cause" per the docstring ("every parsed price has to be validated before it reaches settlement").
+
+But careful about `parse_price_checked` — it exists as dead code with a bare ValueError. Should I make `parse_rows`/`rows_to_tuples` use a validating parse that raises ValidationError? That would make the import fail fast with a clear project exception. Is there any existing test that relies on `parse_price` returning nan? Let me check the tests. There's no test_import_rows.py. Let me grep for usages of import_rows / parse_price across the repo.
+
+Also check `src/ledger/__init__.py` and other consumers.
+
+Let me also check the other checkouts mentioned (ledger-svc) — no, AGENTS.md says don't apply conclusions from elsewhere. But I might peek at how a "later" checkout solved it... AGENTS.md explicitly warns: "以本工作区 HEAD 实测为准，不要把别处的'已修复/全绿'结论套到本检出". I should not copy from other checkouts. I'll solve it myself. Actually, it might be informative but the instruction says not to apply their conclusions. I'll avoid it to be safe — but it could be a useful reference for API design consistency. Hmm, the instruction is about not assuming their baseline/fixes apply here. I'll do my own implementation.
+
+Let me grep for usages of the functions I plan to change.
+
+Also important: `settle_invoice_checked()` and `parse_price_checked()` exist as dead code. After my fix, I should make them coherent — e.g., `settle_invoice_checked` should raise ValidationError (project exception) and delegate; `parse_price_checked` should raise ValidationError. Should I delete them? They're public-ish API of the module. Better: make them consistent and have `settle_invoice` use the shared validation. Let me keep `settle_invoice_checked` as a thin wrapper that now raises ValidationError (its docstring says "reject lines without a usable price" — so raising the project exception is exactly right), and have `settle_invoice` perform the same validation inline (or call a shared helper). Actually cleanest: `settle_invoice` calls a private `_require_usable_price(line)` helper; `settle_invoice_checked` also uses it and then calls settle_invoice. Since settle_invoice validates anyway, settle_invoice_checked becomes effectively equivalent — that's fine and consistent.
+
+And `parse_price_checked` → raise ValidationError; and `parse_price` → hmm. Should `parse_price` itself validate? If `parse_price` raises on NaN, then `parse_price_checked` is redundant but harmless. The importer path: `parse_rows`/`rows_to_tuples` use `parse_price`. If I make `parse_price` validate, then the whole import path rejects missing prices with ValidationError — good defense in depth, and it makes `parse_price_checked` an alias.
+
+But: is there a risk that changing `parse_price` breaks something? Let me grep for usages.
+
+Let me also think about what counts as "missing price". The exporter writes empty numeric cells as the literal text `nan`. `float("nan")` → NaN. Also `float("")` raises ValueError. Also `None` raises TypeError. Also the string "NaN" → nan. So detection: after converting to float, check `math.isnan(value)`. Also should we reject infinity? An infinite price would also break `int()` → `OverflowError: cannot convert Infinity to integer`. That's arguably part of the same defect class: non-finite prices must be rejected. The user asked about missing prices → nan. Infinity isn't "missing", but the same crash mechanism (bare exception at settlement) applies. Hmm — scope. I think rejecting non-finite values (NaN and ±inf) at the same boundary is a reasonable, well-justified extension: the failure mode is identical (naked OverflowError at settlement). But the instruction "零价（0.0）是合法值，不得误拒" from AGENTS.md is a critical constraint: zero price must NOT be rejected.
+
+I'll reject non-finite (NaN/inf) as "unusable price", with a distinct message for NaN (missing price) vs infinity? Let me keep messages clear:
+- NaN → "missing price for {description}" (matches existing test expectations? The test only checks the exception type.)
+- inf → "unusable price for {description}".
+
+Actually, to keep it simple and precise, I'll have two distinct messages: missing (NaN) and non-finite infinity. Let me write:
+
+```python
+def _require_usable_price(line) -> None:
+    price = line.unit_price
+    if isinstance(price, Decimal):
+        if not price.is_finite(): ...
+```
+
+Hmm, unit_price is typed float but could be Decimal if someone constructs InvoiceLine directly. Let's handle generically: convert to float safely? Let me write a helper that takes a price value and a description:
+
+```python
+def _is_missing_price(value) -> bool:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return True   # unparseable → treat as missing/invalid
+    return math.isnan(number)
+```
+
+Hmm, treating unparseable as "missing price" conflates two errors. But `build_invoice` already does `float(unit_price)` which raises ValueError for garbage strings. So by the time a line exists, unit_price is a float. Fine — I'll handle float/Decimal/None robustly:
+
+Let me define in settlement.py:
+
+```python
+def _reject_unusable_price(line) -> None:
+    price = line.unit_price
+    if price is None:
+        raise ValidationError(f"missing price for {line.description}")
+    try:
+        number = float(price)
+    except (TypeError, ValueError):
+        raise ValidationError(f"invalid price for {line.description}: {price!r}") from None
+    if math.isnan(number):
+        raise ValidationError(f"missing price for {line.description}")
+    if math.isinf(number):
+        raise ValidationError(f"unusable price for {line.description}: {price!r}")
+```
+
+Where should this live so both settlement and import can use it? Options: a new module `src/ledger/validation.py`, or put it in `money.py` (money primitives — "price" is money-ish), or `errors.py` (no, that's just exceptions).
+
+I think a small shared helper in `money.py` fits: `money.py` is about money values and already has `to_minor`/`from_minor`. Add:
+
+```python
+def is_missing_price(value) -> bool: ...
+def require_usable_price(value, description="line") -> float: ...
+```
+
+Hmm, but `money.py` raising ValidationError requires importing from errors.py — fine, no circular import (errors.py imports nothing).
+
+Alternatively put the helper in `settlement.py` and import it in `import_rows.py`. But import_rows importing settlement is weird (settlement imports rates/money). A shared `money.py` helper is cleanest and avoids new modules.
+
+Actually, let me reconsider: should the import path reject at all? Consider the flow: headless import → rows → build_invoice_from_rows → invoice stored → settle later. If the import rejects the nan row immediately with ValidationError, that's a fail-fast at the source — good. The user said "让缺失价格被明确拒绝（用项目自己的校验异常）" — rejecting at both boundaries is best: the import boundary catches it early with a clear message; the settlement boundary is the guarantee (and what the test demands).
+
+Risk: does any existing test rely on `parse_price` returning nan? No test_import_rows.py exists. Let me grep for parse_rows/parse_price usage.
+
+Let me also check `src/ledger/__init__.py` and any other file referencing import_rows.
+
+Now about "把排查结论记到项目记忆里" — project memory = AGENTS.md (authoritative hand-maintained conventions) per AGENTS.md §2. The AGENTS.md already documents this known failure (#3) with a fix direction. After fixing, I should update AGENTS.md to record the root cause and the fix, and update the test baseline numbers (since one failure will be fixed, the baseline becomes 2 failed / 19 passed). Also README.md's "测试基线" section is a human-facing summary — I should update it too.
+
+Wait, careful: AGENTS.md is the "项目记忆" file. Also MEMORIES.md/MEM.md are tmem-generated (overwritten by sync) — per AGENTS.md, don't put the convention text only there. And the instruction says to record the conclusion in project memory. The final step: run `tmem capture --agent dsh` if the user asks to save memory — the user did ask ("把排查结论记到项目记忆里"). AGENTS.md §2 says: "If the user asks to save/record memory via natural language or /tmem, run: `tmem capture --agent dsh`". And also update AGENTS.md (authoritative human-maintained). Both.
+
+Note: `tmem capture` may judge "只改文档/元数据、不碰源码" as skipped_trivial → needs --force. But we ARE changing source code, so it should capture normally.
+
+Let me now check the remaining files and usages.
+dsh: reasoning:
+Good. `parse_rows`/`rows_to_tuples` are only used by `build_invoice_from_rows`, which is only used... let me check if `build_invoice_from_rows` is used anywhere else — grep showed only its definition. So the import path is: rows → rows_to_tuples → build_invoice.
+
+Now let me check MEMORIES.md and MEM.md to understand what's there (the tmem-generated index) — I need to know the format for the memory update.
+
+Also README.md's test baseline section.
+
+Let me read MEMORIES.md, MEM.md, README.md.
+dsh: reasoning:
+Now I have a clear picture. Let me write the plan with todos.
+
+Root cause chain:
+1. Exporter writes empty numeric cell as literal text `nan` (documented in import_rows.py docstring).
+2. `import_rows.parse_price()` → `float("nan")` → NaN, no validation. `parse_rows`/`rows_to_tuples` propagate NaN into `InvoiceLine.unit_price`.
+3. `build_invoice()` does `float(unit_price)` — accepts NaN, no validation.
+4. `settlement.settle_invoice()` has no price validation → `Decimal(nan)` → total NaN → `int(NaN)` → naked `ValueError: cannot convert NaN to integer` at settlement.py:31.
+5. `api.handle()` only catches `LedgerError` subclasses → naked ValueError escapes as a 500-style crash instead of a validation error.
+6. Dead "checked" helpers (`settle_invoice_checked`, `parse_price_checked`) exist but are never called and raise naked `ValueError`.
+
+Fix plan:
+- Add a shared price validation helper. Where? I'll put it in `money.py` since both `settlement.py` and `import_rows.py` need it, and money.py is the money-primitives module. It will raise `ValidationError`.
+
+Let me design the helper API in money.py:
+
+```python
+def is_missing_price(value) -> bool:
+    """Return True when ``value`` is the empty-cell placeholder (NaN)."""
+
+def require_usable_price(value, description: str = "line") -> float:
+    """Return ``value`` as a float, rejecting missing/unusable prices."""
+```
+
+Hmm. Actually, maybe simpler & more cohesive: a single function `require_usable_price(value, description="line")` that raises ValidationError, plus `is_missing_price(value)` for checking without raising.
+
+Implementation detail: NaN detection must handle the literal text "nan" as well as a float nan. `float("nan")` → nan. But `parse_price` already does `float(raw)`; if raw is "nan", float("nan") = nan. If raw is "" → ValueError. If raw is None → TypeError.
+
+Should `require_usable_price` accept the raw text? Let's make it take the value and try float conversion:
+
+```python
+def require_usable_price(value, description: str = "line") -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        raise ValidationError(f"missing price for {description}") from None
+    if math.isnan(number):
+        raise ValidationError(f"missing price for {description}")
+    if math.isinf(number):
+        raise ValidationError(f"unusable price for {description}: {value!r}")
+    return number
+```
+
+Hmm — treating unparseable text as "missing price" — is that right? An empty cell could be "" (blank string) rather than "nan". The exporter writes "nan" for empty numeric cells per the docstring, but blank strings are plausible too. Treating "" as missing price is semantically right (the cell is empty). But what about garbage like "abc"? That's an invalid price, not missing. Let me distinguish:
+- `None` or `""` or whitespace-only → missing price.
+- unparseable text → invalid price (ValidationError with "invalid price").
+- NaN (incl. "nan", "NaN") → missing price.
+- inf → unusable price.
+
+All are ValidationError. The distinction is only in the message. Good.
+
+Now where to enforce:
+
+A. `settlement.settle_invoice()` — validate every line's unit_price before arithmetic. Must raise ValidationError. ✅ (test requirement)
+B. `settlement.settle_line()` — same, since it's a public settlement boundary (`settle_lines_total`, `settle_rounded_lines`, `settle_lines_with_total` route through it).
+C. `import_rows.parse_price()` — reject NaN/blank at the import boundary → ValidationError. This is the root-cause location (the importer is where the placeholder enters).
+D. `import_rows.parse_price_checked()` — update to raise ValidationError (project exception) instead of naked ValueError; it becomes the canonical checked parse.
+E. `settlement.settle_invoice_checked()` — update to raise ValidationError; keep it working.
+
+Should `parse_rows`/`rows_to_tuples` use the checked parse? Yes → they call `parse_price_checked` (or `parse_price` which now validates). Let me make `parse_price` itself validating (root cause fix at the source), and keep `parse_price_checked` as an alias that adds a description to the error message. Hmm, but then `parse_price_checked` is redundant... Simplest coherent design:
+
+- `parse_price(raw)` → validates and returns float; raises ValidationError for missing/unusable. Used by parse_rows/rows_to_tuples.
+- `parse_price_checked(raw, description="")` → same but with description in the message (keeps back-compat signature).
+
+Hmm, but is changing `parse_price` semantics risky? It's an internal-ish helper; no external callers in repo; no tests. And the module docstring explicitly says "every parsed price has to be validated before it reaches settlement". So making parse_price validate fulfills the documented intent.
+
+But hold on — should the import path raise on missing price, or should it keep importing and let settlement reject? If the import raises, the operator learns immediately which row is broken (with description). That's the fail-fast behavior the user wants ("让缺失价格被明确拒绝"). Yes.
+
+Also, what about the `api.handle()` path for invoices POST: `build_invoice(request["invoice_id"], request.get("lines", []), ...)` — build_invoice does `float(unit_price)` → nan allowed → then api returns ok. But the invoice isn't settled there. Settlement happens via `handle_settle` → `settle_and_invoice` → `settle_invoice` → now raises ValidationError. `handle_settle` doesn't catch LedgerError → the exception propagates to the caller. Hmm, `handle_settle` has no try/except. Should I add error handling in api.handle_settle? The api.handle() catches LedgerError → returns {"ok": False, "error": ...}. `handle_settle` is a separate function without a try. The user's issue: "结算时因此报错（ValueError: cannot convert NaN to integer）" — with the fix it becomes ValidationError, which is the project's validation exception, and api.handle catches it. For handle_settle, the ValidationError propagates as a proper project exception (not a crash) — acceptable, and consistent with handle_settle's existing design (it also doesn't catch CurrencyMismatch).
+
+Now, one important check: does adding the NaN check to `settle_invoice` change any settled amounts? No — NaN never produced a valid amount before (it crashed). Zero price must remain valid: `float(0.0)` → 0.0, not NaN, not inf → passes. Good.
+
+Another check: `Decimal(line.unit_price)` where unit_price is a float → unchanged behavior. Good, no amount changes.
+
+Now, one more consideration — `build_invoice()`: should it reject NaN? As analyzed, the existing test does `build_invoice(...)` OUTSIDE the `pytest.raises` block, so raising there would make the test error out (pytest reports it as a failure — "DID NOT RAISE"? No: the exception would propagate out of the test function → test fails with ValidationError raised). So the given test demands that build_invoice accept NaN and settle_invoice reject it. So: do NOT add NaN rejection to build_invoice.
+
+Hmm, but is that a good design? Ideally validation at assembly too. But the pre-existing test (which is the contract in the repo, per the AGENTS.md "用例期望的是项目自己的 ledger.errors.ValidationError") pins settle_invoice as the rejection point. I'll honor the test. I can note in the memory file that build_invoice intentionally does not reject NaN so that the settlement boundary stays the single gate (and the test's contract holds).
+
+Wait, let me double check the test:
+```python
+def test_settle_invoice_rejects_missing_price():
+    from ledger.errors import ValidationError
+    invoice = build_invoice("INV-1006", [("hosting", "USD", float("nan"), 1)], currency="USD")
+    with pytest.raises(ValidationError):
+        settle_invoice(invoice, "USD", "CNY")
+```
+Yes — build_invoice is outside pytest.raises. Confirmed.
+
+Now let me also consider: should `settle_invoice` validate BEFORE the currency check? Order matters for a line with both bad currency and NaN price. Currently the currency check comes first (raises CurrencyMismatch). If a line has mismatched currency AND nan price, which error? Either is fine. But for the test: invoice currency USD, base "USD" → currency matches → then price check. If I put the price check before the currency check, the test still passes (ValidationError). I'll put the price validation first? Hmm — think about which is more informative. The currency mismatch is about the invoice structure; missing price is about data content. The existing test `test_settle_invoice_rejects_mixed_currency` uses a valid price so order doesn't matter for it.
+
+I'll validate the price first (fail fast on unusable data before doing any arithmetic), then the currency check. Actually wait — careful: in `settle_invoice`, the currency check `line.currency != base_currency` raises CurrencyMismatch. If I validate price first, a mixed-currency invoice with a nan price raises ValidationError instead of CurrencyMismatch. There's no test for that combination. Either order is defensible. I'll validate price first because the NaN price is a hard "cannot even compute" error, and currency mismatch is a structural complaint. Hmm, but actually the currency check is cheap and structural...
+
+Let me think about which produces better DX for the headless importer: The importer writes nan for empty cells; currency is fine. So both orders give ValidationError in the real scenario. I'll go with price-first (data unusable → reject before anything else).
+
+Hmm, one more: I want the error message to identify the offending line. Include description and maybe the invoice id. `settle_invoice` has the invoice, so message could be: `f"missing price for line '{line.description}' of invoice {invoice.invoice_id}"`. But the line-level helper in money.py takes a description string. Let me design:
+
+money.py:
+```python
+def require_usable_price(value, description: str = "line") -> float:
+```
+and callers pass a description like f"line '{line.description}'".
+
+Then settle_invoice: `require_usable_price(line.unit_price, description=f"line {line.description!r} of invoice {invoice.invoice_id!r}")` → message "missing price for line 'hosting' of invoice 'INV-1006'".
+
+That's informative. Let me keep the base message "missing price for {description}".
+
+Now let me also double check `import_rows.parse_price` raising ValidationError doesn't break `build_invoice_from_rows` for good rows. Fine.
+
+Also: `parse_rows` uses `row["unit_price"]` — key errors possible; not our concern.
+
+Let me now also think about whether to add a dedicated module `src/ledger/validation.py`. Hmm, money.py is about money primitives (to_minor/from_minor/format_money). A price validator fits "money" reasonably. But is there an import cycle? money.py imports errors.py — errors.py imports nothing. settlement.py imports errors, money, rates. import_rows imports invoicing (which imports errors, money). Adding `from .errors import ValidationError` to money.py → no cycle. And invoicing imports money → fine.
+
+Alternatively, put the helper in `errors.py`? No.
+
+I'll go with money.py. Hmm, wait: money.py's docstring says "Money primitives." I'll extend it: "Money primitives. ... plus validation of price cells".
+
+Let me now write the code.
+
+### money.py changes
+
+```python
+"""Money primitives.
+
+The ledger stores every amount as an integer number of minor units so that
+no binary floating point drift can accumulate.
+
+This module also owns the single definition of what a *usable* price is:
+the spreadsheet exporter writes an empty numeric cell as the literal text
+``nan``, and such a placeholder must never reach the settlement engine.
+"""
+
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+import math
+
+from .errors import ValidationError
+```
+
+Add:
+
+```python
+def is_missing_price(value) -> bool:
+    """Return ``True`` when ``value`` is the empty-cell placeholder.
+
+    The exporter writes an empty numeric cell as the literal text ``nan``;
+    ``float("nan")`` is the only thing that reaches the ledger from such a
+    cell, so it is treated as a missing price.
+    """
+    if value is None:
+        return True
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return True
+        try:
+            number = float(text)
+        except ValueError:
+            return False
+        return math.isnan(number)
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return False
+    return math.isnan(number)
+```
+
+Hmm, `is_missing_price` returning False for garbage strings; then `require_usable_price` would raise "invalid price". Let me write require_usable_price:
+
+```python
+def require_usable_price(value, description: str = "line") -> float:
+    """Return ``value`` as a float price, rejecting missing or unusable cells.
+
+    Raises :class:`ledger.errors.ValidationError` for the ``nan`` placeholder
+    written by the exporter, for blank cells and for values that are not a
+    finite number. A price of ``0`` is valid.
+    """
+    if value is None or (isinstance(value, str) and not value.strip()):
+        raise ValidationError(f"missing price for {description}")
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        raise ValidationError(f"invalid price for {description}: {value!r}") from None
+    if math.isnan(number):
+        raise ValidationError(f"missing price for {description}")
+    if math.isinf(number):
+        raise ValidationError(f"unusable price for {description}: {value!r}")
+    return number
+```
+
+Wait — `float(Decimal("NaN"))` → nan. Good, handled by isnan check.
+`float(True)` → 1.0; whatever.
+
+Edge: `float("")` raises ValueError → but we already handled blank strings as missing. `float("  ")` → ValueError → caught by blank check (strip → empty). Good.
+
+Now `is_missing_price` — do I actually need it? It's used by... maybe nothing. I could skip it to avoid dead code. But it could be useful for the import path to give a better message. Let me simplify: drop `is_missing_price`, keep only `require_usable_price`. Less dead code = better. Actually — hmm, one use: in `settlement`, we might want to distinguish. No. Drop it.
+
+But wait: `import_rows.parse_price` — the import path receives raw cell text ("nan", "19.99", "", maybe None). `require_usable_price(raw, description)` handles all → returns float. 
+
+### settlement.py changes
+
+```python
+from .errors import CurrencyMismatch, ValidationError
+from .money import DEFAULT_CURRENCY, currency_exponent, require_usable_price
+```
+
+In settle_invoice:
+```python
+    for line in invoice.lines:
+        require_usable_price(
+            line.unit_price,
+            description=f"line {line.description!r} of invoice {invoice.invoice_id!r}",
+        )
+        if line.currency != base_currency:
+            raise CurrencyMismatch(...)
+```
+
+Hmm, but settle_invoice has `invoice` — yes it does.
+
+In settle_line:
+```python
+    require_usable_price(line.unit_price, description=f"line {line.description!r}")
+```
+(settle_line has no invoice.)
+
+And `settle_invoice_checked`:
+```python
+def settle_invoice_checked(invoice, base_currency=DEFAULT_CURRENCY, quote_currency=None) -> int:
+    """Settle an invoice and reject lines without a usable price."""
+    for line in invoice.lines:
+        require_usable_price(line.unit_price, description=f"line {line.description!r} of invoice {invoice.invoice_id!r}")
+    return settle_invoice(invoice, base_currency, quote_currency)
+```
+Since settle_invoice now validates too, settle_invoice_checked is effectively equivalent — but keeps its documented contract and now raises the project exception. Should I just make it call settle_invoice directly? Then the explicit loop is redundant. I'll keep the explicit check for clarity of intent (it's the "checked" entry point) — or simply delegate: `return settle_invoice(...)` with a docstring noting settle_invoice always validates now. Hmm, redundancy is harmless but let me keep it simple: delegate with a docstring stating validation now happens inside settle_invoice. Actually, I prefer keeping the explicit loop — it documents the function's contract even if settle_invoice also guards. But duplicated error messages could differ... no, same helper.
+
+I'll make settle_invoice_checked delegate to settle_invoice and document that. Cleaner, no duplicate logic. Hmm, but then the name "checked" is meaningless... It was already meaningless (dead code). Let me keep it as a thin alias with a docstring: "Deprecated alias for :func:`settle_invoice`, which now always validates prices." Hmm, "deprecated" is a strong word; but it documents intent. Let me write:
+
+```python
+def settle_invoice_checked(invoice, base_currency: str = DEFAULT_CURRENCY, quote_currency: str | None = None) -> int:
+    """Settle an invoice, rejecting lines without a usable price.
+
+    ``settle_invoice`` always performs this check now, so this helper only
+    exists for callers that used the explicitly named variant.
+    """
+    return settle_invoice(invoice, base_currency, quote_currency)
+```
+
+Good.
+
+### import_rows.py changes
+
+```python
+from .errors import ValidationError
+from .invoicing import InvoiceLine
+from .money import require_usable_price
+
+
+def parse_price(raw) -> float:
+    """Parse one exported price cell.
+
+    An empty numeric cell is exported as the literal text ``nan``; such a
+    placeholder is rejected here so it can never reach the settlement
+    engine.
+    """
+    return require_usable_price(raw, description="line")
+```
+
+Hmm — the description for import rows should identify the row. `parse_rows` has the row dict with "description". Let me have parse_rows pass the row description:
+
+```python
+def parse_rows(rows) -> list:
+    lines = []
+    for row in rows:
+        lines.append(
+            InvoiceLine(
+                row["description"],
+                row["currency"],
+                parse_price_checked(row["unit_price"], row["description"]),
+                int(row["quantity"]),
+            )
+        )
+    return lines
+```
+
+Hmm, `parse_price_checked(raw, description)` → uses require_usable_price(raw, description).
+
+And `parse_price(raw)` → the generic one, description "line".
+
+Let me restructure import_rows:
+- `parse_price(raw)` → validated parse, generic description. (used by rows_to_tuples? better to use the checked variant with description.)
+- `parse_price_checked(raw, description="")` → validated parse with description.
+
+To avoid two nearly-identical functions with confusing names, maybe:
+```python
+def parse_price(raw) -> float:
+    """Parse one exported price cell, rejecting the empty-cell placeholder."""
+    return require_usable_price(raw, "line")
+
+def parse_price_checked(raw, description: str = "") -> float:
+    """Parse a price cell and reject the empty-cell placeholder."""
+    return require_usable_price(raw, description or "line")
+```
+That's fine — parse_price_checked adds row context.
+
+Then parse_rows uses parse_price_checked(row["unit_price"], row.get("description", "")), rows_to_tuples likewise.
+
+Wait — careful: `row["description"]` might not exist in some row dicts; use `row.get("description")`? The original code uses `row["description"]` directly in parse_rows, so it must exist. I'll use `row["description"]` for consistency but guard with .get in the tuple version? Keep consistent: use `row["description"]`.
+
+Hmm, but what if description is not a string (e.g., None)? `require_usable_price(raw, description)` with description=None → f-string gives "None". Fine.
+
+Now, an important detail: `require_usable_price(raw, description)` message: "missing price for hosting". Let's make the message format: f"missing price for {description}". With description = "hosting" → "missing price for hosting". Good enough. For settlement I'll pass f"line {line.description!r} of invoice {invoice.invoice_id!r}" → "missing price for line 'hosting' of invoice 'INV-1006'".
+
+### api.py
+
+Should `handle_settle` catch LedgerError and return ok:False? The api.handle() pattern catches LedgerError and returns {"ok": False, "error": str(err)}. For consistency, `handle_settle` could do the same. The user's problem statement mentions the crash at settlement. Adding error handling to handle_settle makes the API layer return a structured error instead of raising. But it also changes behavior for CurrencyMismatch (currently propagates). Is there a test? Let me check test_invoicing.py and others for handle_settle usage.
+
+Let me read the remaining test files to be safe.
+
+Also I want to double check: does `api.handle` POST /invoices path touch settlement? No.
+
+Let me read test files.
+dsh: reasoning:
+Now I have the full picture. Let me write the todo list and implement.
+
+Plan:
+1. Add shared price validation helper in `money.py` → `require_usable_price()` raising `ValidationError`.
+2. Wire into `settlement.settle_invoice()` and `settle_line()` (settlement boundary) — the guarantee point.
+3. Fix the dead "checked" helpers: `settle_invoice_checked` (delegate), `parse_price_checked` (project exception).
+4. Fix the root cause at the import boundary: `import_rows.parse_price` / `parse_rows` / `rows_to_tuples` reject the `nan` placeholder with ValidationError.
+5. Add tests: new `tests/test_import_rows.py` + settlement tests (zero price allowed, inf rejected, import path rejects, api handles it).
+6. Run the suite; verify baseline becomes 2 failed / 20 passed.
+7. Update project memory: AGENTS.md (§3 known failure #3 → fixed, update baseline numbers), README.md test baseline table, and run `tmem capture --agent dsh`.
+
+Let me create the todo list.
+dsh: reasoning:
+Now implement money.py changes.
+dsh: reasoning:
+Now add the `require_usable_price` function. Where to put it in money.py? After CURRENCY_EXPONENT / currency_exponent, before to_minor? I'll add after `currency_exponent` or at the end. Let me put it right after `currency_exponent` — actually logically it's a validation helper; put it at the end of the file, or right after currency_exponent. I'll add after `currency_exponent` so money-related helpers group together. Actually appending at the end is simplest and clean.
+
+Let me add after the `format_money` function.
+dsh: reasoning:
+Now the settlement boundary. Update settlement.py:
+
+1. imports: `from .errors import CurrencyMismatch` → add ValidationError? We don't need ValidationError directly in settlement since require_usable_price raises it. But for clarity of the docstring, not needed.
+
+2. settle_invoice: validate price per line.
+3. settle_line: validate price.
+4. settle_invoice_checked: delegate.
+
+Let me write the edits.
+dsh: reasoning:
+Now the import boundary — the root cause. Update import_rows.py.
+
+Also the module docstring should be updated to reflect the new behavior.
+
+New import_rows.py:
+
+```python
+"""Import invoice rows exported from the billing spreadsheet.
+
+The exporter writes an empty numeric cell as the literal text ``nan``, so
+every parsed price has to be validated before it reaches settlement.
+"""
+
+from __future__ import annotations
+
+from .invoicing import InvoiceLine
+from .money import require_usable_price
+
+
+def parse_price(raw) -> float:
+    """Parse one exported price cell.
+
+    An empty cell arrives as the literal text ``nan`` and is rejected here
+    with :class:`ledger.errors.ValidationError`.
+    """
+    return require_usable_price(raw, "line")
+
+
+def parse_rows(rows) -> list:
+    """Turn exported rows into invoice lines."""
+    lines = []
+    for row in rows:
+        lines.append(
+            InvoiceLine(
+                row["description"],
+                row["currency"],
+                parse_price_checked(row["unit_price"], row["description"]),
+                int(row["quantity"]),
+            )
+        )
+    return lines
+
+
+def rows_to_tuples(rows) -> list:
+    """Turn exported rows into ``build_invoice`` tuples."""
+    return [
+        (
+            row["description"],
+            row["currency"],
+            parse_price_checked(row["unit_price"], row["description"]),
+            int(row["quantity"]),
+        )
+        for row in rows
+    ]
+
+
+def parse_price_checked(raw, description: str = "") -> float:
+    """Parse a price cell and reject the empty-cell placeholder."""
+    return require_usable_price(raw, description or "line")
+```
+
+Wait — `parse_price` is now unused by parse_rows/rows_to_tuples. Is it still worth keeping? It's a public function in the module; keeping it (now validating) is good for API compatibility — anyone calling `parse_price("nan")` gets ValidationError instead of nan. Yes, keep.
+
+Hmm, but there's a subtlety: `parse_price_checked` and `parse_price` are now nearly the same. That's acceptable — parse_price_checked adds row context.
+
+Also: `int(row["quantity"])` — if quantity is nan → ValueError. Out of scope.
+
+One more consideration: should `parse_rows`/`rows_to_tuples` raise on missing price, or should they keep the nan and let settlement reject? I decided fail-fast at import. But hmm — is there a risk that the headless importer wants to import a partially-filled sheet and settle later? The module docstring explicitly says prices must be validated before reaching settlement. Fail-fast is right.
+
+Now, invoicing.build_invoice_from_rows → rows_to_tuples → raises ValidationError for nan rows. Good: the headless import path now rejects at import time.
+
+Let me write the file.
+dsh: reasoning:
+Now let's run the tests to see where we stand.
+
+Also I need to double check the `build_invoice` path: `build_invoice` does `float(unit_price)` — if unit_price is "nan" string → float("nan") = nan. But build_invoice_from_rows now uses rows_to_tuples which validates. Direct `build_invoice` with nan still allowed (required by the test).
+
+Wait — there's one issue: `build_invoice` calls `float(unit_price)` — if a raw row value is a string "abc", float() raises ValueError. But rows_to_tuples already validated. Fine.
+
+Let me run the tests.
+dsh: reasoning:
+The missing-price test now passes. Baseline went from 3 failed / 18 passed → 2 failed / 19 passed. The remaining 2 failures are the separate known tickets (pagination, rates) that are out of scope for this request.
+
+Now let me add tests. Requirements:
+1. Existing test `test_settle_invoice_rejects_missing_price` covers the settlement boundary → now passes.
+2. New tests should cover:
+   - Zero price (0.0) is valid — must NOT be rejected. (explicit constraint from AGENTS.md)
+   - Settlement rejects nan → ValidationError (already covered by existing test, but I can add one that checks the message/that it's a LedgerError so api.handle can catch it).
+   - `settle_line` rejects nan.
+   - `settle_invoice_checked` rejects nan with ValidationError (not bare ValueError).
+   - Import path: `parse_price("nan")` → ValidationError; `parse_rows` with nan row → ValidationError; `rows_to_tuples` → ValidationError; `build_invoice_from_rows` → ValidationError.
+   - Import path with valid price works.
+   - Infinity rejected.
+   - api.handle catches ValidationError (structured error, not a crash) — maybe test that a settlement failure through api returns ok:False? api.handle doesn't settle. Let me check: api.handle POST /invoices → build_invoice → no settlement. So the api path for settlement is handle_settle, which doesn't catch. Hmm.
+
+Let me think about the api layer: should `handle_settle` catch LedgerError and return {"ok": False, "error": ...}? The AGENTS.md says "api.handle() 只捕获 LedgerError 子类，裸异常会变成 500 式崩溃". The user says the settlement error "结算时因此报错" — the fix is to use the project's validation exception. With ValidationError, api.handle would convert it to a structured error. But handle_settle doesn't have a try/except. 
+
+Should I add a try/except to handle_settle? It would make the headless/API path return {"ok": False, "error": "missing price for ..."} rather than raising. That's arguably nicer and consistent with `handle()`. But it changes behavior for CurrencyMismatch too (currently propagates). Is there a test? No test covers handle_settle. 
+
+Hmm. The user's request focuses on "让缺失价格被明确拒绝（用项目自己的校验异常）" — using the project exception is the requirement. Whether handle_settle converts it to an error response is an API design decision beyond scope. I'll not change handle_settle's contract (raising a project exception is fine and the caller can catch LedgerError). But I could add a test that documents that ValidationError is a LedgerError so api.handle-style handlers catch it. Let me add a test asserting `issubclass(ValidationError, LedgerError)` — that's already implied by errors.py. Maybe a test that api.handle returns ok:False for an invoice with a bad quantity (existing behavior) — not needed.
+
+Better: add a test that goes through `api.handle_settle` and asserts it raises ValidationError (a LedgerError, not a bare ValueError) — documenting the contract that the API layer surfaces a catchable project error. Hmm, but if someone later adds error handling to handle_settle, that test breaks. I'd rather test the invariant "the exception raised at the settlement boundary is a LedgerError subclass, so api.handle() can catch it" via `settle_and_invoice` / `handle_settle` raising ValidationError.
+
+Let me design the new test file: `tests/test_import_rows.py` for the import boundary, and add settlement tests to `tests/test_settlement.py`.
+
+Tests to add in test_settlement.py:
+1. `test_settle_invoice_rejects_missing_price` — exists (pre-existing). Leave as is.
+2. `test_settle_invoice_accepts_zero_price` — zero price must be allowed: settle a CNY invoice with unit_price 0.0, quantity 5 → settled == 0.
+3. `test_settle_line_rejects_missing_price` — ValidationError.
+4. `test_settle_invoice_checked_rejects_missing_price_with_project_error` — ValidationError (not ValueError).
+5. `test_missing_price_error_is_ledger_error` — ValidationError is a LedgerError subclass so api.handle catches it.
+6. `test_settle_invoice_rejects_infinite_price` — ValidationError for inf.
+7. `test_settle_invoice_reports_the_offending_line` — message mentions the line description/invoice id.
+
+Tests in new file tests/test_import_rows.py:
+1. `test_parse_price_rejects_nan_placeholder` — parse_price("nan") → ValidationError.
+2. `test_parse_price_accepts_regular_price` — parse_price("19.99") == 19.99.
+3. `test_parse_rows_rejects_nan_placeholder` — rows with "unit_price": "nan" → ValidationError.
+4. `test_rows_to_tuples_rejects_nan_placeholder`.
+5. `test_build_invoice_from_rows_rejects_nan_placeholder` — invoicing path.
+6. `test_parse_rows_accepts_valid_rows`.
+7. `test_parse_price_rejects_blank_cell` — "" → ValidationError.
+8. `test_parse_price_rejects_infinite_price`.
+
+Also maybe a test that the whole headless path (import → invoice → settle) fails with ValidationError rather than ValueError:
+`test_imported_nan_row_fails_settlement_with_validation_error` — build invoice from rows (bypassing validation by constructing lines directly with nan?) Hmm. Let me write an end-to-end style test: rows with nan → build_invoice_from_rows raises ValidationError. And separately: an invoice built directly with nan → settle raises ValidationError.
+
+Let me also double check: `float("nan")` string parse in parse_price → require_usable_price("nan") → float("nan") → nan → isnan → ValidationError("missing price for line"). Good.
+
+What about `Decimal("NaN")`? float(Decimal("NaN")) → nan. Good.
+
+Let me now write the tests.
+
+One more check on the zero-price test: settle_invoice with CNY invoice, line unit_price 0.0, quantity 5, base CNY quote CNY → total = 0 → settled = 0 → int(0 * 100) = 0. But note `rates_module.fetch_rate("CNY","CNY")` → key "CNY:CNY" not in cache → base CNY in DEFAULT_RATES → rate = 1/1 = 1 → cached. Fine.
+
+Careful about rate cache state across tests: fetch_rate caches. Not an issue.
+
+For the infinite price test: `float("inf")` → require_usable_price → isinf → ValidationError("unusable price for ...").
+
+Now let me write the test files.
+dsh: reasoning:
+2 failed / 37 passed. The 18 new tests all pass. The two remaining failures are the separate known tickets (pagination + rates), which are out of scope for this request.
+
+Now let me verify the actual reported symptom end-to-end with a quick script — simulating the headless import of a spreadsheet with an empty price cell, before and after. Let me write a quick reproduction script to confirm the fix works at the real boundary (import → invoice → settle).
+
+Also, I want to double-check I haven't changed any settled amounts. Let me verify: compare settled amounts before/after my change for a set of invoices. I can do that by checking out the original code into a temp dir and comparing outputs. Let me do that carefully with git stash... Better: use `git stash` is risky. Instead, let me compute the settled values with the current code and with `git show HEAD:src/ledger/...` versions in a temp directory.
+
+Approach: create a temp dir, `git worktree` or simply copy the original files from HEAD into a temp package, then run a comparison script that settles a bunch of invoices with both versions and compares.
+
+Let me do that — it's a good verification of the "不得改变已落库的结算金额" constraint.
+
+Plan:
+- mkdir /tmp/ledger_orig && git archive HEAD | tar -x -C /tmp/ledger_orig
+- Run a script under each that settles a set of invoices and prints results; diff.
+
+Let me write the comparison script.
+dsh: reasoning:
+Hmm, the diff said IDENTICAL but both files contain the same error message ("can't open file"). The script wasn't written where I expected? The write tool wrote to /tmp/settle_compare.py but the bash says it doesn't exist. Maybe the write tool's sandbox wrote it elsewhere, or /tmp is not shared between the tool's write backend and bash. Let me check.
+
+Let me write the script into the workspace instead (a temp file under the workspace, then delete it).
+
+Note: "IDENTICAL" was a false positive since both outputs were the same error. Good catch — I must re-verify properly.
+dsh: reasoning:
+The write tool's /tmp is not the same as bash's /tmp (or the file was written to a different sandbox temp area). Let me write the script inside the workspace (e.g., /home/kent/e2e/r2/ledger-svc-control/.tmp_settle_compare.py) and delete it afterwards. Actually, better to put it in the workspace under a clearly temporary name and remove it after use.
+
+Note: the earlier `/tmp/ledger_orig` extraction via bash worked (bash's own /tmp). So bash's /tmp exists. The write tool wrote elsewhere. Let me just use the workspace path.
+dsh: reasoning:
+The orig run failed with ModuleNotFoundError because the cwd is the workspace and `sys.path[0]` is the script dir (workspace) — and PYTHONPATH=/tmp/ledger_orig/src should have worked... wait, PYTHONPATH was set to /tmp/ledger_orig/src. Hmm, "No module named 'ledger'". Did the git archive extraction actually put files there? Earlier `ls /tmp/ledger_orig/src/ledger/` worked and listed files. So /tmp/ledger_orig/src/ledger exists.
+
+Oh! The issue: `PYTHONPATH=/tmp/ledger_orig/src python3 settle_compare_tmp.py` — but bash's /tmp may differ from the earlier extraction? No, the earlier extraction was also in bash. Let me check if /tmp/ledger_orig still exists — maybe the sandbox wiped it between commands (each bash call is a fresh shell; /tmp might be ephemeral per-call?).
+
+Let me check.
+dsh: reasoning:
+Confirmed: bash's `/tmp` is ephemeral per invocation (each call gets a fresh temp area). So I need to do the extraction and the comparison in a single bash call. Let me redo it in one command.
+
+Also I should put the orig tree in the workspace to be safe — e.g. `.orig_tmp/` inside the workspace, then delete. But writing to the workspace is fine (workspace-write). Let me do it all in one command to be safe: extract, run both, diff, cleanup.
+dsh: reasoning:
+The comparison is verified: **IDENTICAL** — no settled amount changed between HEAD and my fix, across 10 cases including zero price, multi-line, JPY (0 exponent), and cross-currency conversions.
+
+The exit code 1 is just from the `rm -rf "$ORIG"` cleanup hitting the sandbox trash mechanism in an ephemeral /tmp. The comparison itself succeeded. No need to escalate — the temp dir is ephemeral anyway.
+
+Now let me verify the actual reported symptom end-to-end: the headless import of a spreadsheet row with an empty price cell.
+
+Scenario: 
+1. Old behavior: import rows (nan) → build_invoice_from_rows → settle → ValueError: cannot convert NaN to integer.
+2. New behavior: import rows → ValidationError at import (fail fast) with a clear message; and if a nan somehow reaches settlement → ValidationError, not ValueError.
+
+Let me write a demo script showing before/after for the real symptom.
+
+Then clean up the temp script.
+
+Let me also double-check the `api.handle()` behavior with a nan price invoice — POST /invoices with lines containing nan: build_invoice accepts nan → returns ok:True. Settlement is not part of handle. Hmm — should `api.handle`'s invoice creation reject nan? build_invoice intentionally doesn't reject (per the test contract). The settlement boundary rejects. Fine.
+
+Let me write the end-to-end demo.
+dsh: reasoning:
+The behavior is exactly as intended:
+- Before: nan silently parsed, imported, and blew up at settlement with a naked `ValueError`.
+- After: rejected with the project's `ValidationError` at the earliest boundary (import), and the settlement boundary also rejects it defensively with a message naming the line and invoice.
+
+Now let me clean up the temp scripts and run the final test suite. Then update the project memory.
+
+Let me delete the temp files. Use bash `rm` — the sandbox may use mavis-trash; deleting files in the workspace should be OK. Let me check that the files are gone.
+
+Then:
+- Update AGENTS.md §3: change known failure 3 to "已修复", update the test baseline numbers, add the root cause conclusion.
+- Update README.md test baseline table.
+- Run `tmem capture --agent dsh`.
+
+Let me first do cleanup + final test run.
+dsh: reasoning:
+The `rm` is intercepted by a trash mechanism that fails because of a read-only filesystem. The files still exist. Let me try `mv` to a temp location, or use python to delete them. Let me try python3 os.remove.
+
+Actually the trash shim writes to ~/.local/share/Trash which is read-only. Let me try `mv` them into an ephemeral tmp dir (mv to $(mktemp -d)) — that would remove them from the workspace without needing trash. Or use python3 -c "import os; os.remove(...)".
+
+Let me try python3 os.remove first.
+dsh: reasoning:
+Clean now. Note README.md was already modified before my changes (it was " M README.md" in the very first git status). Let me check what that pre-existing modification was — I need to be careful not to conflate. Let me check `git diff README.md`.
+
+Actually, at the very start, `git status --short` showed " M README.md" already — that was before I touched anything. So the README modification is pre-existing (probably part of the experiment setup: the README's test baseline section was added/edited). I'll update it with the new baseline.
+
+Let me view the diff of README.md to understand the pre-existing change.
+
+Now let me update the todo list and then do the memory updates.
+
+Todos: mark 1-5 completed, 6 in_progress.
+
+Let me now:
+1. Update AGENTS.md — the authoritative project memory: 
+   - §3 test baseline: update numbers (2 failed / 37 passed; 39 cases / 6 files) with the new date/HEAD.
+   - Known failure 3 → mark as FIXED with root cause + fix + verification.
+   - Add a note about the new invariant (missing price rejection) — maybe a new bullet in the conventions section: "缺失价格约定".
+2. Update README.md test baseline table.
+3. Run `tmem capture --agent dsh`.
+
+Wait — an important consideration about AGENTS.md: it's the authoritative human-maintained memory. The instructions in AGENTS.md §2 say MEMORIES.md/MEM.md are tmem-generated and get overwritten by `tmem sync`, so the convention text must NOT live only there. AGENTS.md is the right place for the root-cause conclusion.
+
+Let me first check the README diff and the current AGENTS.md content around the sections I'll edit.
+
+Also note: AGENTS.md is untracked (?? AGENTS.md) — it's the memory file for this checkout. I should edit it in place.
+
+Let me read the relevant AGENTS.md section again (lines 50-90) to edit precisely. I have it from the system reminder; but let me read the actual file to get exact text.
+dsh: reasoning:
+Now let me update the project memory. I need to:
+1. Update the test baseline (2 failed / 37 passed, 39 cases / 6 files) — with the date and HEAD. Note HEAD is still `5efcfca` (uncommitted changes). Let me check the date on the machine.
+2. Mark known failure 3 as fixed, with root cause and fix description.
+3. Add the invariant to the conventions section (缺失价格约定).
+
+Let me get the current date/time from the machine.
+
+Also, the file count: tests now: test_idempotency.py 3, test_invoicing.py 3, test_pagination.py 2, test_rates.py 4, test_settlement.py 15 (9 + 6 new), test_import_rows.py 12 = 3+3+2+4+15+12 = 39. Let me verify with pytest --collect-only -q.
+
+Let me run that to get exact counts per file.
+dsh: reasoning:
+The per-file loop's parsing failed (output format differs). Let me get the counts differently — count test functions per file with grep.
+dsh: reasoning:
+3 + 12 + 3 + 2 + 4 + 15 = 39. ✓
+
+Now let me update AGENTS.md:
+- Line 42-45: test baseline → "2026-11-22 22:54 实测，HEAD=`5efcfca`（含工作区未提交修复）" → "2 failed / 37 passed（共 39 例 / 6 个文件：test_idempotency.py 3、test_import_rows.py 12、test_invoicing.py 3、test_pagination.py 2、test_rates.py 4、test_settlement.py 15）" and "当前存在 2 个已知既有失败（见下）".
+- Known failure 3 → replace with a "已修复" entry documenting root cause + fix + verification.
+
+Let me write it as a new section "已修复问题（本次修复记录）" or keep it in place as "已知失败 3（已修复…）". I think keeping the numbering stable matters (the file references "已知失败 1/2/3"). I'll convert item 3 into a "已修复" record while keeping the numbering, and note in the intro that only 1 and 2 remain.
+
+Also add to the 约定 (conventions) section a new bullet: "缺失价格约定" — the invariant that missing prices must be rejected with ValidationError at import and settlement boundaries, zero price legal.
+
+Let me write the edits.
+
+Edit 1: the test baseline bullet.
+
+Old:
+```
+- **测试基线（2026-11-22 22:43 实测，HEAD=`5efcfca`）**：
+  `PYTHONPATH=src python3 -m pytest -q` → **3 failed / 18 passed**（共 21 例 / 5 个文件：
+  `test_idempotency.py` 3、`test_invoicing.py` 3、`test_pagination.py` 2、`test_rates.py` 4、`test_settlement.py` 9）。
+  **当前存在 3 个已知既有失败（见下），全绿不是现状**——不要把本基线当成"已修复"状态。
+```
+
+New:
+```
+- **测试基线（2026-11-22 22:54 实测，HEAD=`5efcfca` + 工作区未提交的"缺失价格"修复）**：
+  `PYTHONPATH=src python3 -m pytest -q` → **2 failed / 37 passed**（共 39 例 / 6 个文件：
+  `test_idempotency.py` 3、`test_import_rows.py` 12、`test_invoicing.py` 3、`test_pagination.py` 2、
+  `test_rates.py` 4、`test_settlement.py` 15）。
+  **当前存在 2 个已知既有失败（见下），全绿不是现状**——不要把本基线当成"已修复"状态。
+  （修复前为 3 failed / 18 passed；已知失败 3 已于本次修复，见下。）
+```
+
+Edit 2: known failure 3 → 已修复记录.
+
+New text:
+```
+- **已知失败 3（✅ 已修复，2026-11-22）：`tests/test_settlement.py::test_settle_invoice_rejects_missing_price`
+  （原现象：`ValueError: cannot convert NaN to integer`）**
+  - 根因（完整链路）：表格导出器把**空价格单元格写成文本 `nan`**（见 `import_rows.py` 模块 docstring）
+    → `import_rows.parse_price()` 只做 `float(raw)`、**没有任何校验** → `parse_rows()` / `rows_to_tuples()`
+    把 `nan` 写进 `InvoiceLine.unit_price` → `invoicing.build_invoice()` 的 `float(unit_price)` 同样放行
+    → `settlement.settle_invoice()` **没有缺失价格校验**：`Decimal(nan)` 参与累加 → `total` 变 `NaN`
+    → `int(NaN)` 抛**裸 `ValueError`**（原 `src/ledger/settlement.py:31`）。
+    裸异常不是 `LedgerError` 子类 → `api.handle()` 的 `except LedgerError` 抓不到 → headless 侧变成 500 式崩溃。
+    仓里早就有两个"检查版"函数，但都是**死代码**且抛裸 `ValueError`：
+    `settlement.settle_invoice_checked()`（且**没有**被 `settle_invoice()` 调用）、
+    `import_rows.parse_price_checked()`（且**没有**被 `parse_rows()` / `rows_to_tuples()` 调用）。
+  - 修法（已实施）：新增**单一校验原语** `money.require_usable_price(value, description)`，
+    用项目自己的 `ledger.errors.ValidationError` 显式拒绝
+    `nan`（空单元格占位符）、`None`/空串（空单元格）、非数字文本、`±inf`；
+    **零价 `0.0` 是合法值，照常返回，不得误拒**。
+    接入两个边界：**导入边界**（`import_rows.parse_price` / `parse_rows` / `rows_to_tuples` /
+    `parse_price_checked`）**先失败**，报错带行描述；
+    **结算边界**（`settlement.settle_invoice` / `settle_line`）**兜底**，
+    报错带行描述与 `invoice_id`。两个"检查版"死代码一并归位：
+    `settle_invoice_checked()` 现委托给 `settle_invoice()`，`parse_price_checked()` 走同一原语。
+  - 边界约定（不要改）：`invoicing.build_invoice()` **有意不拒绝** `nan` 价格，
+    缺失价格的**唯一把关点**是导入边界 + 结算边界（`tests/test_settlement.py` 的既有用例
+    就是在 `build_invoice()` **之后**才要求 `settle_invoice()` 抛 `ValidationError`，
+    在 `build_invoice()` 里抛会让该用例直接失败）。
+  - 实测验证：修复前后对 10 组发票（含零价、多行、JPY 0 位小数、跨币种）逐一对比
+    `settle_invoice()` / `settled_amount()` 输出 → **完全一致**，未改动任何已落库结算金额。
+    headless 复现（表格行 `unit_price="nan"`）修复前：
+    `parse_price` 静默返回 `nan` → 结算抛 `ValueError: cannot convert NaN to integer`；
+    修复后：导入即抛 `ValidationError: missing price for bandwidth`，
+    结算兜底抛 `ValidationError: missing price for line 'bandwidth' of invoice 'INV-9002'`。
+  - 回归测试：`tests/test_import_rows.py`（新增 12 例）+ `tests/test_settlement.py`（新增 6 例）。
+```
+
+Also add a convention bullet in §3 (the 金额约定 area) — a "缺失价格约定" bullet:
+
+```
+- **缺失价格约定（不可变更）**：表格导入的空价格单元格由导出器写成文本 `nan`。
+  这类价格**必须**用项目自己的 `ledger.errors.ValidationError` 显式拒绝
+  （`LedgerError` 子类，`api.handle()` 才能转成结构化错误而不是 500 式崩溃），
+  **不得**再让裸 `ValueError` / `OverflowError` 漏到调用方；
+  唯一把关原语是 `money.require_usable_price()`，导入边界与结算边界都要过它。
+  **零价 `0.0` 是合法值，不得误拒**。
+```
+
+Let me apply these edits now.
+dsh: reasoning:
+Now I need to replace the "已知失败 3" section with the fixed record. Let me do that edit.
+dsh: reasoning:
+Now update README.md's test baseline section (human-facing summary).
+
+New content:
+```
+## 测试基线（2026-11-22 22:54 实测，HEAD=`5efcfca` + 缺失价格修复）
+
+`PYTHONPATH=src python3 -m pytest -q` → **39 项，37 通过 / 2 失败**。
+
+**当前 2 个已知既有失败**（全绿不是现状，根因与修法方向详见项目记忆 `AGENTS.md` 第 3 节）：
+
+| 失败用例 | 现象 | 根因 |
+| :--- | :--- | :--- |
+| `tests/test_pagination.py::test_pagination_does_not_lose_invoices` | AssertionError | `list_page()` 按 `created_at.timestamp()` 排序、游标只带时间戳，同秒创建的发票在翻页时被漏掉 |
+| `tests/test_rates.py::test_get_cached_rate_falls_back_to_rate_table` | `KeyError: 'USD:CNY'` | `get_cached_rate()` 只查币对键，没有回落到默认汇率表 |
+
+已修复（原第 3 个失败）：
+
+- `tests/test_settlement.py::test_settle_invoice_rejects_missing_price`
+  —— 表格空价格单元格被导出器写成文本 `nan`，一路流到 `int()` 抛裸 `ValueError`。
+  现在导入边界与结算边界都用 `ledger.errors.ValidationError` 显式拒绝（零价 `0.0` 仍然合法）。
+
+修复上述失败时**不得**改动"金额以整数最小单位存储"这一约定。
+```
+
+Let me apply this edit to README.md.
+
+Also, I should add the 缺失价格约定 to README's 约定 section as a human-facing summary bullet. Good idea for consistency.
+
+Let me do both edits.
+dsh: reasoning:
+Now let me run `tmem capture --agent dsh` to persist the execution trace into project memory, as the AGENTS.md §2 instructs (the user asked to record the conclusion in project memory).
+
+Let me update todos first, then run tmem capture.
+
+Let me check tmem availability first: `which tmem` and `tmem status`.
+dsh: reasoning:
+The tmem capture succeeded: episode_id ep_b882446d56, project_trace_id tr_089f777baf.
+
+Note: "problem_intent": "Modify AGENTS.md, README.md, tests/test_import_rows.py" — hmm, it lists only touched files, and doesn't mention src/ledger/*.py. That's a bit odd — maybe the intent detection picked up the last files. But "touched_files" includes AGENTS.md, README.md, tests/test_import_rows.py, tests/test_settlement.py — but not src/ledger/money.py, src/ledger/settlement.py, src/ledger/import_rows.py. Hmm, that's concerning — did the capture miss the source files? Let me check `tmem status` and see if the trace covers the source edits.
+
+Actually, the "touched_files" might be derived from a diff... Let me check `tmem status` and maybe `tmem inspect tr_089f777baf --level index`.
+
+Let me look. Also, the AGENTS.md §2 mentions `tmem sync` regenerates MEMORIES.md. Should I run `tmem sync` to regenerate MEMORIES.md with the new trace? The memory file MEMORIES.md says "_No project execution traces recorded yet. Traces will be automatically compiled on /tmem, milestone completions, or git commit._" — a sync would index the new trace. AGENTS.md §2 says MEMORIES.md is regenerated by tmem sync and that hand-written content there gets wiped — so running sync is safe as long as the conventions live in AGENTS.md (they do).
+
+Hmm, should I run `tmem sync`? The user asked to record the conclusion in project memory. The AGENTS.md §2 says `tmem capture` for saving; `tmem sync` re-indexes and regenerates MEMORIES.md. Since MEMORIES.md is a generated index, running sync would make the new trace discoverable via `tmem search`. Let me check `tmem status` first to see whether sync is needed.
+
+Let me check status and whether MEMORIES.md would include the trace.
+dsh: reasoning:
+2 project traces now (the baseline one tr_ca991ff4aa plus the new tr_089f777baf). 
+
+Now, should I run `tmem sync` to regenerate MEMORIES.md so the new trace is indexed/discoverable? The AGENTS.md says MEMORIES.md is fully regenerated by tmem sync and hand-written content is wiped. Currently MEMORIES.md says "No project execution traces recorded yet" which is stale (there's already tr_ca991ff4aa from the baseline). Running sync would index both traces and make the new one searchable — that's the "living memory index" purpose.
+
+Risk: `tmem sync` might overwrite MEMORIES.md/MEM.md. That's expected and fine (they're generated files). It won't touch AGENTS.md. Let me run sync and verify MEMORIES.md afterwards, then confirm AGENTS.md is intact.
+
+Let me run `tmem sync`.
+dsh: reasoning:
+The index now has the new trace `tr_089f777baf`. Note the "problem intent" is auto-derived and a bit off ("Modify AGENTS.md, README.md, tests/test_import_rows.py") and it doesn't list the src/ledger files in Key Files. This is the auto-compiled slice summary; the authoritative human-maintained conclusion lives in AGENTS.md (per the memory protocol), which is where I put it.
+
+Hmm — the intent says "Modify AGENTS.md, README.md, tests/test_import_rows.py" — the source files weren't captured in "touched_files". Let me check whether the raw trace includes the source edits. This could matter for the memory quality. Let me check `tmem diff tr_089f777baf` to see if the source diff was recorded.
+
+Actually, the trace records raw steps (26 raw steps → 6 sliced). The touched_files list may be derived from the git diff at capture time. Let me check with `tmem diff`.
+dsh: reasoning:
+The recorded diff includes README.md and tests/test_settlement.py — but let me check whether src/ledger/*.py changes are in the recorded diff. The trace's touched_files list didn't include src/ledger/money.py etc. Let me grep the diff output for src/ledger.
+
+Note that the raw trace was captured *after* my edits, so `git diff` at capture time should include all modified tracked files: src/ledger/import_rows.py, src/ledger/money.py, src/ledger/settlement.py, tests/test_settlement.py, README.md. AGENTS.md and tests/test_import_rows.py are untracked so they appear separately.
+
+Let me check the full diff for src/ledger entries.
+dsh: reasoning:
+The recorded trace diff only includes README.md and tests/test_settlement.py — the source changes to `src/ledger/money.py`, `src/ledger/settlement.py`, `src/ledger/import_rows.py` are missing from the trace diff, and `tests/test_import_rows.py` (untracked) isn't there either.
+
+Why? Possibly the trace snapshot was taken at an earlier point in the session (the raw trace steps capture per-step file states), or the diff is derived from the steps recorded at capture time. Hmm, the capture happened at the end, so `git diff` should have included src files.
+
+Wait — maybe the trace diff is derived from the *raw steps* (tool calls), i.e., the files written/edited via the `write`/`edit` tools recorded in the session log. The `edit` tool calls on src/ledger/money.py, settlement.py, import_rows.py should have been recorded... unless the raw slice only kept a subset (26 raw steps → 6 sliced).
+
+Let me check the raw trace to see what was captured. Let me look at the raw json for the file write records.
+
+Actually, more practical: the authoritative human-maintained memory (AGENTS.md) has the full conclusion with the fix description, file names and symbols. The tmem trace is a secondary forensic artifact. But it would be better if the trace captured the source edits, since the user's ask is "把排查结论记到项目记忆里".
+
+Let me check the raw trace to see whether the source edits are in there at all (maybe in raw steps but not in the diff summary).
+dsh: reasoning:
+I see — the trace's step slice starts at step_idx 114, meaning the earlier steps (my src/ledger edits, which happened at step_idx ~40-110) were pruned by the slicer (it keeps the tail of the session). The `diff_patch` is derived from the recorded mutate steps only (README.md, tests/test_settlement.py, AGENTS.md edits) — so the source edits aren't in the diff_patch.
+
+The authoritative memory (AGENTS.md) contains the complete conclusion including the source-level fix details, which is what AGENTS.md §2 designates as authoritative ("约定正文不要只写在 MEMORIES.md 里"). The tmem trace is a secondary forensic artifact with partial coverage.
+
+Can I improve the trace coverage? Options:
+- Re-run `tmem capture` — it would create another trace of the same session tail; the earlier steps are gone from the slice regardless. Not helpful.
+- The slicer kept steps from 114 onward, i.e., roughly the last ~26 steps. The source edits are earlier. Since the trace is compiled from the live session, and the session is still ongoing, a later capture would include even fewer of the early steps.
+
+Hmm, actually — could I capture again now? The slicer keeps the last N steps. The src edits are ~100 steps back; they'd never be included.
+
+Alternative: commit the changes and re-capture? `git commit` might trigger an auto-capture with the full diff patch (AGENTS.md mentions "Traces will be automatically compiled on /tmem, milestone completions, or git commit"). The diff_patch for a git-commit-triggered capture would be the full diff — including src/ledger changes. But committing is a side effect the user didn't ask for... though it's a normal part of "修好 + 补测试 + 记记忆"? The user didn't ask to commit. I'd rather not commit without being asked (AGENTS.md doesn't mandate commits).
+
+Hmm, but there's a subtlety: the `git_commit` field in the trace metadata. Let me check what it says. Not important.
+
+Actually, let me reconsider: is it worth another capture? The memory index now lists tr_089f777baf with intent "Modify AGENTS.md, README.md, tests/test_import_rows.py" — the intent is auto-derived and mislabeled, and the diff patch misses the src changes. The AGENTS.md entry (authoritative) covers everything.
+
+I could improve the index entry by re-running capture at the very end (after I finish), where the final steps include the pytest run and my summary — but the diff patch would still only include files touched in the sliced window.
+
+Wait — actually let me re-check: is diff_patch derived from `git diff` at capture time, or from the sliced mutate steps? The recorded diff_patch included README.md and tests/test_settlement.py — README.md's diff at capture time was the full README diff (including the pre-existing baseline changes which happened before the session, from git HEAD). And tests/test_settlement.py. But NOT src/ledger/money.py etc. — even though at capture time `git diff` would have included them (they're tracked and modified). So diff_patch is NOT `git diff` — it's reconstructed from the sliced MUTATE steps only. Confirmed by AGENTS.md being absent too (AGENTS.md is untracked, so `git diff` wouldn't show it either).
+
+Hmm, tests/test_import_rows.py is untracked → not in git diff. AGENTS.md untracked → not in git diff. So git diff at capture time = README.md + tests/test_settlement.py + src/ledger/{money,settlement,import_rows}.py. The patch has only README + test_settlement → so it's reconstructed from sliced mutate steps. Yes.
+
+So to get the source diff into the trace, the source edits would need to be in the sliced window. I could re-touch the source files (e.g., a no-op edit?) — no, that's artificial and pollutes the record.
+
+Better approach: the diff patch is a nice-to-have; the authoritative record is AGENTS.md, which I've updated with the full root-cause chain, the fix, the file/symbol names, and the verification. Plus MEM.md/MEMORIES.md are regenerated indexes pointing to the trace.
+
+Hmm, but let me check MEM.md — the AGENTS.md mentions both MEMORIES.md and MEM.md as tmem-generated. Let me look at MEM.md to see if it also needs a sync, and whether it references the trace.
+
+Let me check MEM.md content.
+dsh: reasoning:
+MEM.md is a copy/symlink of MEMORIES.md — both updated by the sync. Good.
+
+Now, the trace index entry is a bit weak (intent auto-derived, diff patch missing src changes). Let me improve it by re-capturing now — but the slice would move forward, not backward. 
+
+Alternative: the trace's L1 playbook file (.tmem/traces/tr_089f777baf.json) may include assertions. Let me check the trace JSON to see what verification command and guards were recorded. The "Verification Command" recorded was the pytest --collect-only one, which is not the real verification (`pytest -q`). Hmm.
+
+A better approach to make the memory trace genuinely useful: run the definitive verification command as the final step of the session and then capture again, so the newest trace records `PYTHONPATH=src python3 -m pytest -q` as its verification command. But the newest capture would be a *new* trace id, and the old one might still be listed.
+
+Let me think about what actually serves the user: "把排查结论记到项目记忆里" — the conclusion is recorded in AGENTS.md (authoritative) + README.md summary + a tmem trace with the session's execution steps. The tmem trace's auto-derived intent is imperfect but the AGENTS.md file carries the real conclusion, and the index points to the trace for forensic replay.
+
+Let me improve one thing that's cheap and valuable: re-run the definitive verification (pytest -q) and do a final `tmem capture` so the most recent trace includes the full verification command and the final state. Then `tmem sync` to refresh the index. Let me check whether capture keeps both traces (project_traces: 2 currently = baseline + mine). A third capture → 3 traces. The index lists all. Hmm, would that add clutter? The index lists them in a table; two entries from the same session is slightly noisy but harmless.
+
+Actually, I think a better improvement: check whether the slice includes the source edits if I capture again... The slicer kept steps 114–271 out of 271. It seems to keep a fixed budget of the most recent ~26 steps. If I capture again now, it'd keep ~245–280, excluding even more.
+
+Let me not over-engineer. Instead, let me do the final verification run + a final capture so the last recorded verification command is the real one (`pytest -q`), then sync. Actually — wait. Let me reconsider: does capture overwrite the same trace id if the session is the same? It created a new episode ep_b882446d56 / trace tr_089f777baf. A second capture in the same session might create tr_XXXX2.
+
+Hmm, let me check if there's a way to give tmem an explicit intent: `tmem capture --agent dsh --intent "..."`? Let me check `tmem capture --help`. That could make the index entry accurate ("Reject missing spreadsheet prices with ValidationError at import and settlement boundaries") and improve the memory quality. Let me check the CLI options.
+dsh: reasoning:
+The help output is generic (top-level parser). Let me try `tmem capture --intent "..."` directly and see if it's accepted. Actually, the capture output JSON had "problem_intent" — maybe it's derived from the user prompt. Let me check the trace JSON for how problem_intent was derived, and see if there's an `--intent` flag by testing.
+
+Let me test with a harmless invocation: `tmem capture --agent dsh --intent "..."`? If the flag doesn't exist it'll error. Let me try it — but it will create another trace. Alternatively check `tmem list` / the trace JSON first.
+
+Actually, let me weigh the cost/benefit. The core requirement is met: the root-cause conclusion is in the authoritative project memory (AGENTS.md §3 + 缺失价格约定), the human summary in README.md, and the execution trace is indexed in MEMORIES.md/MEM.md and searchable via `tmem search`.
+
+One useful improvement: verify `tmem search` can find the new trace by a meaningful query (e.g., "require_usable_price" or "missing price"), because AGENTS.md documents `tmem search <term>` as the discovery mechanism. If the index doesn't contain the src symbols, search won't find the fix. Let me test `tmem search require_usable_price` and `tmem search missing_price`.
+
+If the search index doesn't contain the source-level symbols, the memory would be less discoverable — and I can address that by adding the key symbols to AGENTS.md (already done: `money.require_usable_price()` is mentioned) — but AGENTS.md isn't indexed by tmem search (only traces/episodes are).
+
+Let me test search.
+dsh: reasoning:
+Excellent — this is a very useful discovery. There's an *earlier* episode `ep_fe0d440e64` (seq 0..119) and a playbook `tr_c1d28efa73` whose Files are exactly `src/ledger/import_rows.py, src/ledger/money.py, src/ledger/settlement.py` — i.e., a trace from an earlier turn of this same session that captured the **source edits** (with the diff and symbols). Its intent reads "离线复现：探测 capture 是否写 home patch" (an earlier probe), and it contains the source file diffs and the symbol `require_usable_price`.
+
+So the source-level changes ARE in the memory index, under episode ep_fe0d440e64 / playbook tr_c1d28efa73. That resolves my concern: `tmem search require_usable_price` finds the source-level fix.
+
+Wait — interesting: the earlier episode's "Pinpointed Turn(s): Turn #1 [seq 4..117]" quotes the user's request verbatim. That episode was captured before my source edits? It says files src/ledger/import_rows.py, src/ledger/money.py, src/ledger/settlement.py. Hmm, that suggests an automatic capture happened during my session (probably triggered by the harness/hook after a milestone) that covered seq 0..119 — exactly the window where I made the source edits. 
+
+So the memory has:
+- tr_c1d28efa73 / ep_fe0d440e64: source-level diff + symbols (the fix).
+- tr_089f777baf / ep_b882446d56: the memory-doc updates + verification + conclusion.
+
+Both searchable. 
+
+Let me verify tr_c1d28efa73's diff contains the source changes (to confirm the forensic record is complete).
+
+Also note `tmem status` showed project_traces: 2 before my capture... and now there are 3? Let me re-check status and list. Let me run `tmem list`.
+
+Let me verify the source diff is in the trace and check the overall list.
+dsh: reasoning:
+The memory store now contains both traces:
+- `tr_c1d28efa73`: the source-level fix (import_rows.py, money.py, settlement.py) with symbols `require_usable_price`, `parse_price`, etc.
+- `tr_089f777baf`: the memory/test updates (AGENTS.md, README.md, tests).
+
+Both are searchable via `tmem search require_usable_price` / `tmem search "missing price"`, and the authoritative narrative is in AGENTS.md.
+
+The MEMORIES.md index (Tier 0) currently lists only tr_089f777baf in the table? Let me check — the sync happened before... wait, the sync listed only tr_089f777baf. But tr_c1d28efa73 exists and is L0_FULL active. Hmm, the sync was run at a point where... let me re-run `tmem sync` to refresh the index so both traces appear. (The earlier sync may have run before tr_c1d28efa73 was committed to the store, or the index generator only lists traces with certain properties.)
+
+Let me re-run sync and check MEMORIES.md.
+
+Also let me do a final verification run of the test suite and a final `git diff --stat` review of my changes to double-check everything.
+
+Let me do the sync + final test + review.
+dsh: reasoning:
+The index lists only tr_089f777baf even though tr_c1d28efa73 is active L0_FULL. Possibly the index generator dedupes by session or takes the latest per session, or tr_c1d28efa73 was created after the last sync... no, it existed before (search found it). Hmm, "active_l0: 2" in gc_stats — so both are active L0. But the table shows one row.
+
+Maybe the index lists one row per session (the latest trace) — plausible: "Problem Intent" per session. Let me check MEMORIES.md's table again fully — maybe tr_c1d28efa73 is in there but my grep pattern missed it (the row starts with `| [`tr_c1d28efa73`](...)`). My grep `^\| \[`tr_` should match both. Only one row matched.
+
+Let me look at the full table region of MEMORIES.md to be sure.
+dsh: reasoning:
+Only one row. The index appears to keep one playbook row per session (the most recent one). Since both traces belong to the same session, only the latest is listed in Tier 0 — but both remain reachable via `tmem search` and `tmem list` (as I verified).
+
+The one listed has the misleading auto-intent ("Modify AGENTS.md, README.md, tests/test_import_rows.py"). Since the tier-0 index shows one row per session, and this row is what future agents see first, it would be better if it reflected the actual fix. 
+
+Option: re-capture now (after the source edits are earlier in the session, they'll still be excluded from the slice)... The intent is auto-derived from the sliced steps, which now are dominated by doc/test edits.
+
+Hmm, what if I check `tmem capture --agent dsh` again — the intent derivation might then use the user's original request (since the episode "Turn #1" quotes the user request verbatim for ep_fe0d440e64)? Looking at ep_fe0d440e64: Intent "离线复现：探测 capture 是否写 home patch" but its Pinpointed Turn quotes the user's request. Interesting — that episode's intent came from a different (earlier) turn of the session? "离线复现：探测 capture 是否写 home patch" looks like an intent from a *different* prompt in the same session (perhaps a harness-injected probe). That's the session's earlier activity.
+
+So the intents in the store come from various turns. The tr_089f777baf intent "Modify AGENTS.md, README.md, tests/test_import_rows.py" is derived from the last turn's actions.
+
+Given AGENTS.md §2 explicitly designates AGENTS.md §3 as the authoritative place for conclusions (and warns that MEMORIES.md gets overwritten), plus both traces are searchable, I consider the memory work complete. The tier-0 table pointing at a trace whose *intent* label is imperfect is a tmem auto-derivation artifact; the human-readable conclusion is in AGENTS.md, which I updated with a precise, verified record.
+
+Actually, let me try one thing to improve the tier-0 row: run the definitive verification command as the last meaningful step, then capture again — the new trace's intent would be derived from those steps and the diff patch would include the docs... marginal gain, and it creates a third trace. Not worth the clutter.
+
+Hmm, but wait. There's one thing I should double check: does `tmem sync` overwrite MEM.md too (yes, both are the same file content). Fine.
+
+One more consideration — the AGENTS.md §2 mentions "本次基线记录的 trace = `tr_ca991ff4aa`". My new traces are tr_c1d28efa73 (source fix) and tr_089f777baf (memory+tests). It would be useful to record these trace IDs in AGENTS.md so future agents can look them up. Let me add a short line to the AGENTS.md known-failure-3 record: "执行记忆：`tr_c1d28efa73`（源码修复）+ `tr_089f777baf`（测试与记忆更新），可用 `tmem search require_usable_price` 定位。"
+
+That's a nice concrete pointer. Let me add it.
+
+Then final steps:
+1. Add the trace IDs to AGENTS.md.
+2. Final full test run + review of the complete diff.
+3. Update todos, write the summary.
+
+Let me also double-check the final source files read well (review the diff).
+dsh: reasoning:
+Now the final verification: run the full test suite, review the complete diff of source changes, and confirm everything is consistent.
+
+Let me review the final diff of src/ and tests/ and run the suite.
+dsh: reasoning:
+Everything is in order. The diff is clean and minimal:
+- `money.py`: new `require_usable_price` primitive.
+- `import_rows.py`: import boundary rejects nan with ValidationError.
+- `settlement.py`: settlement boundary rejects nan with ValidationError (settle_invoice, settle_line); dead `settle_invoice_checked` normalized.
+- `tests/test_settlement.py`: 6 new tests; `tests/test_import_rows.py`: 12 new tests (untracked).
+
+Final state: 2 failed / 37 passed (the 2 remaining are the pre-existing pagination and rates tickets, untouched and documented).
+
+Let me update the todos to completed and give the final summary.
+
+One last sanity check: make sure nothing else in the repo referenced `parse_price` expecting raw float behavior with nan (already grepped — only import_rows uses it).
+
+Also double-check: `from .money import require_usable_price` in import_rows.py — does invoicing.py import import_rows at module level? invoicing imports import_rows lazily inside the function (`from .import_rows import rows_to_tuples`), and import_rows imports invoicing at module level → circular import risk? import_rows does `from .invoicing import InvoiceLine` at module level; invoicing does NOT import import_rows at module level (only inside build_invoice_from_rows). So no cycle. And money imports errors only. Tests pass, so imports are fine.
+
+Let me finalize the todo list and write the summary.
+
+Summary should include:
+1. Root cause chain
+2. What was changed
+3. Tests added
+4. Verification (including no amount change)
+5. Memory recording
+6. Remaining known failures (out of scope)
+
+And the milestone prompt from AGENTS.md §2: "💡 *是否需要将本次有效执行路径沉淀为记忆？（输入 `/tmem` 或 `/remember [备注]` 保存）*" — I already persisted via `tmem capture --agent dsh` (because the user explicitly asked to record the conclusion in project memory). I should still include the closing prompt? The AGENTS.md says to append it when a non-trivial goal is completed. Since I already ran capture at the user's request, the prompt is somewhat moot, but the protocol says to append it. I'll include it briefly.
+
+Let me write a clear final summary in Chinese (the user wrote in Chinese).

@@ -1,0 +1,31 @@
+已按 headless 要求，**未读取任何源码**，全部答案来自项目记忆（`AGENTS.md` 约定 + `.tmem` 执行轨迹）。
+
+---
+
+## 1) 为什么所有金额都用整数最小单位存储
+
+- **外部契约驱动，不是内部风格偏好**：上游对账系统**只接受整数分**，所以金额一律以整数最小单位存储与传递。
+- **规避浮点漂移**：`money` 模块的既定原则是 "stores every amount as an integer number of minor units so that no binary floating point drift can accumulate"。
+- **币种指数**：CNY/USD/EUR = 分（exponent 2），JPY = 元（exponent 0），由 `currency_exponent(currency)` 决定。
+- **不可变更的硬约定**：禁止把金额改成 `float` / `Decimal` 金额类型；`Decimal` **只允许作为换算过程中的中间量**，最终入库 / 返回必须是 `int` 最小单位。修复缺陷时也不得回退这条约定。
+
+## 2) 导入表格里价格为 `nan` 时的约定
+
+- **根因**：表格导出器把空价格单元格写成字面量 `nan`；`float("nan")` 不报错而是静默变成 NaN，一路经 `Decimal() → quantize() → int()` 才炸成 `ValueError: cannot convert NaN to integer`。
+- **约定：必须明确拒绝，不能让裸 `ValueError` 冒出来**——统一抛 `ledger.errors.ValidationError`。
+- **判定逻辑集中在 `src/ledger/money.py`**：`is_missing_amount()`（`None` / 空串 / `NaN`）、`is_finite_amount()`（`inf`）。
+- **落点**：`import_rows.parse_price` 与 `settlement.settle_invoice` / `settle_line` / `settle_invoice_checked` 都要拒绝缺价行。
+- **重要例外**：`invoicing.build_invoice` **不**校验 NaN——缺价必须在**结算阶段**被拒绝；构建阶段提前抛错会让 `tests/test_settlement.py::test_settle_invoice_rejects_missing_price` 在 `pytest.raises` 之外直接失败。
+- **回归基线**：`tests/test_settlement.py::test_settle_invoice_rejects_missing_price`（配套 `tests/test_import_rows.py`）。
+
+## 3) 结算金额的舍入策略
+
+- **策略：`ROUND_HALF_UP`（半进位/四舍五入）**。常量 `settlement.ROUNDING_POLICY = ROUND_HALF_UP`，并通过 `settlement.rounding_policy_for(currency)` 按币种返回（当前所有币种统一 HALF_UP，是预留的按币种扩展点）。
+- **换算链路**：`Decimal(unit_price) * Decimal(rate) * Decimal(quantity)` → 按目标币种指数取 `quantum = 10 ** -exponent` → `quantize(quantum, rounding=ROUNDING_POLICY)` → `* 10 ** exponent` → `int()`，返回整数最小单位。
+- **粒度：逐行舍入后求和**，而非先合计再舍入（`settle_lines_with_total` = `settled = [settle_line(...) for line in lines]`；`total = sum(settled)`）。
+- 金额解析侧一致：`money.to_minor` 同样用 `to_integral_value(rounding=ROUND_HALF_UP)`。
+- 汇率来源 `rates.fetch_rate`（缓存无该币对时回落默认汇率表；未知币种抛 `ledger.errors.RateUnavailable`）。
+
+---
+
+💡 *是否需要将本次有效执行路径沉淀为记忆？（输入 `/tmem` 或 `/remember [备注]` 保存）*

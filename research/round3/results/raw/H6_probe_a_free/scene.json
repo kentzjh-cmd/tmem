@@ -1,0 +1,27 @@
+{
+  "scene": "H6_probe_a_free",
+  "workspace": "exp",
+  "workspace_path": "/home/kent/e2e/r3/ledger-svc",
+  "intent": "H6' 探针 A 臂（允许读取）：测载体成本差异（自动注入 vs 主动读笔记）",
+  "model": true,
+  "dsh_home": "/home/kent/.dsh",
+  "exit_code": 0,
+  "elapsed_sec": 33.5,
+  "stdout_bytes": 2934,
+  "stderr_bytes": 12370,
+  "command": "dsh --profile headless --patch /home/kent/e2e/r3/ledger-svc/.dsh/tmem.patch.yml headless <task>",
+  "transcript_path": "/home/kent/.dsh/sessions/--home-kent-e2e-r3-ledger-svc--/session-0678a594-eaba-4386-a62a-b7d0c391fd1b/session.v4.jsonl.zstd",
+  "transcript_stats": {
+    "bytes": 93656,
+    "node_single_frame_bytes": 183,
+    "node_single_frame_lines": 1,
+    "zstd_dc_bytes": 403121,
+    "zstd_dc_lines": 70,
+    "is_multiframe": true
+  },
+  "capture_exit": 1,
+  "capture": {
+    "status": "skipped",
+    "reason": "no_effective_actions"
+  }
+}

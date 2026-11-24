@@ -1,0 +1,29 @@
+修好了，批量结算现在会**明确拒绝**缺价行，不再让裸 `ValueError` 冒出来。
+
+## 根因
+
+`bulk.settle_batch_rows` 直接结算导出的原始行（不经过 `build_invoice`），因此**绕过了**导入侧和结算侧的缺价守卫：`Decimal("nan")` → NaN 一路流到 `int(converted.quantize(...))`，才炸成 `ValueError: cannot convert NaN to integer`。数量列同理，`int("nan")` 会漏出裸 `ValueError: invalid literal for int()`。
+
+## 改动
+
+**`src/ledger/bulk.py`** — 复用项目已有的唯一守卫，不另写一份 NaN 判定：
+- 价格走 `money.require_usable_amount(raw, label, detail=repr(raw))` → `ledger.errors.ValidationError`（`missing price for <行>` / `invalid price for <行>: <原值>`），与导入侧、结算侧文案完全一致；
+- 数量复用 `import_rows.parse_quantity` → `missing quantity for <行>` / `invalid quantity for <行>: <原值>`；
+- 行标签优先取 `description`，没有描述时用 `row N` 指出位置；
+- 价格用原始文本构造 `Decimal`（不经过 float），避免二进制浮点漂移；返回值仍是**整数最小单位**，未改动该约定；
+- 汇率/指数提到循环外只取一次，空批次直接返回 `[]`。
+
+**`tests/test_bulk.py`** — 从 1 个用例扩到 14 个：缺价（`nan`/空串/`None`）、非法价（`abc`/`inf`）、缺量、小数量、错误类型必须是 `LedgerError` 而非 `ValueError`、错误信息指明行（描述与 `row 2`）、正常行仍结算为整数分（`[3998, 550]`）、换汇后仍是整数、空批次。
+
+**`AGENTS.md` / `README.md`** — 把“批量结算侧”补进缺价处理约定（唯一守卫的第三个使用方），并把测试基线更新为 **95 项 / 95 通过 / 0 失败**。
+
+## 验证
+
+```
+PYTHONPATH=src python3 -m pytest -q   →  95 passed in 0.15s
+```
+（改前基线为 82 项 / 81 通过 / 1 失败，失败项即 `tests/test_bulk.py::test_settle_batch_rows_rejects_missing_price`）
+
+复现原崩溃场景现在的输出：`ledger.errors.ValidationError: missing price for support`。
+
+💡 *是否需要将本次有效执行路径沉淀为记忆？（输入 `/tmem` 或 `/remember [备注]` 保存）*

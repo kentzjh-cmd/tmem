@@ -1,0 +1,31 @@
+已完成。分页排序改为按发票序号（sequence），同秒创建的发票不再漏单。
+
+## 根因
+
+旧 `pagination.list_page` 按 `created_at.timestamp()` 排序，续页游标用"时间戳**严格小于**"定位起点。同一秒创建的多张发票时间戳完全相同 → 找不到"更早"项 → `start` 落到列表末尾 → 后续页为空且 `next_cursor=None` → 发票被**静默丢弃**。
+
+## 改动
+
+**`src/ledger/pagination.py`**
+- 新增全序键 `_order_key(invoice) = (sequence, created_at, invoice_id)`，序号为主键，后两项仅作确定性 tie-break（无序号发票也不会漏）。
+- 游标格式升级为 `{"v":2,"id":...,"seq":...,"ts":...}`，携带整条排序键；续页按 `(seq, ts, id)` 元组严格小于比较定位。
+- `_start_index` 兼容旧游标（无 `seq`）：按 `(ts, id)` 定位，同秒发票同样不漏；`encode_sequence_cursor` / `list_page_by_sequence` 收敛为别名，消除重复实现。
+
+**`tests/test_pagination.py`**（6 项）
+- `test_pagination_does_not_lose_invoices`：同秒 5 张发票全部翻到且不重复（**原存量失败已修复**）。
+- 新增：按序号排序、无序号发票不丢单、`SequencedInvoiceStore` 端到端、旧游标兼容。
+
+**文档**：`README.md` / `AGENTS.md` 基线更新为 **46 项 / 45 通过 / 1 失败**，并新增"分页排序约定"小节（不可回退）。
+
+## 验证
+
+```
+PYTHONPATH=src python3 -m pytest  →  1 failed, 45 passed
+```
+唯一失败仍是 `tests/test_rates.py::test_get_cached_rate_falls_back_to_rate_table`（`KeyError: 'USD:CNY'`）—— 属**未纳入本次范围**的存量基线失败，未改动。金额整数最小单位约定未触碰。
+
+## 项目记忆
+
+已沉淀：`tmem capture --agent dsh` → trace `tr_e59e870215`（L0_FULL，含根因/修复/关键符号/验证命令），并 `tmem sync` 写回 `MEMORIES.md` 索引，可通过 `tmem inspect tr_e59e870215` 复盘。
+
+💡 *是否需要将本次有效执行路径沉淀为记忆？（输入 `/tmem` 或 `/remember [备注]` 保存）*

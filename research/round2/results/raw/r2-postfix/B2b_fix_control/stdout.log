@@ -1,0 +1,30 @@
+已修好。下面是排查结论与改动。
+
+## 根因（完整链路，不是单点）
+
+表格导出器把**空价格单元格写成文本 `nan`** → `import_rows.parse_price()` 只做 `float(raw)`、零校验 → `parse_rows()` / `rows_to_tuples()` 把 `nan` 写进 `InvoiceLine.unit_price` → `build_invoice()` 的 `float(unit_price)` 同样放行 → `settlement.settle_invoice()` 没有缺失价格校验：`Decimal(nan)` 参与累加使 `total` 变 `NaN` → `int(NaN)` 抛**裸 `ValueError`**（原 `settlement.py:31`）。
+
+两个放大因素：
+- 裸异常不是 `LedgerError` 子类 → `api.handle()` 的 `except LedgerError` 抓不到 → headless 侧表现为 500 式崩溃。
+- 仓里早就有 `settle_invoice_checked()` / `parse_price_checked()` 两个"检查版"函数，但都是**死代码**（从未被调用）且抛裸 `ValueError`——修法方向其实早写好了，只是没接上。
+
+## 修法
+
+新增唯一校验原语 `money.require_usable_price(value, description)`，用项目自己的 `ledger.errors.ValidationError` 拒绝 `nan`、空单元格（`None`/空串）、非数字文本、`±inf`；**零价 `0.0` 照常放行**。接入两个边界：导入边界先失败（报错带行描述），结算边界兜底（报错带行描述与 `invoice_id`）。两个"检查版"死代码一并归位。
+
+`build_invoice()` **有意不拒绝** `nan`——既有用例是在 `build_invoice()` *之后*才要求 `settle_invoice()` 抛 `ValidationError`，在那里抛会让用例直接失败；这条边界约定已写进项目记忆。
+
+## 验证
+
+- 修复前后对 10 组发票（零价、多行、JPY 0 位小数、跨币种）逐一对比 `settle_invoice()` / `settled_amount()` → **输出完全一致，未改动任何已落库结算金额**（符合"整数最小单位存储"第一约定）。
+- headless 复现：修复前 `parse_price` 静默返回 `nan`、结算抛 `ValueError: cannot convert NaN to integer`；修复后导入即抛 `ValidationError: missing price for bandwidth`，结算兜底抛 `ValidationError: missing price for line 'bandwidth' of invoice 'INV-9002'`。
+- 新增测试：`tests/test_import_rows.py`（12 例）+ `tests/test_settlement.py`（6 例，含零价合法、报错点名行/发票号、`LedgerError` 可捕获性）。
+- **测试基线：3 failed / 18 passed → 2 failed / 37 passed**（39 例 / 6 文件）。剩下 2 个是本单之外的既有两张单（分页漏单、汇率缓存 `KeyError`），未动，修法方向仍在项目记忆里。
+
+## 项目记忆
+
+- `AGENTS.md`（权威记忆）：新增「缺失价格约定（不可变更）」，已知失败 3 条目改写为 ✅ 已修复记录（根因链路 / 修法 / 边界约定 / 实测验证 / 回归测试 / trace id），并刷新测试基线数字。
+- `README.md`：面向人的摘要同步（约定 + 基线表格 2 失败 + 已修复说明）。
+- `tmem capture --agent dsh` 已入库（`tr_c1d28efa73` 源码修复 + `tr_089f777baf` 测试与记忆更新），`tmem search require_usable_price` 可定位。
+
+💡 *是否需要将本次有效执行路径沉淀为记忆？（输入 `/tmem` 或 `/remember [备注]` 保存）*

@@ -1,0 +1,21 @@
+{
+  "project_store": "/home/kent/e2e/r2/ledger-svc/.tmem",
+  "project_traces": 9,
+  "project_episodes": 11,
+  "telemetry": {
+    "total_events": 22,
+    "l2_injections": 12,
+    "l2_injection_sources": {
+      "anchor_recall": 12
+    },
+    "l2_resolved_green": 0,
+    "l2_unresolved": 0,
+    "l2_resolution_rate": null,
+    "l1_hints": 5,
+    "l1_adopted": 1,
+    "l1_adopted_edit": 1,
+    "l1_inspected_only": 0,
+    "l1_ignored": 4,
+    "l1_adoption_rate": 0.2
+  }
+}

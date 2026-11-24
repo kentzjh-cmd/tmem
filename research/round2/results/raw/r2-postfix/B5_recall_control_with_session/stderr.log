@@ -1,0 +1,47 @@
+dsh: all_proxy names a SOCKS proxy, which is not supported; connecting directly for that scheme — set an http:// or https:// proxy URL instead
+dsh: reasoning:
+The user says "headless 不要读代码，直接回答三个问题" — meaning "headless, don't read the code, directly answer three questions". The AGENTS.md memory already contains the answers. The three questions:
+
+1. Why does this project store all amounts as integer minor units? — Because upstream reconciliation system only accepts integer cents; it's the project's first convention, immutable. Decimal only allowed as intermediate for cross-currency conversion; stored values must be int.
+
+2. When imported table prices are nan, what's the project convention for handling? — Should explicitly reject at settlement boundary and raise `ledger.errors.ValidationError` (a LedgerError subclass) — currently the code has a known defect: no validation, bare ValueError from int() of NaN. Zero price (0.0) is legal and must not be rejected. Note: currently unimplemented — the fix direction is documented in AGENTS.md as known failure 3.
+
+3. What is the rounding strategy for settlement amounts? — Hmm. AGENTS.md doesn't explicitly state a rounding strategy for settlement amounts. Let me check: "结算金额的舍入策略是什么?" The memory mentions Decimal only as intermediate;落地值必须是 int 最小单位. But there's no explicit rounding mode documented. So the honest answer: the project convention is that settlement results are integer minor units via int() truncation... but that's the defect (float + int() truncation). Actually AGENTS.md says the float+Decimal(float) is a现存缺陷, not范例. And "任何改动都不得改变已落库的结算金额".
+
+Hmm — but the instruction says "不要读代码" (don't read code). So I should answer from memory (AGENTS.md). For question 3, I should be careful about what's actually established. The convention as recorded: 落地值必须是 int 最小单位; 不得引入二进制浮点; Decimal 只允许用作跨币种换算的中间过程. Regarding rounding specifically — the memory doesn't specify a specific rounding mode (ROUND_HALF_UP etc.). The safest honest answer: the project convention recorded in AGENTS.md mandates integer minor units for settlement output (i.e., 结算结果必须收敛回 int 最小单位), and notes that the current implementation's truncation-toward-zero via int() on float-derived Decimal is a缺陷 rather than the specified policy; a defined rounding mode (e.g., ROUND_HALF_UP) isn't specified in the memory, so it needs to be confirmed before implementation.
+
+The user's phrasing "headless" likely refers to a mode where I don't explore the code. So answer directly.
+
+Let me also consider: should I flag that the question 3 answer isn't in memory? The memory is the authority. I'll answer each and note where the convention is a known-unimplemented defect vs. an actual rule.
+
+Also should I end with the tmem milestone prompt? AGENTS.md section 2 says: "When you complete a non-trivial coding, debugging, or environment setup goal ... append a concise one-line prompt". This is a Q&A, not a coding goal. It's a knowledge question. Hmm — it's not a coding/debugging goal. I'd say skip, but it might be safer to include? The instruction says when you complete a non-trivial coding, debugging, or environment setup goal. This is answering questions — arguably trivial/non-coding. I'll skip it to avoid noise. Actually... a mild inclusion could be fine but let's keep it clean and skip since no execution trace was produced.
+
+Let me write the answer in Chinese, concise but complete, with file/function references.
+
+Answer details:
+
+1) Integer minor units:
+- Upstream 对账系统只接受整数分 → 这是第一约定，不可变更
+- 落库不得是 float/Decimal
+- 结算链路不得引入二进制浮点（float(rate)+Decimal(float) 是现存缺陷）
+- Decimal 只作为跨币种换算的中间过程，落地值必须是 int 最小单位
+- 依据：money.to_minor / money.from_minor（CURRENCY_EXPONENT 决定小数位：CNY/USD/EUR=分，JPY=元）；settlement.settle_invoice/settle_line 返回 int
+- settlement.settled_amount 只是把 int 再显示为 Decimal，不改变存储口径
+
+2) nan price:
+- 约定：在结算边界显式校验并抛项目自己的 ledger.errors.ValidationError（LedgerError 子类），因为 api.handle() 只捕获 LedgerError，裸 ValueError 会变成 500 式崩溃
+- 零价 0.0 是合法值，不得误拒
+- 现状（这是已知失败 3，尚未修复）：settle_invoice() 没有缺失价格校验；空单元格被导出器写成文本 nan → Decimal('NaN') → int() 裸 ValueError（src/ledger/settlement.py:31）；settle_invoice_checked() 存在但抛裸 ValueError 且未被 settle_invoice 调用
+- 所以"应该怎么处理" = 按约定抛 ValidationError；当前实现尚未落实
+
+3) Rounding strategy:
+- 约定层面：结算落地必须是 int 最小单位（换算中间可以用 Decimal，但结果必须收敛到整数最小单位），且任何改动不得改变已落库的结算金额
+- 现状缺陷：settle_invoice/settle_line 用 float(fetch_rate(...)) + Decimal(rate)，Decimal(line.unit_price) 直接由 float 构造 → 二进制浮点漂移，且当前落到 int() 是截断（toward zero），不是明确的舍入模式
+- 记忆里没有写死具体的舍入模式（如 ROUND_HALF_UP）；在落地任何舍入改动前，必须先确认口径（同样，汇率口径 fetch_rate 方向与 docstring 相反的问题也必须先确认，因为改口径会改动已落库金额）
+- 所以答案：项目记录在案的硬约定只有"落地 int 最小单位 + 不得用二进制浮点 + 不得改变已落库金额"；具体舍入模式待确认，不得擅自定
+
+I'll be clear and structured. Also mention currency exponent.
+
+Also note the rates.fetch_rate direction issue as part of 3's caveat (since it affects amount magnitude).
+
+I'll keep it tight.

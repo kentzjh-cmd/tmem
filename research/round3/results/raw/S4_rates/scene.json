@@ -1,0 +1,44 @@
+{
+  "scene": "S4_rates",
+  "workspace": "exp",
+  "workspace_path": "/home/kent/e2e/r3/ledger-svc",
+  "intent": "修复缺陷二：汇率缓存未命中抛 KeyError",
+  "model": true,
+  "dsh_home": "/home/kent/.dsh",
+  "exit_code": 0,
+  "elapsed_sec": 200.5,
+  "stdout_bytes": 1486,
+  "stderr_bytes": 70396,
+  "command": "dsh --profile headless --patch /home/kent/e2e/r3/ledger-svc/.dsh/tmem.patch.yml headless <task>",
+  "transcript_path": "/home/kent/.dsh/sessions/--home-kent-e2e-r3-ledger-svc--/session-2118aa43-f68e-46f1-bde1-a7cc8400a92b/session.v4.jsonl.zstd",
+  "transcript_stats": {
+    "bytes": 208034,
+    "node_single_frame_bytes": 183,
+    "node_single_frame_lines": 1,
+    "zstd_dc_bytes": 772956,
+    "zstd_dc_lines": 276,
+    "is_multiframe": true
+  },
+  "capture_exit": 0,
+  "capture": {
+    "status": "compiled",
+    "agent": "dsh",
+    "scope": "project",
+    "episode_id": "ep_4ac89c3167",
+    "project_trace_id": "tr_cd4048c4b1",
+    "raw_trace_path": "raw/tr_cd4048c4b1.raw.json",
+    "problem_intent": "headless 结算取汇率时，缓存里没有这个币对就会抛 KeyError。请改成查不到就回落到默认汇率表，并补测试。",
+    "touched_files": [
+      "CONVENTIONS.md",
+      "README.md",
+      "tests/test_cli.py",
+      "tests/test_rates.py",
+      "tests/test_settlement.py"
+    ],
+    "is_trivial": false,
+    "confidence": 0.55,
+    "raw_steps": 47,
+    "sliced_steps": 12,
+    "compression_ratio": "47 -> 12"
+  }
+}

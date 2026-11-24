@@ -1,0 +1,69 @@
+dsh: reasoning:
+The user asks three questions about a previous fix. I should consult project memory (MEMORY.md or .tmem/) without running any commands. I can use the read tool and tmem tools (tmem_search/tmem_expand) — those are not "commands". The instruction says "不要运行任何命令" (don't run any commands). Using the read tool and tmem_search tool should be fine.
+
+Let me first look for MEMORY.md via glob and read it. Also use tmem_search for relevant info.
+
+Let me do parallel calls: glob for MEMORY.md, and tmem_search for the fix.
+
+Note the memory trace says the L0 paths drifted — but MEMORY.md exists? The note says missing_file:MEMORY.md (drifted). Let me check the actual workspace.
+
+Let me start.
+dsh: reasoning:
+There's no MEMORY.md in the workspace (it was in a prior session's workspace, now missing). The `.tmem/` store exists. Let me expand the relevant episode ep_e98083fe22 at turn level and the raw trace to get precise details: file order, verification commands, and the function name.
+
+Let me expand ep_e98083fe22 slice/turn, and tr_01aed48efa diff level.
+
+Note the L0 note said the "missing_symbol: src/ledger/money.py#ensure_usable_price" — but the trace says "edit src/ledger/money.py (ensure_usable_price, format_money)". Hmm, the note says missing_symbol and drifted_signature:ensure_usable_price(value,description). But I should verify from the raw trace rather than speculate. Let me expand raw.
+
+Wait — there's also a caveat: the L0 note says paths drifted, meaning the actual function names in the current workspace may differ. But the question asks about the historical fix. The memory says "ensure_usable_price" was the new "统一校验价格是否可用" entry function. But careful: the trace's L2 causal repair says edit src/ledger/money.py (ensure_usable_price, format_money). And "missing_symbol" hints that in the current codebase there's no ensure_usable_price — maybe it was renamed. Let me check the actual repo files too (read-only, allowed: reading files is not running commands).
+
+Let me expand the episode raw to get exact ordering and commands.
+dsh: reasoning:
+I have the details. Now let me verify the actual current repo state to confirm the function name and the file order — but I shouldn't run commands. Reading files is fine.
+
+Let me check the current src/ledger/money.py for `ensure_usable_price` and see whether it still exists (the L0 note said "missing_symbol:src/ledger/money.py#ensure_usable_price" — but that note was about drift in a different session; let's check the current workspace).
+
+Also I want to see the final answer of that session (turn level) for verification commands and the exact ordering and whether MEMORY.md was written. Let me expand ep_e98083fe22 turn 1 and read the files.
+
+Let me do parallel: glob src/ledger/*.py, read src/ledger/money.py, and expandthe turn.
+dsh: reasoning:
+I have most of the info. Let me confirm the current state of the code: does `ensure_usable_price` still exist in src/ledger/money.py? The L0 drift note said missing_symbol — possibly because the workspace here (/work) is a fresh checkout without the fix applied? Let me read src/ledger/money.py and src/ledger/import_rows.py to check current state. That's read-only and allowed.
+
+Also I should get the tail of the turn (verification commands and the final answer/summary). Let me expand with seq_from ~180 to 255.
+dsh: reasoning:
+Now I have a complete picture of the historical fix. Let me get the final tail of the episode (seq 222-255) to capture the final MEMORY.md write and the final answer summary, plus the exact final verification command run.
+
+Note: the current /work workspace is at the pre-fix state (money.py has no ensure_usable_price, import_rows.py still has the old code, and there's no MEMORY.md). So the fix was done in a prior workspace (/home/kent/e2e/abl/ledger-svc) and is not present in the current checkout. I should note that.
+
+Let me expand the raw for seq 222-255.
+dsh: reasoning:
+I now have a complete, verified picture from project memory. Let me summarize the three answers.
+
+1) File order (from the trace's mutation spine, seq order):
+- seq 96: `src/ledger/money.py` — added `ensure_usable_price` (+ `import math`, `from .errors import ValidationError`); also touched `format_money` region.
+- seq 106: `src/ledger/import_rows.py` — `parse_price(raw, description)` now delegates to `ensure_usable_price`; `parse_rows`/`rows_to_tuples` pass row description; `parse_price_checked` delegates.
+- seq 127: `src/ledger/settlement.py` — `settle_invoice`/`settle_line` validate price before conversion; `settle_invoice_checked` raises ValidationError instead of ValueError.
+- seq 183: `tests/test_import_rows.py` (new file) — new tests.
+- seq 188: `tests/test_settlement.py` — new tests (incl. `test_headless_import_with_empty_price_cell_is_rejected`).
+- seq 234: `MEMORY.md` — recorded the root-cause analysis + new baseline.
+
+2) Verification commands:
+- `PYTHONPATH=src python3 -m pytest -q 2>&1 | tail -5` → 2 failed, 39 passed (the 2 failures pre-existing/unrelated: tests/test_rates.py::test_get_cached_rate_falls_back_to_rate_table KeyError 'USD:CNY', tests/test_pagination.py::test_pagination_does_not_lose_invoices).
+- per-file: `PYTHONPATH=src python3 -m pytest "$f" -q` loop over test files → import_rows 15 passed, settlement 14 passed, rates 1 failed/3 passed, pagination 1 failed/1 passed, invoicing 3 passed, idempotency 3 passed.
+- stability: `for i in 1 2 3; do PYTHONPATH=src python3 -m pytest -q ...` → stable.
+- collect-only: `PYTHONPATH=src python3 -m pytest --collect-only -q` → 41 tests collected; plus per-file collect-only for tests/test_import_rows.py (15) and tests/test_settlement.py (14).
+- Also `git diff --stat` / `git diff src/` to show the diff.
+
+3) The unified price-validity entry point: `ensure_usable_price(value, description="line") -> float` in `src/ledger/money.py` — raises `ledger.errors.ValidationError`.
+
+Important caveat: the current workspace `/work` is at the pre-fix state — `src/ledger/money.py` has no `ensure_usable_price`, `import_rows.py` still has the old `parse_price`, and there's no `MEMORY.md` at the workspace root. The fix was performed in a different working copy (`/home/kent/e2e/abl/ledger-svc`). I should mention this briefly since the user asked about "修好后项目里" — the current checkout doesn't have it.
+
+Also note the pre-existing test failures baseline: the 2 failures existed before the fix (from the earlier session ep_7da36264ad baseline). Let me be careful: in seq 66 (before fix), pytest -q showed the ValueError failure in test_settlement. Hmm, actually at seq 66, output shows a failure in settle_invoice with the NaN. Then after the fix: 2 failed, 39 passed with the failures being rates and pagination. So the NaN failure was fixed and the remaining 2 failures are unrelated (rates KeyError 'USD:CNY', pagination assert).
+
+Wait — did the NaN test failure exist at baseline? At seq 66 the output tail showed a failure at tests/test_settlement.py:39 with invoice unit_price=nan. So yes, before the fix there was at least that failure. The baseline from the earlier session recorded failures too. Fine — I'll state it as observed.
+
+Let me double check: was there a `tests/test_import_rows.py` before? git status showed `?? tests/test_import_rows.py` (untracked → newly created in that session). Yes, new file.
+
+Now, no commands were run — I only used read/glob/tmem tools, which is compliant with "不要运行任何命令" (no shell commands run).
+
+Let me write the answer in Chinese, concise and structured.

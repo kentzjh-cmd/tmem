@@ -1,0 +1,23 @@
+{
+  "scene": "B5_recall_control_with_session",
+  "workspace": "control",
+  "workspace_path": "/home/kent/e2e/r2/ledger-svc-control",
+  "intent": "第三条臂的召回测试：同题，但之前跑过同样的会话",
+  "model": true,
+  "dsh_home": "/home/kent/.dsh",
+  "exit_code": 0,
+  "elapsed_sec": 13.1,
+  "stdout_bytes": 1895,
+  "stderr_bytes": 4864,
+  "command": "dsh --profile headless headless <task>",
+  "transcript_path": "/home/kent/.dsh/sessions/--home-kent-e2e-r2-ledger-svc-control--/session-c81d0104-a32a-4849-a615-2bbb3afc9c3b/session.v4.jsonl.zstd",
+  "transcript_stats": {
+    "bytes": 24731,
+    "node_single_frame_bytes": 191,
+    "node_single_frame_lines": 1,
+    "zstd_dc_bytes": 71528,
+    "zstd_dc_lines": 20,
+    "is_multiframe": true
+  },
+  "capture_skipped": "scene flag: control arm must not create a tmem store"
+}

@@ -1,0 +1,43 @@
+{
+  "scene": "S6b_l2_transfer_controlled",
+  "workspace": "exp",
+  "workspace_path": "/home/kent/e2e/r2/ledger-svc",
+  "intent": "H7 受控重演：同签名缺陷被注入到新模块 src/ledger/bulk.py，历史修复应被注入并复用",
+  "model": true,
+  "dsh_home": "/home/kent/.dsh",
+  "exit_code": 0,
+  "elapsed_sec": 130.5,
+  "stdout_bytes": 1374,
+  "stderr_bytes": 58623,
+  "command": "dsh --profile headless --patch /home/kent/e2e/r2/ledger-svc/.dsh/tmem.patch.yml headless <task>",
+  "transcript_path": "/home/kent/.dsh/sessions/--home-kent-e2e-r2-ledger-svc--/session-95c9461c-20a4-4967-9140-6066583f2262/session.v4.jsonl.zstd",
+  "transcript_stats": {
+    "bytes": 186207,
+    "node_single_frame_bytes": 183,
+    "node_single_frame_lines": 1,
+    "zstd_dc_bytes": 668627,
+    "zstd_dc_lines": 182,
+    "is_multiframe": true
+  },
+  "capture_exit": 0,
+  "capture": {
+    "status": "compiled",
+    "agent": "dsh",
+    "scope": "project",
+    "episode_id": "ep_5a8bcdf919",
+    "project_trace_id": "tr_45e96c3da8",
+    "raw_trace_path": "raw/tr_45e96c3da8.raw.json",
+    "problem_intent": "headless src/ledger/bulk.py 的批量结算在导入行价格是 nan 时会崩（ValueError: cannot convert NaN to integer）。请修好它，让缺失价格被明确拒绝，并补上测试。",
+    "touched_files": [
+      "AGENTS.md",
+      "README.md",
+      "src/ledger/bulk.py",
+      "tests/test_bulk.py"
+    ],
+    "is_trivial": false,
+    "confidence": 0.7,
+    "raw_steps": 33,
+    "sliced_steps": 13,
+    "compression_ratio": "33 -> 13"
+  }
+}

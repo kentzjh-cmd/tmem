@@ -1,0 +1,84 @@
+dsh: reasoning:
+The user asks three questions about a prior fix. I can use tmem_search and tmem_expand to recover details, and also read MEMORY.md if it exists. But the user said "不要运行任何命令" (don't run any commands). Reading files via read tool is not running a command. Let me use the tmem tools (those aren't commands either) and read MEMORY.md.
+
+Let me do parallel: tmem_search for the trace, and glob/read for MEMORY.md.
+
+Actually the trace tr_01aed48efa is already given in the speculative memory with details. But I should expand to get exact file order and verification command.
+
+Let me search tmem for relevant info and read MEMORY.md.
+
+Note: The trace mentions "missing_file:MEMORY.md" — meaning MEMORY.md may not exist. Let me check.
+
+Let me run tmem_search and globin parallel.
+dsh: reasoning:
+MEMORY.md doesn't exist in the workspace now (workspace may be empty). Let me expand further to get the verification command and the full diff details.
+
+Let me get level "turn" or "diff" for moredetails.
+dsh: reasoning:
+Now let me get the episode turn details for the verification commands. Expand ep_e98083fe22 at level turn, turn 1, with query about verification/pytest.
+dsh: reasoning:
+I need the final verification commands. The playbook says: verified (`PYTHONPATH=src python3 -m pytest --collect-only -q 2>&1 && PYTHONPATH=src python3 -m pytest tests/test_import_rows.py --collect-only -q 2>&1 && PYTHONPATH=src python3 -m pytest tests/test_settlement.py --collect-only -q 2>&1`).
+
+Also from the trace's Partial L0 Path: `ENV_EXEC(do PYTHONPATH=src python3 -m pytest -q 2>&1 && PYTHONPATH=src python3 -m pytest "$f" -q 2>&1)`.
+
+Let me look at the final turns (seq ~180-255) to see the exact final verification commands and the MEMORY.md content. Let me expand turn with seq_from 180 seq_to 255.
+
+Also I should check the diff for invoicing.py and tests/test_import_rows.py (the diff level only showed a subset — it showed import_rows, money, settlement, test_settlement; maybe more was truncated). Let's check the finalverification.
+dsh: reasoning:
+I have almost everything. But note: `src/ledger/invoicing.py` was also edited (seq 166, 171) but the final `git status --porcelain` shows only import_rows.py, money.py, settlement.py, tests/test_settlement.py, tests/test_import_rows.py as modified. So the invoicing.py edits were apparently reverted (maybe it was a temporary experiment that was undone). Let me check what happened between seq 156 and seq 176 — did invoicing.py edits get reverted? The final git status shows invoicing.py NOT modified, meaning the edits were reverted. Let me check seq 160-176.
+
+Also I want to verify the file order: The playbook root cause says: edit money.py → import_rows.py → settlement.py. And tests: test_import_rows.py written (new file) and test_settlement.py edits. But in actual sequence, tests/test_import_rows.py was created at seq 183 (after settlement.py edits at ~seq 110-130). Let me check the ordering more carefully: money.py (seq 96, 101), import_rows.py (seq 106), settlement.py (seq ~111+?), invoicing.py (seq 166, 171) then reverted, tests/test_import_rows.py (seq 183 write), tests/test_settlement.py (seq 188, 193), MEMORY.md (seq 234).
+
+Let me check the invoicing.py edits and revert, plus where settlement.py edits happened. Let me expand seq 110-175.
+dsh: reasoning:
+Now I have the full picture:
+
+Root cause & fix order (source files):
+1. `src/ledger/money.py` — added `ensure_usable_price(value, description)` guard + imported `math` and `ValidationError`.
+2. `src/ledger/import_rows.py` — `parse_price` delegates to `ensure_usable_price`; `parse_rows`/`rows_to_tuples` pass description; `parse_price_checked` delegates.
+3. `src/ledger/invoicing.py` — temporarily added a build-time guard in `build_invoice` (seq 114, 122), but it broke the existing test `test_settle_invoice_rejects_missing_price` (which expected settlement to reject it) and was **reverted** (seq 166, 171), so it is not in the final diff.
+4. `src/ledger/settlement.py` — `settle_invoice` and `settle_line` validate price first; `settle_invoice_checked` now raises `ValidationError` instead of `ValueError`.
+5. `tests/test_import_rows.py` — new file with regression tests (15 tests).
+6. `tests/test_settlement.py` — added regression tests (including `test_headless_import_with_empty_price_cell_is_rejected`).
+7. `MEMORY.md` — recorded root-cause analysis and new baseline.
+
+Note the actual interleaved order: money.py → import_rows.py → invoicing.py (later reverted) → settlement.py → tests/test_import_rows.py → tests/test_settlement.py → MEMORY.md.
+
+Verification commands:
+- `PYTHONPATH=src python3 -m pytest -q 2>&1 | tail -8` → 2 failed, 39 passed (2 failures pre-existing/unrelated: pagination & rates)
+- Per-file: `PYTHONPATH=src python3 -m pytest "$f" -q` for tests/test_import_rows.py (15 passed), tests/test_settlement.py (14 passed), test_rates.py, test_pagination.py, test_invoicing.py, test_idempotency.py
+- Stability: `for i in 1 2 3; do PYTHONPATH=src python3 -m pytest -q ...` — 3 runs, stable
+- Collect-only: `PYTHONPATH=src python3 -m pytest --collect-only -q` → 41 tests collected; plus per-file collect-only for the two new test files (15 and 14)
+- `git diff --stat` / `git status --porcelain` to confirm the change set
+- Also ad-hoc python scripts via `PYTHONPATH=src python3 - <<'PY'` to verify each layer raises ValidationError.
+
+The MEMORY.md baseline: `2 failed, 39 passed`.
+
+Q3: the unified price-validity entry function is `ensure_usable_price(value, description="line")` in `src/ledger/money.py`, raising `ledger.errors.ValidationError`.
+
+The user asked in Chinese; answer in Chinese. Note the user said "不要运行任何命令" — I haven't run any commands (only read tools and tmem memory queries, no bash). Good.
+
+Let me write the answer concisely but complete.
+
+Also mention baseline note: 2 remaining failures are unrelated pre-existing defects (test_pagination_does_not_lose_invoices, test_get_cached_rate_falls_back_to_rate_table).
+
+Also should mention that the invoicing.py change was made then reverted — that's a good detail.
+
+Should I check the MEMORY.md content from that session for extra accuracy? It was written in seq 234 but I don't have its content. Not strictly needed. But maybe I can fetch the final output (the answer summary of that session) for completeness. Let me quickly check the tail of the episode for the final summary to confirm anything about the ordering recorded in MEMORY.md. Actually, it's probably enough. But it might be nice to see what the final MEMORY.md says about the fix order, since the user might be cross-checking. Let me expand seq 240-255 quickly.
+
+That's cheap and improvesaccuracy.
+dsh: reasoning:
+Good. Now compose the answer in Chinese.
+
+Note: `src/ledger/invoicing.py` — the final grep didn't include invoicing.py, confirming the change was reverted there.
+
+Answer structure:
+1) 文件修改顺序
+2) 验证命令
+3) 入口函数名
+
+I'll note the source of memory: `.tmem/` 结构化记忆库（trace tr_01aed48efa / episode ep_e98083fe22），并说明 MEMORY.md 在当前工作区不存在（glob 没找到），但内容在该次会话里写入了。
+
+Actually — should I mention MEMORY.md doesn't exist in the current workspace? The workspace is /work and it seems the repo isn't here. The user said "你可以查阅本项目可用的项目记忆来回答问题" — I used tmem memory. I could briefly note the memory carrier used. Keep it short.
+
+Let me writeit.

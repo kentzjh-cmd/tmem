@@ -1,0 +1,38 @@
+{
+  "scene": "S3_pagination",
+  "workspace": "exp",
+  "workspace_path": "/home/kent/e2e/r2/ledger-svc",
+  "intent": "修复缺陷三：同一秒创建的多张发票翻页被漏掉",
+  "model": true,
+  "dsh_home": "/home/kent/.dsh",
+  "exit_code": 0,
+  "elapsed_sec": 178.8,
+  "stdout_bytes": 1253,
+  "stderr_bytes": 48085,
+  "command": "dsh --profile headless --patch /home/kent/e2e/r2/ledger-svc/.dsh/tmem.patch.yml headless <task>",
+  "transcript_path": "/home/kent/.dsh/sessions/--home-kent-e2e-r2-ledger-svc--/session-7b5703f0-b5ab-488b-80c3-021d43e6b2cc/session.v4.jsonl.zstd",
+  "transcript_stats": {
+    "bytes": 140930,
+    "node_single_frame_bytes": 183,
+    "node_single_frame_lines": 1,
+    "zstd_dc_bytes": 542457,
+    "zstd_dc_lines": 198,
+    "is_multiframe": true
+  },
+  "capture_exit": 0,
+  "capture": {
+    "status": "compiled",
+    "agent": "dsh",
+    "scope": "project",
+    "episode_id": "ep_e370bf48a6",
+    "project_trace_id": "tr_caf5988f35",
+    "raw_trace_path": "raw/tr_caf5988f35.raw.json",
+    "problem_intent": "Modify ",
+    "touched_files": [],
+    "is_trivial": true,
+    "confidence": 0.4,
+    "raw_steps": 5,
+    "sliced_steps": 1,
+    "compression_ratio": "5 -> 1"
+  }
+}

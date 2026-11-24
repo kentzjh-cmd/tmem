@@ -1,0 +1,848 @@
+dsh: all_proxy names a SOCKS proxy, which is not supported; connecting directly for that scheme — set an http:// or https:// proxy URL instead
+dsh: reasoning:
+The user wants me to fix the `get_cached_rate` KeyError issue in the headless settlement — when the cache doesn't have the currency pair, fall back to the default rate table, and add tests.
+
+This matches the known baseline failure in AGENTS.md: `tests/test_rates.py::test_get_cached_rate_falls_back_to_rate_table` — `get_cached_rate` uses currency pair key to index `RATE_CACHE` which only stores currency keys, `KeyError: 'USD:CNY'`.
+
+Let me start by exploring the repo.
+dsh: reasoning:
+Let me read the key files: rates.py, settlement.py, tests/test_rates.py, money.py, errors.py.
+dsh: reasoning:
+Now let's understand the user's request: "headless 结算取汇率时，缓存里没有这个币对就会抛 KeyError。请改成查不到就回落到默认汇率表，并补测试。"
+
+Translation: "In headless settlement, when fetching the exchange rate, if the cache doesn't have this currency pair, a KeyError is raised. Please change it so that when the lookup fails, it falls back to the default rate table, and add tests."
+
+So the issue is `get_cached_rate` raises KeyError when the pair isn't in the cache. The known baseline failure is `tests/test_rates.py::test_get_cached_rate_falls_back_to_rate_table` — `get_cached_rate` uses the currency pair key to index RATE_CACHE which only stores currency keys, `KeyError: 'USD:CNY'`.
+
+Let me check where `get_cached_rate` is used — "headless settlement". Let me grep.
+
+Also check `api.py`, `cli.py` for headless settlement paths.
+
+Let me look at all usages of get_cached_rate and rate_for_pair.
+dsh: reasoning:
+Now let me look at the "headless" settlement path. Let me check api.py, cli.py, and other files for "headless".
+
+Also, I should check the README to understand the baseline and the documented behavior.
+
+Note that `get_cached_rate` is only used in tests currently. But the user says "headless 结算取汇率时" — during headless settlement, taking the rate, if the cache doesn't have this pair, KeyError is thrown. Let's look for the headless settlement path.
+dsh: reasoning:
+Now I understand the task clearly. The user says "headless 结算取汇率时，缓存里没有这个币对就会抛 KeyError" — the headless settlement path uses `get_cached_rate` and raises KeyError when the cache doesn't have the pair.
+
+Note that in the current source, `settlement.py` uses `rates_module.fetch_rate(...)` — which does have a fallback to DEFAULT_RATES. But the user says the headless settlement raises KeyError. Let's check: `fetch_rate` looks up `RATE_CACHE[key]` first (pair key); if not present, it checks `base not in DEFAULT_RATES` → raise RateUnavailable; `quote not in DEFAULT_RATES` → raise RateUnavailable; then rate = DEFAULT_RATES[quote]/DEFAULT_RATES[base] and caches it. So `fetch_rate` doesn't raise KeyError.
+
+Hmm, but wait — `load_rate_table()` loads the DEFAULT_RATES into RATE_CACHE with currency keys. If a custom rate table is loaded with a subset... Actually `fetch_rate` looks up DEFAULT_RATES regardless of the loaded table.
+
+The KeyError happens in `get_cached_rate`. The test `test_get_cached_rate_falls_back_to_rate_table` is the known failing baseline. The task: make `get_cached_rate` fall back to the default rate table instead of raising KeyError, and add tests.
+
+But where is "headless 结算" (headless settlement)? Let me check cli.py and api.py more closely — the headless path is the CLI (`cmd_settle`) which calls `settle_and_invoice` → `settle_invoice` → `fetch_rate`. Hmm.
+
+Let me check git history for the merge commit `5efcfca merge feature/rates-cache` and see whether there's some divergence. Also check whether there's an uncommitted state — the working tree has modifications to settlement.py etc. from prior sessions (the NaN fix). Let me check git diff to see the current uncommitted state.
+
+Actually the key question: is there a place where the headless settlement path calls `get_cached_rate`? The grep shows get_cached_rate is only used in tests and README/AGENTS. So the "headless settlement" in the user's description maps to the general rate lookup — the failing test is `test_get_cached_rate_falls_back_to_rate_table`.
+
+Wait — maybe the user considers `get_cached_rate` to be the headless settlement rate getter. Let me check git log for rates.py to see the feature/rates-cache branch changes.
+
+Let me look at git log -p for rates.py, and also check the .tmem directory for hints about the intended fix.
+
+Also check MEMORIES.md for the known baseline and any repair hints.
+
+Let me also check the test suite baseline right now.
+dsh: reasoning:
+Baseline confirmed: 46 tests, 45 passed / 1 failed — `test_get_cached_rate_falls_back_to_rate_table` with `KeyError: 'USD:CNY'`.
+
+Now, the fix: `get_cached_rate` should fall back to the default rate table when the pair isn't in the cache. The README says "同文件的 `rate_for_pair` 才有回退" — `rate_for_pair` has the fallback.
+
+Design decision: How should `get_cached_rate` fall back?
+
+Option A: Make `get_cached_rate` delegate to `rate_for_pair` (i.e., return cached pair key if present, else fetch_rate which computes from DEFAULT_RATES and caches the pair).
+
+Option B: Fall back to the loaded rate table (RATE_CACHE's currency keys) and compute quote/base.
+
+Note an important subtlety: `load_rate_table()` writes DEFAULT_RATES into RATE_CACHE under *currency* keys (CNY/USD/EUR/JPY). `fetch_rate` computes the cross rate from `DEFAULT_RATES` (the module constant), not from the loaded cache. If a custom table was loaded via `load_rate_table(rates)` or `refresh_rate_table(rates)`, `fetch_rate` still uses the hardcoded DEFAULT_RATES — that's arguably another bug, but let's think about what the "default rate table" means.
+
+The user's request: "查不到就回落到默认汇率表" — when lookup fails, fall back to the default rate table. The default rate table = `DEFAULT_RATES` (and/or the loaded table). The existing `fetch_rate` already does the fallback to DEFAULT_RATES, raising `RateUnavailable` for unknown currencies.
+
+The most consistent minimal fix: `get_cached_rate` should not raise KeyError; it should return the cached pair rate if present, otherwise fall back to the rate table (computing the cross rate like `fetch_rate` does), and raise `RateUnavailable` for unknown currencies instead of a bare KeyError.
+
+But careful: `get_cached_rate` semantics = "cached rate lookup" — it was introduced in commit 1259d07 "feat(rates): expose cached rate lookup". Let me check the historical version of that commit to see whether there was ever a fallback.
+
+Let me look at commit 1259d07 and ed81151 diff.
+
+Also consider: should the fallback consult the *loaded* table (RATE_CACHE currency entries) or DEFAULT_RATES? The test does `rates.load_rate_table()` then `get_cached_rate("USD", "CNY") > 0`. With DEFAULT_RATES: DEFAULT_RATES["CNY"]/DEFAULT_RATES["USD"] = 1/7.1234 ≈ 0.14038 > 0. ✓.
+
+Now there's a question about whether the fallback should also handle the case where the loaded cache has currency keys — i.e., derive the cross rate from the loaded table rather than the module-level DEFAULT_RATES. Since `load_rate_table(rates)` may install a custom table, a sensible implementation derives the cross rate from the effective table (loaded cache currency entries if present, else DEFAULT_RATES). But `fetch_rate` uses DEFAULT_RATES only. Hmm.
+
+To keep behavior consistent and minimal, and to avoid changing `fetch_rate` semantics, I could implement the fallback in `get_cached_rate` by delegating to the same table resolution as `fetch_rate`. Let me think about what's most correct and least surprising.
+
+Consideration: the AGENTS.md invariant says the integer minor units convention must not change. Also known baseline alignment: after the fix, the suite should be 46 passed / 0 failed (baseline improves from 45/1 to 46/0). That's the desired outcome since the user asks to fix this exact known failing test.
+
+Now, importantly: the user says "headless 结算取汇率时，缓存里没有这个币对就会抛 KeyError" — this suggests the headless settlement path calls get_cached_rate. Let me double check whether some code path in the repo (maybe api.py handle_settle, cli cmd_settle) uses get_cached_rate. From grep: no. Only settlement uses `fetch_rate`.
+
+Hmm, but wait. Maybe there's a divergence between the merge and the working tree. Let me check git diff of the working tree for settlement.py, since the working tree has modifications from prior sessions. The current settlement.py uses fetch_rate.
+
+Let me check whether `fetch_rate` can raise KeyError: `RATE_CACHE[key]` — no, guarded by `if key in RATE_CACHE`. `DEFAULT_RATES[base]` — guarded. So no KeyError there.
+
+But hold on — is there a scenario in the headless settlement path where a KeyError arises? `settlement.settle_invoice` → `rates_module.fetch_rate(base_currency, quote_currency)`. If base_currency == quote_currency (e.g., CNY→CNY), then key = "CNY:CNY" not in cache, base "CNY" in DEFAULT_RATES, quote "CNY" in DEFAULT_RATES, rate = 1 → fine.
+
+So in the current tree, the KeyError only arises via `get_cached_rate`. The user's description "headless 结算取汇率" may be loosely referring to the rate-lookup used by the headless (CLI/API) settlement flow. The known failing test is exactly about `get_cached_rate`.
+
+Hmm, but let me check the .tmem directory and MEMORIES.md for more context about the rates-cache feature and what "headless" might mean here. Let me look at .tmem traces.
+
+Actually, let me check the git show of ed81151 "feat(rates): look up cached rate pairs" — this is the commit that introduced `rate_for_pair`. And 1259d07 introduced `get_cached_rate`.
+
+Let me examine the .tmem directory for hints and read MEMORIES.md.
+
+Also, let me consider: maybe I should ALSO make the headless settlement path use a rate lookup that never raises a bare KeyError. To satisfy the user's request fully: "headless 结算取汇率时，缓存里没有这个币对就会抛 KeyError。请改成查不到就回落到默认汇率表，并补测试。"
+
+The core fix: the rate lookup used by settlement must fall back to the default rate table when the cache misses. I'll:
+1. Fix `rates.get_cached_rate` to fall back (no KeyError).
+2. Ensure the settlement path uses a lookup that never raises KeyError — `fetch_rate` already does; but I should verify the whole headless path (CLI settle) works with a cold cache.
+3. Add tests.
+
+Let me check the .tmem folder and MEMORIES.md for additional constraints/hints.
+dsh: reasoning:
+Now let me check the CLI / API headless paths, and the invoicing module, to see the "headless settlement" flow and where the rate lookup happens. Also check `cli.py` fully and `invoicing.py`.
+
+Also let me check the git working tree diff for settlement.py (uncommitted changes from prior session) to make sure I don't conflict.
+
+Let me read cli.py, api.py, invoicing.py.
+dsh: reasoning:
+Now, the "headless settlement" path is: CLI `cmd_settle` → `settle_and_invoice` → `settle_invoice` → `rates_module.fetch_rate`.
+
+Hmm — so where is the KeyError in headless settlement? Let me test the headless CLI settle path with a cold cache to see:
+
+```
+PYTHONPATH=src python3 -m ledger.cli settle --invoice-id I1 --currency USD --quote CNY --amount 10
+```
+
+`fetch_rate("USD", "CNY")` → key "USD:CNY" not in RATE_CACHE (empty since fresh process), base "USD" in DEFAULT_RATES, quote "CNY" in DEFAULT_RATES → rate = 1/7.1234 → OK, no KeyError.
+
+But wait — `settle_invoice` checks `line.currency != base_currency` → CurrencyMismatch. Hmm.
+
+Hold on. What if the cache contains currency keys (after `load_rate_table()`) and the base currency key lookup happens? E.g., `fetch_rate("CNY", "CNY")`: key = "CNY:CNY" not in cache → base "CNY" in DEFAULT_RATES ✓, quote "CNY" in DEFAULT_RATES ✓ → rate = 1 ✓.
+
+So no KeyError in fetch_rate.
+
+So the only KeyError source is `get_cached_rate`. The user's report: "headless 结算取汇率时，缓存里没有这个币对就会抛 KeyError" — maybe they consider `get_cached_rate` as the "取汇率" (rate lookup) API used in headless settlement. Given the repo's known baseline failure is exactly this, the task is clear: make `get_cached_rate` fall back to the default rate table when the pair isn't cached, and add tests.
+
+However, I want to be careful about a subtle aspect: should `get_cached_rate` also be used by the settlement path? The user says "headless 结算取汇率时" — to make the fix meaningful for the headless settlement path, the settlement should use a lookup that never raises KeyError. Since `fetch_rate` already falls back to DEFAULT_RATES, settlement is already safe. But I could make the settlement path use `rate_for_pair`/`get_cached_rate` with a fallback so that a custom loaded rate table is honored... careful, that could change behavior and break other tests.
+
+Let me check the existing test_settlement.py to see what behaviors are asserted regarding rates.
+
+Let me read tests/test_settlement.py and tests/test_invoicing.py.
+
+Also important: I should consider whether the fallback in `get_cached_rate` should use the *loaded* table (the process cache with currency keys) or `DEFAULT_RATES`. Consider `refresh_rate_table(custom)` — it replaces RATE_CACHE with the custom table (currency keys). Then `get_cached_rate("USD","CNY")` should presumably fall back to the custom table's cross rate (custom["CNY"]/custom["USD"]) rather than DEFAULT_RATES. The user says "回落到默认汇率表" = "fall back to the default rate table". In this codebase, "默认汇率表" most plausibly refers to the rate table (DEFAULT_RATES) as opposed to the cache.
+
+The safest and most useful implementation: a single helper that resolves the effective rate table and computes the cross rate, used by both `fetch_rate` and `get_cached_rate`. Effective table = the loaded table if the cache holds currency entries, else DEFAULT_RATES. Hmm, but that changes `fetch_rate` behavior: currently `fetch_rate` always uses DEFAULT_RATES even if a custom table was loaded via `refresh_rate_table`. Changing that could break tests? Let me check tests for refresh_rate_table / load_rate_table with custom rates.
+
+Let me read the test files.
+dsh: reasoning:
+Now let me plan the fix.
+
+**Root cause**: `rates.get_cached_rate(base, quote)` indexes `RATE_CACHE` with the *pair* key `f"{base}:{quote}"` and returns it directly. `RATE_CACHE` is populated by `load_rate_table()`/`refresh_rate_table()` with **currency** keys (CNY/USD/EUR/JPY) and by `fetch_rate()` with **pair** keys. So:
+- On a cold cache (or after `load_rate_table()`), the pair key is absent → `KeyError: 'USD:CNY'`.
+- The fallback to the rate table exists only in the sibling `rate_for_pair`/`fetch_rate`.
+
+**Fix**: `get_cached_rate` should:
+1. Return the cached pair rate if present.
+2. Otherwise fall back to the rate table (compute the cross rate from the effective rate table) instead of raising KeyError.
+3. Raise the project's `RateUnavailable` (a `LedgerError`), not a bare `KeyError`, when the currency is unknown — so callers get a domain error.
+
+Also the settlement headless path: `settlement` uses `fetch_rate`, which is already safe, but it hardcodes DEFAULT_RATES even when a custom table has been loaded. Hmm — should I unify? Let me think about the risk of scope creep. The user's request is narrow: "查不到就回落到默认汇率表，并补测试" (fall back to the default rate table when the lookup fails, and add tests).
+
+Key design question: which table is the "默认汇率表" for the fallback? Options:
+(a) `DEFAULT_RATES` module constant.
+(b) The currently loaded table (RATE_CACHE currency entries) if present, else `DEFAULT_RATES`.
+
+Since `load_rate_table()` and `refresh_rate_table()` load into `RATE_CACHE` (currency keys), the "effective rate table" is naturally the cache's currency entries when they exist. The existing `fetch_rate` reads DEFAULT_RATES for the cross rate, ignoring the loaded table — arguably a latent bug, but changing it could alter settlement results if someone loads a custom table. Currently no test does that, and `refresh_rates(rates)` in settlement.py exists as an API for custom tables — which currently has NO effect on `fetch_rate` (since fetch_rate uses DEFAULT_RATES). Hmm, that IS arguably a bug: `settlement.refresh_rates(custom)` doesn't change settlement results.
+
+But careful: changing `fetch_rate` to honor the loaded table would change `fetch_rate` semantics. Is there a risk? Let's check who calls `load_rate_table` with a custom table: `cli.cmd_rates` calls `load_rate_table()` (no args → DEFAULT_RATES). `refresh_rate_table(rates=None)` → DEFAULT_RATES. `settlement.refresh_rates(rates=None)`.
+
+Since `RATE_CACHE` holds currency keys after a load, a "cache-first, table-fallback" lookup must distinguish pair keys from currency keys. A pair key contains ":". So:
+
+```python
+def _pair_key(base, quote): return f"{base}:{quote}"
+```
+
+Implementation plan for rates.py:
+
+```python
+def _effective_table() -> dict:
+    """Return the currency rate table to fall back to.
+
+    The cache holds currency entries after ``load_rate_table`` /
+    ``refresh_rate_table`` and pair entries after ``fetch_rate``. Only the
+    currency entries describe a table.
+    """
+    table = {k: v for k, v in RATE_CACHE.items() if ":" not in k}
+    return table or DEFAULT_RATES
+```
+
+Hmm wait, but this changes fetch_rate semantics if I use it there. Let me think about whether to change `fetch_rate`.
+
+The risk of NOT changing fetch_rate: `get_cached_rate` falls back to the effective table (loaded table if any), while `fetch_rate` uses DEFAULT_RATES → inconsistency between two functions computing the same pair. E.g., load a custom table {CNY: 1, USD: 8}, then `get_cached_rate("USD","CNY")` → 1/8 = 0.125 but `fetch_rate("USD","CNY")` → 1/7.1234. Inconsistent, confusing.
+
+The risk of changing fetch_rate to honor the loaded table: settlement results change when a custom table is loaded. But that's arguably the *intended* behavior ("refresh_rates" exists to refresh the table used by the settlement engine — its docstring says "Refresh the rate table used by the settlement engine"). Currently it's broken: refresh_rates has no effect. Fixing that is aligned with intent.
+
+However, there's a subtlety: `load_rate_table()` clears RATE_CACHE and loads DEFAULT_RATES. Then `fetch_rate("USD","CNY")` → cache has "USD" and "CNY" currency entries; the pair key isn't there; the effective table = the loaded table = DEFAULT_RATES → same result as before. ✓ No behavior change for the default path.
+
+Another subtlety: after `fetch_rate` caches pair entries, RATE_CACHE contains both currency entries and pair entries. `_effective_table` filters out pair keys → still the currency table. ✓
+
+But: what if the cache is empty (fresh process, no load)? `_effective_table()` → table = {} → falls back to DEFAULT_RATES. ✓
+
+What if only pair entries exist (cache cleared then fetch_rate called)? e.g. `RATE_CACHE.clear()` then `fetch_rate("USD","CNY")` → effective table = {} → DEFAULT_RATES ✓.
+
+Edge: a custom table loaded that lacks a currency → `RateUnavailable`. ✓ (matches current fetch_rate behavior of raising RateUnavailable for unknown currencies).
+
+Hmm, but careful with one thing: `fetch_rate` currently raises `RateUnavailable(f"no base rate for {base}")` when `base not in DEFAULT_RATES`. If I use the effective table, a custom loaded table lacking the currency raises the same error. Good.
+
+Now, is changing `fetch_rate` within scope? The user asked specifically about the KeyError in rate lookup and the fallback to the default rate table. The primary fix is `get_cached_rate`. I think unifying the fallback logic in one helper is good engineering and keeps `get_cached_rate`/`rate_for_pair`/`fetch_rate` consistent. I'll implement a shared `_lookup_rate(base, quote)` helper.
+
+But hold on — do I want `get_cached_rate` to *populate* the cache with the derived pair rate? `fetch_rate` caches the derived pair key. For `get_cached_rate`, the name says "cached" — but the test expects a fallback, so it must compute. Should it write back to the cache? Writing back means subsequent `cached_rate_keys()` includes the pair key. There's an existing test `test_cached_rate_keys_lists_entries` asserting "CNY" in cached_rate_keys() after `load_rate_table()` — that still holds.
+
+Hmm, but there's a subtle interaction: if `get_cached_rate` writes the derived pair rate into RATE_CACHE, then the "table" detection must still filter out pair keys — which it does. Fine.
+
+Should I write back? Pros: consistent cache behavior, avoids recomputation. Cons: `get_cached_rate` mutating global state is surprising for a "getter" — but `fetch_rate` already does exactly that, and `rate_for_pair` delegates to it. I lean toward NOT writing back in `get_cached_rate` (keep it a pure lookup: cache first, table fallback) — but then `get_cached_rate` and `fetch_rate` could return different values for the same pair if... no, they'd return the same value; the difference is only whether the derived pair gets cached. Actually if `get_cached_rate` doesn't write back, and later `fetch_rate` computes it and writes it back — same value. Fine either way.
+
+Hmm, but there's a trap: if `get_cached_rate` doesn't cache, and the user calls `refresh_rate_table(custom)` afterwards, the cached value changes but a previously cached pair entry (from fetch_rate) stays stale. That's a pre-existing issue with `fetch_rate` caching pairs (refresh_rate_table clears everything though). Fine.
+
+Decision: implement `get_cached_rate` as: pair key in cache → return it; else compute from the effective rate table and return it (without mutating the cache, keeping it side-effect free)...
+
+Hmm, wait. Let me reconsider: `rate_for_pair` = "Return the cached rate for a pair, fetching it when needed" — it caches. `get_cached_rate` = "Return the cached rate for a pair." After my change, its docstring should say: return the cached rate for a pair, falling back to the rate table when the pair is not cached.
+
+I think making `get_cached_rate` delegate to the same internal lookup as `fetch_rate` but WITHOUT caching the derived pair is cleanest:
+
+```python
+def get_cached_rate(base: str, quote: str) -> Decimal:
+    key = f"{base}:{quote}"
+    if key in RATE_CACHE:
+        return RATE_CACHE[key]
+    return _table_rate(base, quote)
+```
+
+where `_table_rate` computes from the effective table and raises RateUnavailable for unknown currencies.
+
+And `fetch_rate` becomes:
+```python
+def fetch_rate(base, quote):
+    key = f"{base}:{quote}"
+    if key in RATE_CACHE:
+        return RATE_CACHE[key]
+    rate = _table_rate(base, quote)
+    RATE_CACHE[key] = rate
+    return rate
+```
+
+And `rate_for_pair` = fetch_rate basically (keep as-is, it delegates).
+
+Now about `_effective_table()` honoring the loaded table vs DEFAULT_RATES: Should `fetch_rate` use the loaded table? Let me weigh again.
+
+Consider the CLI `cmd_rates` → `load_rate_table()` → cache = DEFAULT_RATES copy. Then settlement in the same process uses the loaded table = DEFAULT_RATES. Same. ✓
+
+Consider `settlement.refresh_rates({"CNY": Decimal("1"), "USD": Decimal("8")})` → cache = that table. Then `settle_invoice(invoice, "USD", "CNY")` → fetch_rate → effective table = {"CNY":1,"USD":8} → rate = 1/8. Currently it would be 1/7.1234. This is a behavior change but clearly the *intended* semantics of `refresh_rates` ("Refresh the rate table used by the settlement engine"). And it makes the fallback story coherent: "cache miss → fall back to the rate table" where "the rate table" = the loaded/effective table.
+
+Risk: does any existing test depend on fetch_rate ignoring a loaded custom table? Let me grep tests for refresh_rate_table/load_rate_table with args. From the test files I've read: test_rates.py uses `rates.load_rate_table()` (no args) everywhere. No custom tables in tests. So no existing test breaks.
+
+However — caution about test isolation: `RATE_CACHE` is a module-level global shared across tests. `load_rate_table()` resets it to DEFAULT_RATES. If a test loads a custom table and doesn't reset, later tests could be affected. I'll make sure my new tests restore state (use a fixture that saves/restores RATE_CACHE).
+
+Now, is changing `fetch_rate` risky w.r.t. the "known baseline" and AGENTS invariants? The invariant is about integer minor units — unaffected.
+
+Hmm, one more consideration: should the fallback in `get_cached_rate` use the *loaded* table or strictly `DEFAULT_RATES`? The user's words: "回落到默认汇率表" = "fall back to the default rate table". The README calls it "汇率表" (rate table) and DEFAULT_RATES is literally the default rate table. If I use the *effective* table (loaded table if present, else DEFAULT_RATES), then in the default case (load_rate_table() → DEFAULT_RATES) the fallback = DEFAULT_RATES ✓ — consistent with the user's request. And when a custom table is loaded, the fallback = that custom table, which is the sensible behavior for a "rate table" that the process installed. I'll implement it that way and document it clearly.
+
+Wait, but there's a wrinkle: `_effective_table()` uses cache currency entries. What if the cache contains a currency entry but the table was loaded with only a subset (e.g. {"CNY":1,"USD":8}) and then `fetch_rate("EUR","CNY")` → effective table lacks EUR → RateUnavailable("no base rate for EUR") — correct.
+
+But there's a subtle issue with `RATE_CACHE` holding *both* currency and pair entries: the pair key contains ":", currency keys don't. But what if a currency code contained ":"? Not realistic.
+
+Now, another important consideration: **the headless settlement path**. The user says the KeyError occurs "headless 结算取汇率时". Let me verify by actually running the headless CLI settle with a cold cache to see whether a KeyError occurs anywhere. Let me check `python3 -m ledger.cli settle ...`.
+
+Actually — wait. Let me re-read: "headless 结算取汇率时，缓存里没有这个币对就会抛 KeyError". Maybe in this e2e scenario, "headless" refers to the CLI (no HTTP server) settlement. The CLI path uses `fetch_rate`... but hold on! Let me check `cli.cmd_settle`: `build_invoice(args.invoice_id, [(args.description, args.currency, float(args.amount), int(args.quantity))], args.currency)` then `settle_and_invoice(invoice, args.quote)` → `settle_invoice(invoice, invoice.currency, quote)`. In settle_invoice, `rates_module.fetch_rate(base_currency, quote_currency)` → fine.
+
+Hmm, unless... `RATE_CACHE` was populated by `load_rate_table()` with currency keys and then... no.
+
+Let me just run it to be sure. Let me also test the API path.
+
+Actually, let me also consider: maybe the user's "headless settlement" refers to `get_cached_rate` being used in some headless script. Let me grep the whole repo (including .dsh, docs) for "headless".
+
+Let me run these checks.
+dsh: reasoning:
+Confirmed:
+- The headless CLI settle path works (uses `fetch_rate`).
+- `get_cached_rate` raises `KeyError: 'USD:CNY'` when the pair isn't cached — this is the failing baseline test and exactly the symptom the user describes ("缓存里没有这个币对就会抛 KeyError").
+
+So the fix scope: `rates.get_cached_rate` must fall back to the rate table instead of raising KeyError; and the headless settlement rate lookup should never raise a bare KeyError either. I'll harden the settlement path by routing it through the same fallback-capable lookup (it already uses `fetch_rate`, which will share the same helper).
+
+Plan:
+1. `src/ledger/rates.py`:
+   - Add `_effective_table()` (currency entries of the cache, else DEFAULT_RATES) and `_table_rate(base, quote)` (cross rate from the table, raising `RateUnavailable`).
+   - `fetch_rate`: use `_table_rate` (keeps caching the pair).
+   - `get_cached_rate`: pair cache hit → return; else `_table_rate` fallback (no KeyError).
+   - `rate_for_pair`: keep semantics (cache → fetch_rate).
+   - Add `RateUnavailable` for unknown currency in the fallback path (no bare KeyError).
+2. `tests/test_rates.py`: add tests:
+   - `get_cached_rate` falls back to the rate table for an uncached pair (the existing test now passes).
+   - `get_cached_rate` returns the cached pair rate when present (cached value takes precedence).
+   - `get_cached_rate` raises `RateUnavailable` (not KeyError) for an unknown currency.
+   - `get_cached_rate` honors a refreshed custom rate table (fallback uses the effective table).
+   - `fetch_rate`/`get_cached_rate` agree (no drift).
+   - Maybe: `get_cached_rate` doesn't raise KeyError for any pair → assert not isinstance(exc, KeyError).
+3. `tests/test_settlement.py`: add a test that the headless settlement path settles with a cold cache (no KeyError) — e.g., clear the rate cache and settle USD→CNY, asserting a positive int and that no KeyError is raised. This covers the user's "headless 结算" scenario end-to-end.
+4. Update README.md baseline section (46 → 46 passed / 0 failed; the known failure is now fixed) and add a short "汇率缓存回落" section. Also update AGENTS.md baseline section (存量失败基线 → 已修复) — per repo conventions, prior sessions updated both README and AGENTS.md. AGENTS.md is untracked but exists; I'll update it to reflect the new baseline (46/46).
+5. Also ensure `.tmem/` memory capture at the end (the milestone prompt suggests asking the user; AGENTS.md §2 says to ask whether to persist).
+
+Also there's a nuance for the "cache takes precedence" test: `fetch_rate("USD","CNY")` caches the pair key. Then `get_cached_rate("USD","CNY")` returns the cached value. But careful about the effective table: after `load_rate_table()`, the cache has currency entries AND pair entries.
+
+Test isolation: RATE_CACHE is global. I'll add a fixture in test_rates.py that snapshots and restores RATE_CACHE around each test, so my custom-table test doesn't leak into other tests. That's important! If a test loads a custom table {CNY:1, USD:8} and doesn't restore, subsequent tests (e.g., test_settlement) would use a different rate → could break assertions like settled > 0 (still fine) but better be safe.
+
+Let me check whether the repo has a conftest.py. From the glob earlier: no conftest.py. Let me confirm.
+
+Let me now also double check: does `pytest` config exist in pyproject.toml? Let me read pyproject.toml.
+
+Then implement.
+
+One more design question: should `get_cached_rate` cache the derived pair rate back into RATE_CACHE? Consider the semantics "cached rate lookup" — the test name is "falls_back_to_rate_table", implying fallback without necessarily caching. I'll not write back in `get_cached_rate` (pure read), and document it. But hmm — is there a risk that a hidden test expects the pair to be cached after `get_cached_rate`? Unlikely; the known test only asserts > 0.
+
+Hmm, actually, wait. Let me reconsider: maybe writing back is better for consistency with `fetch_rate` (the cache is the process-wide rate cache; a derived pair rate is valid to store). But `get_cached_rate` writing to global state on a "get" call is a side effect that could surprise: e.g., `rates_table_snapshot()` would then include pair keys. There's an existing test `test_cached_rate_keys_lists_entries` asserting "CNY" in keys — unaffected either way.
+
+I'll go with NOT writing back: the function stays a lookup with a documented fallback. Actually hmm, let me think about which is more "correct" for the settlement use case. The settlement path uses `fetch_rate` (which caches). `get_cached_rate` is a read-only accessor for consumers that want the rate without mutating the cache. I'll document: "does not mutate the cache".
+
+Wait, one more: there's `rates_table_snapshot()` — "Return a copy of the currently cached rate table". If pair entries are in the cache, the snapshot includes them. That's pre-existing.
+
+Now let me also double check the `_effective_table` approach doesn't break `fetch_rate` for the CLI `cmd_rates` path (load_rate_table → cache = DEFAULT_RATES) — same values ✓.
+
+What about `refresh_rate_table(rates)` with `rates=None` → DEFAULT_RATES ✓.
+
+Edge case: `load_rate_table(rates={})`? `rates or DEFAULT_RATES` → empty dict is falsy → DEFAULT_RATES. OK.
+
+Edge case: cache contains ONLY pair entries (e.g. after `RATE_CACHE.clear()` + fetch_rate) → `_effective_table()` → {} → DEFAULT_RATES ✓.
+
+Now let me write the code.
+
+```python
+def _effective_table() -> dict[str, Decimal]:
+    """Return the rate table the cache falls back to.
+
+    ``RATE_CACHE`` mixes two kinds of entries: currency entries written by
+    ``load_rate_table`` / ``refresh_rate_table`` (they describe a table) and
+    pair entries written by ``fetch_rate`` (they describe one conversion).
+    Only the currency entries build a table; when the cache holds none, the
+    built-in default table is used.
+    """
+    table = {code: value for code, value in RATE_CACHE.items() if ":" not in code}
+    return table or DEFAULT_RATES
+
+
+def _table_rate(base: str, quote: str) -> Decimal:
+    """Return the cross rate of a pair according to the effective rate table."""
+    table = _effective_table()
+    if base not in table:
+        raise RateUnavailable(f"no base rate for {base}")
+    if quote not in table:
+        raise RateUnavailable(f"no quote rate for {quote}")
+    return table[quote] / table[base]
+```
+
+Then:
+
+```python
+def fetch_rate(base: str, quote: str) -> Decimal:
+    """Return the rate to convert ``base`` into ``quote``."""
+    key = f"{base}:{quote}"
+    if key in RATE_CACHE:
+        return RATE_CACHE[key]
+    rate = _table_rate(base, quote)
+    RATE_CACHE[key] = rate
+    return rate
+
+
+def get_cached_rate(base: str, quote: str) -> Decimal:
+    """Return the cached rate for a pair, falling back to the rate table.
+
+    The cache only holds pairs that were fetched before, so a lookup for an
+    unknown pair used to raise ``KeyError``. It now falls back to the rate
+    table (the loaded table, or the built-in default one) and only raises
+    ``RateUnavailable`` when the currency is unknown.
+    """
+    key = f"{base}:{quote}"
+    if key in RATE_CACHE:
+        return RATE_CACHE[key]
+    return _table_rate(base, quote)
+```
+
+Careful: `_effective_table` filtering by ":" — the pair key is f"{base}:{quote}". If a currency code contained ":" this would misclassify, but that's not a real case.
+
+Hmm, one concern: `_effective_table` uses the cache's currency entries. But `load_rate_table` writes `rates or DEFAULT_RATES` — a copy of the dict, so mutating DEFAULT_RATES later doesn't affect it. Fine.
+
+Another consideration: what if the loaded table is a *partial* table (e.g. only CNY and USD) and someone asks for EUR:CNY → RateUnavailable. Previously fetch_rate would have used DEFAULT_RATES and succeeded. This is a behavior change for the partial-table case. Is that desirable? I think yes — if the operator refreshed the table with a partial table, the effective table is what they configured. But it *is* a behavior change beyond the strict scope of the user's request.
+
+Hmm. Let me weigh: the user's request is "查不到就回落到默认汇率表" — fall back to the *default* rate table. Maybe I should be conservative and keep `fetch_rate`'s source of truth as DEFAULT_RATES (unchanged behavior) and have `get_cached_rate` fall back to... also DEFAULT_RATES? Then both are consistent, and there's no behavior change at all beyond the KeyError fix.
+
+But then `refresh_rates(custom)` remains a no-op for settlement, which is a pre-existing latent bug. Fixing it is out of scope and could surprise.
+
+Decision: Let me look at it from the "co-change topology" hint: rates.py <-> settlement.py co-changed 5x. The minimal, safe, coherent fix:
+
+- Introduce `_table_rate(base, quote)` that resolves from the **effective rate table**: the loaded table if the cache holds currency entries, else DEFAULT_RATES.
+
+Hmm, I keep going back and forth. Let me decide based on risk to the existing test suite and to the documented invariants:
+
+Option 1 (fallback → DEFAULT_RATES only):
+- `get_cached_rate` fallback = DEFAULT_RATES. Zero behavior change for fetch_rate. `refresh_rate_table(custom)` still doesn't affect rate computation (pre-existing bug, out of scope).
+- Simple, matches the user's literal words ("默认汇率表" = DEFAULT_RATES).
+
+Option 2 (fallback → effective table):
+- `refresh_rate_table(custom)`/`refresh_rates(custom)` finally affects settlement. More correct, but changes behavior beyond the request and could surprise (e.g. someone loads a partial table → RateUnavailable where previously it worked).
+
+Hmm, Option 2's "partial table → RateUnavailable" is actually a *riskier* behavior change: `cli.cmd_rates` loads the full default table so fine; but any caller doing `load_rate_table({"CNY": 1})` would now break EUR conversions. In Option 1, `load_rate_table` custom tables are ignored entirely (as today).
+
+I'll go with a hybrid that is safe AND sensible: the effective table = the loaded table **merged over** DEFAULT_RATES? No, that reintroduces "unknown currency" semantics differently...
+
+Let me settle on Option 1 with one refinement: the fallback table is DEFAULT_RATES (the documented "默认汇率表"), and the rate resolution is shared between `fetch_rate` and `get_cached_rate` so they can never disagree. This is the minimal, predictable fix matching the user's words, keeps `fetch_rate` behavior byte-identical, and turns the KeyError into a domain error.
+
+Hmm, but then what about a custom loaded table? With Option 1, `rates.load_rate_table({"CNY": Decimal("1"), "USD": Decimal("8")})` then `get_cached_rate("USD","CNY")` → 1/7.1234 (DEFAULT_RATES), ignoring the loaded table. Is that surprising? The user's request says "回落到默认汇率表" — yes, that's literally the default rate table. OK.
+
+Hmm, hmm. But "汇率表" in this repo README: "汇率表集中在 `src/ledger/rates.py`" and DEFAULT_RATES is the built-in table. The loaded table via load_rate_table is also "汇率表". "默认汇率表" = the default one = DEFAULT_RATES. I'll go with DEFAULT_RATES as the fallback source, BUT I'll make the fallback prefer the loaded table **when it is a superset**? No — too clever.
+
+Final decision: Option 1 — fallback to `DEFAULT_RATES`, shared helper, `RateUnavailable` for unknown currencies. I'll document precisely in the docstring: "falls back to the default rate table (DEFAULT_RATES)".
+
+Hmm, but wait. One more consideration in favor of the effective table: the test `test_get_cached_rate_falls_back_to_rate_table` calls `rates.load_rate_table()` first — with no args, that's DEFAULT_RATES. So both options pass that test. Fine — Option 1 it is, and I'll add a test asserting that a *refreshed* table is honored? No — that would encode Option 2 behavior. I'll instead add a test that the fallback equals the DEFAULT_RATES cross rate (deterministic value), e.g. `get_cached_rate("USD","CNY") == DEFAULT_RATES["CNY"] / DEFAULT_RATES["USD"]`.
+
+Hmm, but hold on. Is it actually better to honor the loaded table? Consider a real ops scenario: an operator calls `settlement.refresh_rates(custom_table)` to update rates at runtime. With Option 1, the refresh has zero effect on settlement — the settlement engine would keep using the built-in defaults. That's a genuine bug, but it's a *different* bug from the one the user reported, and fixing it could alter settled amounts in ways the user didn't ask for. The user's ask is narrow and explicit. I'll implement Option 1 and *mention* the observation about `refresh_rates` in my final summary as a follow-up note (without changing it).
+
+Hmm, although... "请改成查不到就回落到默认汇率表" — "回落到默认汇率表" could well mean "fall back to the rate table" in the sense of "the table that the process holds". Ugh.
+
+Let me look at the README wording again: "而 `rates.get_cached_rate` 直接用**货币对**键 `"USD:CNY"` 索引 `RATE_CACHE`，没有回退到汇率表；同文件的 `rate_for_pair` 才有回退". So the README describes the intended fix as: fall back to the rate table. And `rate_for_pair` → `fetch_rate` → DEFAULT_RATES. So the *documented intent* is that `get_cached_rate` should behave like `rate_for_pair`/`fetch_rate`, which uses DEFAULT_RATES.
+
+So Option 1 aligns exactly with the documented intent: make `get_cached_rate` fall back like `rate_for_pair` does. And the cleanest implementation: `get_cached_rate` == `rate_for_pair` semantics. I could even implement `get_cached_rate` by delegating to `rate_for_pair`... but then it would also cache the pair (side effect). Hmm, `rate_for_pair` caches via fetch_rate.
+
+Should `get_cached_rate` cache the derived pair? If I delegate to `rate_for_pair`, then after `get_cached_rate("USD","CNY")`, the cache holds the pair key. Is that harmful? `cached_rate_keys()` would list "USD:CNY" — the existing test asserts "CNY" in keys ✓. `rates_table_snapshot()` would include the pair ✓ (no test asserts otherwise).
+
+I think the cleanest, most consistent implementation: `get_cached_rate(base, quote)` returns the cached pair rate if present, else falls back to the rate table (same computation as `fetch_rate`) — and I'll make it cache the derived pair so subsequent lookups are cheap and consistent with `fetch_rate`/`rate_for_pair` (all three then agree). Hmm, but "get" that mutates... `fetch_rate` mutates; `rate_for_pair` mutates. So the family mutates. For consistency, caching is fine and it also means `get_cached_rate` becomes a true "cached rate" accessor afterwards.
+
+Hmm, but a test I plan to write: "get_cached_rate does not mutate the cache"? I'd rather not write that. Let me decide: **cache the derived pair** — consistent with the module's existing style, and it means `rates_table_snapshot()` after a lookup shows the pair.
+
+Hmm, wait. But there's a downside: if `get_cached_rate` caches, then a later `refresh_rate_table(custom)` clears the cache (refresh_rate_table clears + updates) → fine.
+
+Eh, let me think about which choice makes the *settlement* path benefit: settlement uses `fetch_rate`, which caches. No difference.
+
+OK let me just decide: I'll implement `get_cached_rate` to fall back **without** writing to the cache, keeping it a pure lookup, and document it: "does not add the derived pair to the cache". Hmm... but then `get_cached_rate` and `fetch_rate` for the same pair return the same value anyway. Pure is safer (no surprising global mutation from a getter). But is there a scenario where NOT caching causes an inconsistency? If the default table changed between calls (it doesn't at runtime) — no.
+
+Hmm, one more thought: a caller might do `get_cached_rate` expecting "the rate that will be used" — same value either way.
+
+Final: pure lookup fallback (no cache mutation). Document it.
+
+Wait — actually, hmm, one more important consideration in favor of caching: `fetch_rate` caches the pair, so after any settlement the pair IS cached. `get_cached_rate` being pure just means it doesn't add entries. Fine.
+
+Now let me write the implementation.
+
+### rates.py changes
+
+```python
+def _default_rate(base: str, quote: str) -> Decimal:
+    """Return the cross rate of a pair from the default rate table.
+
+    This is the fallback used whenever the cache does not hold the pair, so
+    a lookup never fails with a bare ``KeyError``.
+    """
+    if base not in DEFAULT_RATES:
+        raise RateUnavailable(f"no base rate for {base}")
+    if quote not in DEFAULT_RATES:
+        raise RateUnavailable(f"no quote rate for {quote}")
+    return DEFAULT_RATES[quote] / DEFAULT_RATES[base]
+```
+
+Then fetch_rate uses `_default_rate`, get_cached_rate uses it as fallback.
+
+Hmm, but should the fallback table be DEFAULT_RATES or the loaded table? I decided DEFAULT_RATES per README intent. But hmm, let me reconsider one final time with the "loaded table" scenario in mind:
+
+`load_rate_table()` (no args) → cache = DEFAULT_RATES copy. `get_cached_rate("USD","CNY")` → not cached as pair → fallback → DEFAULT_RATES["CNY"]/DEFAULT_RATES["USD"] ✓ > 0. Test passes.
+
+OK. Implementation decided. Now the settlement side.
+
+### settlement.py changes
+
+The settlement path uses `fetch_rate`, which is already KeyError-free. Should I change anything there? The user's complaint mentions headless settlement. To make the guarantee explicit and to add a regression test at the settlement level, I could route settlement through `rate_for_pair`... no, `fetch_rate` is fine.
+
+However! There's one thing worth checking: `settlement.settle_invoice` calls `rates_module.fetch_rate(base_currency, quote_currency)` — with a *cold* cache and unknown currency (e.g. GBP→CNY), it raises RateUnavailable ✓ (domain error, not KeyError). Good.
+
+But hmm — what about `settle_invoice(invoice, "USD", "USD")`? key "USD:USD" → not cached → base USD ✓, quote USD ✓ → rate = 1 ✓.
+
+I'll add a settlement-level regression test: cold cache (clear RATE_CACHE) + settle USD→CNY returns positive int and no KeyError; plus a test that an unknown currency raises RateUnavailable (a LedgerError), not KeyError.
+
+Wait — is there already a test for unknown currency in settlement? No. Let me add one: `settle_invoice(invoice, "GBP", "CNY")`... but settle_invoice checks `line.currency != base_currency` first → CurrencyMismatch. To hit RateUnavailable I need the line currency to be GBP and base GBP: `build_invoice("INV", [("x","GBP",10.0,1)], currency="GBP")` then `settle_invoice(invoice, "GBP", "CNY")` → fetch_rate("GBP","CNY") → RateUnavailable("no base rate for GBP") ✓.
+
+Let me now write the tests.
+
+**tests/test_rates.py additions:**
+
+```python
+import pytest
+
+from ledger import rates
+from ledger.errors import LedgerError, RateUnavailable
+
+
+@pytest.fixture(autouse=True)
+def _isolated_rate_cache():
+    """Keep the process wide rate cache from leaking between tests."""
+    saved = dict(rates.RATE_CACHE)
+    try:
+        yield
+    finally:
+        rates.RATE_CACHE.clear()
+        rates.RATE_CACHE.update(saved)
+```
+
+Hmm, careful: an autouse fixture restoring the cache means `load_rate_table()` inside a test still leaves the cache dirty for the *next* test? No — the fixture restores the saved snapshot after each test, so state doesn't leak. But the snapshot is taken at the start of each test, which may already contain leftovers from a previous test... but since each test restores to its own start-of-test state, leakage is contained: test A's changes are undone at the end of test A. ✓
+
+Wait, but there's a subtlety: `rates.RATE_CACHE` is referenced by the module functions directly (global lookup at call time) → clearing and updating the same dict object is fine ✓ (don't rebind).
+
+Tests to add:
+
+1. `test_get_cached_rate_returns_cached_pair_when_present`:
+```python
+def test_get_cached_rate_returns_cached_pair_when_present():
+    rates.load_rate_table()
+    fetched = rates.fetch_rate("USD", "CNY")
+    assert rates.get_cached_rate("USD", "CNY") == fetched
+```
+
+2. `test_get_cached_rate_falls_back_to_default_rate_table` — the already existing test covers > 0; I'll add a precise one:
+```python
+def test_get_cached_rate_falls_back_to_default_rate_table_values():
+    rates.load_rate_table()
+    expected = rates.DEFAULT_RATES["CNY"] / rates.DEFAULT_RATES["USD"]
+    assert rates.get_cached_rate("USD", "CNY") == expected
+```
+
+3. `test_get_cached_rate_does_not_raise_key_error_for_uncached_pair`:
+```python
+def test_get_cached_rate_never_raises_key_error():
+    rates.load_rate_table()
+    try:
+        rate = rates.get_cached_rate("EUR", "CNY")
+    except KeyError as err:  # pragma: no cover - the regression we are fixing
+        pytest.fail(f"get_cached_rate raised KeyError: {err}")
+    assert rate > 0
+```
+Hmm, better: use `pytest.raises` style? I'd write:
+```python
+    assert isinstance(rate, Decimal)
+```
+Let me write it as a straightforward assertion without try/except but with a comment. Actually to assert "no KeyError" explicitly, `pytest.fail` in except is fine but verbose. Simpler: since KeyError would propagate and fail the test anyway, just calling it and asserting > 0 already proves no KeyError. I'll note that in the comment.
+
+4. `test_get_cached_rate_raises_rate_unavailable_for_unknown_currency`:
+```python
+def test_get_cached_rate_rejects_unknown_currency_with_domain_error():
+    rates.load_rate_table()
+    with pytest.raises(RateUnavailable) as excinfo:
+        rates.get_cached_rate("GBP", "CNY")
+    assert not isinstance(excinfo.value, KeyError)
+    assert isinstance(excinfo.value, LedgerError)
+```
+
+5. `test_get_cached_rate_matches_fetch_rate_for_uncached_pair`:
+```python
+def test_get_cached_rate_agrees_with_fetch_rate():
+    rates.load_rate_table()
+    assert rates.get_cached_rate("USD", "CNY") == rates.fetch_rate("USD", "CNY")
+```
+
+6. `test_get_cached_rate_uses_cached_pair_over_table`:
+```python
+def test_get_cached_rate_prefers_the_cached_pair():
+    rates.load_rate_table()
+    rates.RATE_CACHE["USD:CNY"] = Decimal("0.5")
+    assert rates.get_cached_rate("USD", "CNY") == Decimal("0.5")
+```
+
+7. Maybe a test that the fallback does not pollute the cache? I'll skip asserting that (implementation detail) — actually, since I decided get_cached_rate is pure, I could assert the pair isn't added. But if someone later changes it to cache, the test breaks. I'll assert the *value* semantics only. Hmm, but it's good to pin "no side effect"... I'll skip it. Actually, let me include a softer test: after `get_cached_rate`, `rates.cached_rate_keys()` may or may not include the pair — skip.
+
+**tests/test_settlement.py additions:**
+
+```python
+def test_settle_invoice_uses_rate_table_when_cache_is_cold():
+    from ledger import rates
+    from ledger.settlement import settle_invoice
+
+    rates.RATE_CACHE.clear()
+    invoice = build_invoice("INV-1022", [("hosting", "USD", 10.0, 1)], currency="USD")
+    settled = settle_invoice(invoice, "USD", "CNY")
+    assert isinstance(settled, int)
+    assert settled > 0
+```
+Careful: clearing the global cache affects other tests — use a fixture to restore. test_settlement.py has no fixture; I'll add one that snapshots/restores RATE_CACHE for the specific test (or use monkeypatch: `monkeypatch.setattr(rates, "RATE_CACHE", {})`? That rebinds the module attribute — but `rates.fetch_rate` refers to the global name `RATE_CACHE` in the rates module namespace → monkeypatch.setattr on the module attribute works and is restored automatically. That's clean! But careful: `load_rate_table` does RATE_CACHE.clear() → would clear the new dict; fine.
+
+Hmm, but with monkeypatch.setattr(rates, "RATE_CACHE", {}), the module-level functions use the module global → they see the new dict ✓ and monkeypatch restores the original object afterwards ✓. But note the original dict's *contents* were untouched ✓.
+
+Alternatively use a fixture in test_settlement.py:
+```python
+@pytest.fixture
+def cold_rate_cache():
+    from ledger import rates
+    saved = dict(rates.RATE_CACHE)
+    rates.RATE_CACHE.clear()
+    try:
+        yield rates.RATE_CACHE
+    finally:
+        rates.RATE_CACHE.clear()
+        rates.RATE_CACHE.update(saved)
+```
+I'll use monkeypatch — simpler and idiomatic pytest. But `rates.RATE_CACHE.clear()` inside `load_rate_table` would clear the patched dict — fine.
+
+Hmm, one catch: monkeypatch.setattr(rates, "RATE_CACHE", {}) replaces the dict object; `load_rate_table` calls `RATE_CACHE.clear()` and `RATE_CACHE.update(...)` → operates on the patched object ✓; after teardown, the original object is restored (with its original contents) ✓.
+
+I'll write the settlement test:
+
+```python
+def test_settle_invoice_falls_back_to_rate_table_with_cold_cache(monkeypatch):
+    from ledger import rates
+    from ledger.settlement import settle_invoice
+
+    # A headless run starts with an empty rate cache: the lookup must fall
+    # back to the rate table instead of raising KeyError.
+    monkeypatch.setattr(rates, "RATE_CACHE", {})
+    invoice = build_invoice("INV-1022", [("hosting", "USD", 10.0, 1)], currency="USD")
+    settled = settle_invoice(invoice, "USD", "CNY")
+    assert isinstance(settled, int)
+    assert settled > 0
+```
+
+And a test for unknown currency raising RateUnavailable (not KeyError) at settlement level:
+
+```python
+def test_settle_invoice_rejects_unknown_currency_with_domain_error():
+    invoice = build_invoice("INV-1023", [("hosting", "GBP", 10.0, 1)], currency="GBP")
+    with pytest.raises(RateUnavailable) as excinfo:
+        settle_invoice(invoice, "GBP", "CNY")
+    assert not isinstance(excinfo.value, KeyError)
+```
+
+Wait: `settle_invoice` raises CurrencyMismatch if line.currency != base_currency — here line currency GBP == base GBP ✓ → proceeds to fetch_rate("GBP","CNY") → RateUnavailable ✓.
+
+Hmm, but careful: `line.unit_price` = 10.0 fine.
+
+Also, is RateUnavailable raised *before* the currency check? Order in settle_invoice: currency check → _require_usable_price → fetch_rate ✓.
+
+Also add a CLI-level (headless) test? There's no test_cli.py. Let me check... glob showed tests: test_invoicing, test_idempotency, test_audit, test_rates, test_import_rows, test_settlement, test_pagination. No CLI test. The "headless" scenario is the CLI. Adding a test for the CLI settle path would be a nice end-to-end guard:
+
+```python
+# tests/test_cli.py
+from ledger.cli import main
+def test_cli_settle_falls_back_to_rate_table_with_cold_cache(capsys, monkeypatch):
+    ...
+    exit_code = main(["settle", "--invoice-id", "INV-1", "--currency", "USD", "--quote", "CNY", "--amount", "10", "--quantity", "1"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "CNY" in out
+```
+
+That directly covers "headless 结算" (CLI = headless). I think adding this is valuable since the user explicitly mentioned headless settlement. But it adds a new test file — is that OK? The repo has one test file per module roughly; there's no test_cli.py but cli.py exists. Adding one is fine and valuable.
+
+Hmm, but careful: the CLI's `cmd_settle` → `settle_and_invoice` → `settle_invoice` → `fetch_rate` → with an empty cache → falls back to DEFAULT_RATES ✓. The printed output: `format_money(settled_minor, "CNY")` → e.g. "1.40 CNY" ✓.
+
+Also `main()` requires the argparse setup. Let me verify the CLI works with `--amount 10` etc. Earlier I ran it successfully ✓.
+
+I'll add tests/test_cli.py with 2 tests:
+1. `test_cli_settle_uses_rate_table_when_cache_is_cold` — monkeypatch rates.RATE_CACHE to {} and run main([...]) → exit 0, output contains "CNY".
+2. `test_cli_rates_lists_the_default_table`? Meh, maybe just one focused test. Let me add the settle one plus maybe an api-level one. Keep it focused.
+
+Hmm, does the API have a settle handler test? `api.handle_settle` — no test file for api. Let me not sprawl. I'll add test_cli.py with the headless settle test (1-2 tests).
+
+Now, let me also double check `format_money` and `settled_amount`... not needed.
+
+### Docs
+
+Update README.md:
+- 测试基线 section: now 46 项 / 46 通过 / 0 失败. Remove the failing-row table entry (or mark it as fixed). Prior sessions kept a "已修复" note pattern. I'll rewrite the section to state the current baseline (46/46) and add a note that the rates-cache fallback was fixed on 2026-11-22 with a pointer to the new section.
+- Add a new section "汇率缓存回落（2026-11-22 修复）" describing: `get_cached_rate` no longer raises KeyError; cache hit → cached pair; miss → default rate table (DEFAULT_RATES cross rate); unknown currency → RateUnavailable (LedgerError), not KeyError.
+
+Update AGENTS.md:
+- The "存量失败基线" section → update to reflect 0 failures; keep the invariant note. AGENTS.md §3 says "测试命令（已验证）" etc. I'll update the baseline subsection to say the rates failure is now fixed (46/46), and add a bullet documenting the rate-cache fallback convention.
+
+Also MEMORIES.md is auto-generated by tmem; I'll capture the session memory at the end if the user wants. Per AGENTS.md §2, I should ask the user whether to persist. The milestone prompt says to append the prompt at the end of my response. I could proactively run `tmem capture --agent dsh` — the skill description says to activate when the user types /tmem, /remember, or confirms saving. The user hasn't asked to save. So I'll ask at the end (per AGENTS.md §2 "Proactive Milestone Prompt").
+
+Hmm, but the AGENTS.md instruction says "append a concise one-line prompt at the end of your response asking whether to persist the memory trace". I'll do that.
+
+Let me now check pyproject.toml and whether there's a conftest.py.
+
+Then implement.
+
+Let me also double-check the date to use in docs: The repo's baseline says 2026-11-22. Let me check the system date.
+dsh: reasoning:
+Date is 2026-11-22, matching the repo's docs. Good.
+
+Now let me implement. Plan of edits:
+
+1. `src/ledger/rates.py` — the core fix.
+2. `tests/test_rates.py` — add tests.
+3. `tests/test_settlement.py` — add cold-cache + unknown-currency regression tests.
+4. `tests/test_cli.py` — new headless CLI regression test.
+5. `README.md` + `AGENTS.md` — baseline update.
+
+Let me write a todo list first since this is multi-step.
+
+Actually, the task is moderately sized; a todo list helps. Let me create it.
+dsh: reasoning:
+Now implement the rates.py fix.
+
+Current code:
+
+```python
+def fetch_rate(base: str, quote: str) -> Decimal:
+    """Return the rate to convert ``base`` into ``quote``."""
+    key = f"{base}:{quote}"
+    if key in RATE_CACHE:
+        return RATE_CACHE[key]
+    if base not in DEFAULT_RATES:
+        raise RateUnavailable(f"no base rate for {base}")
+    if quote not in DEFAULT_RATES:
+        raise RateUnavailable(f"no quote rate for {quote}")
+    rate = DEFAULT_RATES[quote] / DEFAULT_RATES[base]
+    RATE_CACHE[key] = rate
+    return rate
+
+
+def get_cached_rate(base: str, quote: str) -> Decimal:
+    """Return the cached rate for a pair.
+
+    Only pairs that were fetched before are present in the cache.
+    """
+    key = f"{base}:{quote}"
+    return RATE_CACHE[key]
+```
+
+New code with a shared `_default_rate` helper.
+
+Let me write it.
+dsh: reasoning:
+The hint says rates.py co-changes with settlement.py. Let me check whether settlement.py needs a corresponding update. The settlement path uses `fetch_rate`, which already falls back via `_default_rate` → no KeyError. So settlement needs no change functionally. But I should verify the settlement path explicitly with tests (which I plan).
+
+Also `rate_for_pair` — it delegates to fetch_rate ✓ (unchanged).
+
+Let me now view the final rates.py to confirm correctness.
+dsh: reasoning:
+Good. Now the tests. First tests/test_rates.py — add the fixture and new tests.
+
+Note: `test_get_cached_rate_falls_back_to_rate_table` already exists and will now pass.
+
+Let me write the new test file content additions.
+dsh: reasoning:
+Wait: `test_get_cached_rate_does_not_mutate_the_cache` — I decided get_cached_rate is pure. But careful: the autouse fixture restores the cache after each test, so within the test the cache contains currency entries only (after load_rate_table) ✓ and "USD:CNY" should not be there ✓.
+
+Hmm, but is that test too implementation-specific? It documents the side-effect-free contract stated in the docstring. Keep it.
+
+Now the settlement-level tests and the headless CLI test.
+
+For test_settlement.py, add:
+1. `test_settle_invoice_falls_back_to_rate_table_with_cold_cache` — monkeypatch RATE_CACHE to {}.
+2. `test_settle_invoice_rejects_unknown_currency_with_domain_error` — RateUnavailable not KeyError.
+
+Let me use monkeypatch for the cold cache. Note: `monkeypatch.setattr(rates, "RATE_CACHE", {})` — the rates module functions reference the global `RATE_CACHE` at call time → they'd use the new dict ✓.
+
+Careful with `settlement.py`: it does `from . import rates as rates_module` then `rates_module.fetch_rate(...)` → the function looks up `RATE_CACHE` in its own module globals → the patched attribute ✓.
+
+Let me append to tests/test_settlement.py.
+
+Also the CLI test file tests/test_cli.py.
+
+Let me write both.
+dsh: reasoning:
+The hint says tests/test_settlement.py co-changes with src/ledger/settlement.py. I decided settlement.py needs no functional change since it already routes through `fetch_rate` (which now shares the `_default_rate` fallback). The new tests document that guarantee at the settlement level. Good — no source change needed there.
+
+Now the headless CLI test.
+dsh: reasoning:
+All 60 tests pass (was 46 tests with 1 failure; now 60 tests, 0 failures — the previously failing test is fixed and 14 new tests were added).
+
+Let me verify the fix behaves properly with a verbose run of the rates tests, and double check no KeyError can escape anywhere. Let me also run a quick sanity check for the isolation fixture — verify test ordering doesn't matter (run with -p no:randomly, and also run the settlement tests alone).
+
+Let me also double-check that my new test `test_get_cached_rate_does_not_mutate_the_cache` doesn't conflict with the autouse fixture semantics.
+
+Also verify: does any other test rely on `get_cached_rate` raising KeyError? No.
+
+Let me run verbose on rates + a repeat run to check for order dependence.
+
+Also, I should update the README/AGENTS baseline docs (todo item 5).
+
+Let me run a verbose check first.
+dsh: reasoning:
+All good. Now let me verify no KeyError escapes anywhere in the rate paths, e.g. a quick script exercising the paths, and confirm the headless CLI still works.
+
+Then update the docs (README.md + AGENTS.md).
+
+Let me also do a final check that the settlement amounts are unchanged by my fix (the integer minor units invariant): settle_invoice for USD→CNY should produce the same as before. My change didn't alter fetch_rate's computation (same DEFAULT_RATES cross rate) ✓ — only the error type path changed (RateUnavailable instead of KeyError, which fetch_rate never produced).
+
+Let me quickly verify the settled value for a sample invoice matches the pre-fix value: earlier the CLI printed "1.40 CNY" for 10 USD → 1.40 CNY ✓ (10/7.1234 = 1.404). Same as before the fix ✓.
+
+Now docs. README.md lines 26-37 need updating:
+
+```
+## 测试基线（2026-11-22）
+
+`PYTHONPATH=src python3 -m pytest` → **46 项，45 通过 / 1 失败**。
+以下 1 个失败是当前已知的存量失败基线，**未修复**，修复前后请以此基线对齐：
+
+| 失败用例 | 现象 | 根因 |
+| :--- | :--- | :--- |
+| `tests/test_rates.py::test_get_cached_rate_falls_back_to_rate_table` | `KeyError: 'USD:CNY'` | ... |
+
+> 2026-11-22：`tests/test_pagination.py::test_pagination_does_not_lose_invoices` **已修复**...
+```
+
+New version: 60 项，全部通过 (0 失败). And a note that the rates failure is fixed, plus a new section documenting the fallback convention.
+
+Let me write the README changes.
+
+Also AGENTS.md §3 "存量失败基线（2026-11-22，46 项 / 45 通过 / 1 失败，尚未修复）" → update to 60 项 / 60 通过 / 0 失败, and add a bullet about the rate-cache fallback convention.
+
+Let me read AGENTS.md fully to edit precisely.
+dsh: reasoning:
+Now update AGENTS.md §3 baseline and add the rate-cache fallback convention. And README.md.
+
+AGENTS.md changes:
+- Line 18-20: replace the "存量失败基线" block with the new baseline (60 项 / 60 通过 / 0 失败) and note the rates failure is fixed.
+- Add a new bullet: "汇率缓存回落约定（2026-11-22 已修复，不可回退）".
+
+Let me write the edits.
+dsh: reasoning:
+Now add the rate-cache fallback convention bullet to AGENTS.md, and update README.md.
+
+AGENTS.md: append a new bullet after the pagination/缺价 ones:
+
+- **汇率缓存回落约定（2026-11-22 已修复，不可回退）**: `rates.get_cached_rate` 用货币对键索引 `RATE_CACHE`，缓存里没有该币对时**必须回落到默认汇率表**（`DEFAULT_RATES` 的交叉汇率），禁止再抛裸 `KeyError`；未知币种统一抛 `ledger.errors.RateUnavailable`（`LedgerError` 子类）。
+  - 原因：headless（CLI）结算进程启动时缓存是冷的，旧实现直接 `RATE_CACHE["USD:CNY"]` → `KeyError: 'USD:CNY'`。
+  - 回落逻辑集中在 `src/ledger/rates.py` 的 `_default_rate()`，`fetch_rate` / `get_cached_rate` 共用，保证两者对同一币对返回同一个汇率。
+  - 已修复用例：`tests/test_rates.py::test_get_cached_rate_falls_back_to_rate_table`（回归覆盖见 `tests/test_rates.py`、`tests/test_settlement.py`、`tests/test_cli.py`）。
+
+Then README.md updates.
+dsh: reasoning:
+The README's last lines may differ. Let me read the tail of README.
+dsh: reasoning:
+Now final verification: run the full suite twice (the memory facts mention `PYTHONPATH=src python3 -m pytest -v 2>&1 && PYTHONPATH=src python3 -m pytest`), verify the headless CLI still works, verify the settled amounts are unchanged (integer minor units invariant), and review the final diff.
+
+Let me run:
+1. `PYTHONPATH=src python3 -m pytest -v 2>&1 | tail -5 && PYTHONPATH=src python3 -m pytest 2>&1 | tail -3`
+2. CLI settle check.
+3. git diff review.
+
+Also verify settled amount for a sample is unchanged from before the fix: pre-fix CLI printed "1.40 CNY" for 10 USD → let me re-run and compare.
+
+Let me also double check that the `get_cached_rate` fallback matches `fetch_rate` exactly for a few pairs (already tested).
+
+One more: run the test suite in reverse order to check inter-test isolation? pytest doesn't have a built-in reverse option; but my autouse fixture handles rates isolation. Let me at least run test_settlement.py alone and test_cli.py alone (done above in the group run).
+
+Let me run the final verification.
+dsh: reasoning:
+Everything works:
+- 60/60 tests pass (was 46 collected with 1 failure).
+- Headless CLI settle still prints "1.40 CNY" → settled amounts unchanged (integer minor units invariant intact).
+- Rate lookups fall back; unknown currency → RateUnavailable.
+
+Let me review the final diff of the source change to double-check quality.
+dsh: reasoning:
+The diff is clean and minimal. Everything is verified.
+
+Let me finalize the todos and write the summary. Also per AGENTS.md §2, I need to append the milestone prompt asking whether to persist the memory trace.
+
+One thing to mention in the summary: the observation that `settlement.refresh_rates(custom_table)` / `rates.load_rate_table(custom)` still doesn't influence the computed cross rate (it always uses `DEFAULT_RATES`) — a pre-existing, separate issue I deliberately did not change since the user's ask was scoped to the KeyError fallback. Worth flagging as a follow-up.
+
+Let me mark todos complete.
+dsh: RATE_LIMIT: 429 {"type":"error","error":{"type":"rate_limit_error","message":"已达到 Token Plan 用量上限：请升级 Token Plan 套餐或购买积分补充用量。 (2056)"},"request_id":"0751b7bbf65ae3fa43f402a7a679c026"}

@@ -1,0 +1,35 @@
+我按 `AGENTS.md` 的指引查了项目记忆载体（工作区有 `MEMORY.md`，无 `.tmem/`、无 `MEMORIES.md`），没有运行任何命令。回答如下。
+
+## 1) 修复「导入价格 nan → ValueError: cannot convert NaN to integer」的改动文件与顺序
+
+`MEMORY.md` 第 29 行记录的**按修复顺序**是：
+
+1. `src/ledger/money.py` — 先在金额模块加统一的“价格是否可用”守卫（根因修复的公共底座）
+2. `src/ledger/import_rows.py` — 导入边界（根因）：`parse_price()` 改走统一守卫；`parse_rows()` / `rows_to_tuples()` 把行描述传进去；`parse_price_checked()` 改为委托守卫
+3. `src/ledger/settlement.py` — 结算边界（兜底）：`settle_invoice()` / `settle_line()` 先校验单价再换算；`settle_invoice_checked()` 由 `ValueError` 改为 `ValidationError`
+
+配套涉及文件（记忆中的“涉及文件”清单）：`src/ledger/invoicing.py`、`tests/test_import_rows.py`、`tests/test_settlement.py`、`MEMORY.md`。
+
+## 2) 修完后用的验证命令
+
+主验证命令（`MEMORY.md` 第 31–32 行）：
+
+```bash
+PYTHONPATH=src python3 -m pytest -q 2>&1
+```
+
+同时还记录了收集校验的变体（用于确认新测试确实被 pytest 收集到）：
+
+```bash
+PYTHONPATH=src python3 -m pytest --collect-only -q 2>&1
+PYTHONPATH=src python3 -m pytest tests/test_import_rows.py --collect-only -q 2>&1
+PYTHONPATH=src python3 -m pytest tests/test_settlement.py --collect-only -q 2>&1
+```
+
+## 3) 新增的「统一校验价格是否可用」入口函数
+
+**`ensure_usable_price()`**，落在 `src/ledger/money.py`（记忆第 34、37 行：“a shared guard in `money.py`”，`parse_price()` 改走 `ensure_usable_price()`）。它统一负责把 `nan` 这类缺失价格识别出来，并抛出项目自己的 `ledger.errors.ValidationError`（而不是裸 `ValueError`）。
+
+---
+
+**一点需要提醒的差异**：记忆里把这次修复记为“已落地”，但当前工作区代码看起来还是**修复前**的状态 —— `src/ledger/money.py` 里没有 `ensure_usable_price`，`import_rows.py` 的 `parse_price()` 仍是裸 `float(raw)`、`parse_price_checked()` 仍抛 `ValueError`，`settlement.py` 的 `settle_invoice()` 尚未校验、且 `tests/test_import_rows.py` 这个文件不存在（`tests/test_settlement.py` 里已有 `test_settle_invoice_rejects_missing_price`，它期望 `ValidationError`，按现状应该会失败）。也就是说：**记忆中的答案对应该次修复的目标状态，但当前代码树尚未包含它**。按你的要求我没有运行测试去实测，只是从源码读出的判断。

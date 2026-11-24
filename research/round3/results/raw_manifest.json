@@ -1,0 +1,1769 @@
+{
+  "dataset": "e2e-round3",
+  "generated_at": "2026-11-24T13:46:46+00:00",
+  "source_root": "/home/kent/e2e/_harness/raw-r3",
+  "dest_root": "research/round3/results/raw",
+  "sessions": [
+    {
+      "id": "B1_baseline_control",
+      "scene": "B1_baseline_control",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": null,
+      "rep": null,
+      "variant": null,
+      "exit_code": 0,
+      "elapsed_sec": 321.9,
+      "isolation": null,
+      "files": {
+        "scene.json": {
+          "bytes": 888,
+          "sha256": "c89b18b0e7b747532d5fc6b4dc25c8b44336022385d11f04d5f3109f3c5bd8ec"
+        },
+        "stderr.log": {
+          "bytes": 58834,
+          "sha256": "c65e6b285066b63717260acaa99caea7d8429cffc63ebe44e19586edadb0f9c2"
+        },
+        "stdout.log": {
+          "bytes": 3095,
+          "sha256": "de85a86d694e5b0031cf1bb893d6f42a6c4a4b1dbdf43d942d3d943fa8e83f32"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 202942,
+          "sha256": "c667aec2291fd6f0591df94c96d9d8d2e1b3476b539f51afffd56a55682ceb88"
+        }
+      },
+      "trajectory": {
+        "events": 325,
+        "tool_calls": [
+          "bash",
+          "glob",
+          "read",
+          "read",
+          "glob",
+          "glob",
+          "bash",
+          "read",
+          "bash",
+          "bash",
+          "bash",
+          "bash",
+          "bash",
+          "read",
+          "bash",
+          "bash",
+          "read",
+          "bash",
+          "bash",
+          "read",
+          "bash",
+          "bash",
+          "bash",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "bash",
+          "bash",
+          "bash",
+          "read",
+          "bash",
+          "bash",
+          "bash",
+          "read",
+          "read",
+          "read",
+          "write",
+          "edit",
+          "bash",
+          "bash",
+          "bash",
+          "read",
+          "bash",
+          "bash",
+          "bash",
+          "bash",
+          "bash",
+          "bash",
+          "write",
+          "bash",
+          "bash",
+          "read",
+          "bash",
+          "edit",
+          "bash"
+        ],
+        "tmem_tool_calls": [],
+        "user_messages": 4,
+        "assistant_messages": 39,
+        "event_types": {
+          "agent/inbox/spliced": 6,
+          "approval/policy": 1,
+          "assistant/message": 39,
+          "job/registered": 33,
+          "job/settled": 33,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 39,
+          "step/start": 39,
+          "system/message": 1,
+          "tool/call": 60,
+          "tool/result": 60,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 4
+        },
+        "transcript_sha256": "c667aec2291fd6f0591df94c96d9d8d2e1b3476b539f51afffd56a55682ceb88",
+        "workspace_root": "/home/kent/e2e/r3/ledger-svc-control",
+        "edited_files": [
+          "AGENTS.md",
+          "CONVENTIONS.md",
+          "README.md"
+        ]
+      }
+    },
+    {
+      "id": "B2b_fix_control",
+      "scene": "B2b_fix_control",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": null,
+      "rep": null,
+      "variant": null,
+      "exit_code": 1,
+      "elapsed_sec": 508.4,
+      "isolation": null,
+      "files": {
+        "scene.json": {
+          "bytes": 868,
+          "sha256": "dc6c84b9ce817157c363025e90813e0390c9cb4d173ce68061bcd0d368bbe8b2"
+        },
+        "stderr.log": {
+          "bytes": 85430,
+          "sha256": "eecf8c6a9e74f2625cf0aac082df58ebdf00dbb582f5ceae7ab3fe5f39184bcc"
+        },
+        "stdout.log": {
+          "bytes": 50,
+          "sha256": "de8a9c7d65153ae49e0e55881916bbe74d70fd1a8a9c40c3af2404fdb75a0ac3"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 240475,
+          "sha256": "468a05097d00684bbc3ee0c6f844769dfdfe28fd15a75eeeea0c032e1685ad9a"
+        }
+      },
+      "trajectory": {
+        "events": 341,
+        "tool_calls": [
+          "read",
+          "bash",
+          "read",
+          "bash",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "bash",
+          "grep",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "bash",
+          "bash",
+          "bash",
+          "grep",
+          "bash",
+          "todo_write",
+          "edit",
+          "edit",
+          "edit",
+          "edit",
+          "edit",
+          "edit",
+          "bash",
+          "read",
+          "read",
+          "write",
+          "write",
+          "edit",
+          "bash",
+          "edit",
+          "edit",
+          "edit",
+          "bash",
+          "bash",
+          "bash",
+          "todo_write",
+          "bash",
+          "bash",
+          "bash",
+          "edit",
+          "edit",
+          "bash",
+          "edit",
+          "bash",
+          "bash",
+          "bash",
+          "bash",
+          "bash",
+          "read",
+          "bash",
+          "bash",
+          "bash",
+          "bash"
+        ],
+        "tmem_tool_calls": [],
+        "user_messages": 3,
+        "assistant_messages": 44,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/attempt": 6,
+          "assistant/message": 44,
+          "job/registered": 25,
+          "job/settled": 25,
+          "llm/retry": 5,
+          "llm/retry-started": 5,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 45,
+          "step/start": 45,
+          "system/message": 1,
+          "todo/write": 2,
+          "tool/call": 61,
+          "tool/result": 61,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 3
+        },
+        "transcript_sha256": "468a05097d00684bbc3ee0c6f844769dfdfe28fd15a75eeeea0c032e1685ad9a",
+        "workspace_root": "/home/kent/e2e/r3/ledger-svc-control",
+        "edited_files": [
+          "CONVENTIONS.md",
+          "README.md",
+          "src/ledger/import_rows.py",
+          "src/ledger/invoicing.py",
+          "src/ledger/money.py",
+          "src/ledger/settlement.py",
+          "tests/test_import_rows.py",
+          "tests/test_invoicing.py",
+          "tests/test_money.py",
+          "tests/test_settlement.py"
+        ]
+      }
+    },
+    {
+      "id": "B5_recall_control_with_session",
+      "scene": "B5_recall_control_with_session",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": null,
+      "rep": null,
+      "variant": null,
+      "exit_code": 0,
+      "elapsed_sec": 69.8,
+      "isolation": null,
+      "files": {
+        "scene.json": {
+          "bytes": 845,
+          "sha256": "869a59c980adb49bfd1c6f712656c9232c71c6cab661d6952d04afce49128a10"
+        },
+        "stderr.log": {
+          "bytes": 18451,
+          "sha256": "ec036027956fba36405c50e7984e02af2a18cbc3d7b074ce33a6489f736aadb0"
+        },
+        "stdout.log": {
+          "bytes": 5294,
+          "sha256": "d72b9445549423de22f80acc86e5f23d5fbd24cc4d7456fd22d65b155b35122d"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 79332,
+          "sha256": "3c3d11e1f197025618ec3e570d1bc5df824d756ecec0f7c7959d152544c61d73"
+        }
+      },
+      "trajectory": {
+        "events": 82,
+        "tool_calls": [
+          "bash",
+          "glob",
+          "read",
+          "read",
+          "read",
+          "read",
+          "bash",
+          "grep",
+          "grep",
+          "bash",
+          "read",
+          "bash",
+          "read",
+          "bash"
+        ],
+        "tmem_tool_calls": [],
+        "user_messages": 3,
+        "assistant_messages": 9,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 9,
+          "job/registered": 5,
+          "job/settled": 5,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 9,
+          "step/start": 9,
+          "system/message": 1,
+          "tool/call": 14,
+          "tool/result": 14,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 3
+        },
+        "transcript_sha256": "3c3d11e1f197025618ec3e570d1bc5df824d756ecec0f7c7959d152544c61d73",
+        "workspace_root": "/home/kent/e2e/r3/ledger-svc-control",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "C5_recall_control",
+      "scene": "C5_recall_control",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": null,
+      "rep": null,
+      "variant": null,
+      "exit_code": 0,
+      "elapsed_sec": 34.5,
+      "isolation": null,
+      "files": {
+        "capture.json": {
+          "bytes": 62,
+          "sha256": "f7d1c0ad9073fd449f715707e7f0b9ec4bb7cb7f2d66fa0c6fc1195a7acde5f5"
+        },
+        "scene.json": {
+          "bytes": 863,
+          "sha256": "dbe59c6a57c139ff62b4bbb7f889a0e83fcc529736797a1b6b2403da2b1b0c97"
+        },
+        "stderr.log": {
+          "bytes": 13222,
+          "sha256": "3e4033fdf4762b5726effce8befae898478466f2018f98bf52c13e2de70d9f02"
+        },
+        "stdout.log": {
+          "bytes": 3162,
+          "sha256": "c02b09fb1cb1ef7211b3698cd9c5a8ebf3c766933fd905d04e1edd73c0779afd"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 37111,
+          "sha256": "a923ed88d6c3bd5ec86ffe216aaf9eee78c19a4dd12138bd05596e93789797c8"
+        }
+      },
+      "trajectory": {
+        "events": 54,
+        "tool_calls": [
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "glob",
+          "grep",
+          "read",
+          "glob"
+        ],
+        "tmem_tool_calls": [
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search"
+        ],
+        "user_messages": 2,
+        "assistant_messages": 6,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 6,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 6,
+          "step/start": 6,
+          "system/message": 1,
+          "tool/call": 10,
+          "tool/result": 10,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 2
+        },
+        "transcript_sha256": "a923ed88d6c3bd5ec86ffe216aaf9eee78c19a4dd12138bd05596e93789797c8",
+        "workspace_root": "/home/kent/e2e/r3/ledger-svc-control",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "H6_probe_a_free",
+      "scene": "H6_probe_a_free",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": null,
+      "rep": null,
+      "variant": null,
+      "exit_code": 0,
+      "elapsed_sec": 33.5,
+      "isolation": null,
+      "files": {
+        "capture.json": {
+          "bytes": 62,
+          "sha256": "f7d1c0ad9073fd449f715707e7f0b9ec4bb7cb7f2d66fa0c6fc1195a7acde5f5"
+        },
+        "scene.json": {
+          "bytes": 919,
+          "sha256": "474d7840bb45f6eecd07d8750618ec7b7529422081548910ea6261631164e13d"
+        },
+        "stderr.log": {
+          "bytes": 12628,
+          "sha256": "94ba132f17e1c043d1dcd6f488b21778e934bf4b0944e1613ed81cda73e2fc65"
+        },
+        "stdout.log": {
+          "bytes": 4220,
+          "sha256": "9a6f42c5a6e2c49a38b91fba72c3e845bd20490c5c21f4d448f6fa2ed6eb9729"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 93656,
+          "sha256": "e64df924af5f4d68a77ba6ff9a6dc13bdcd57f519787070e5adb413b1c5c2bb4"
+        }
+      },
+      "trajectory": {
+        "events": 70,
+        "tool_calls": [
+          "glob",
+          "glob",
+          "read",
+          "read",
+          "read",
+          "grep",
+          "grep",
+          "tmem_expand",
+          "read",
+          "tmem_expand",
+          "tmem_expand",
+          "grep"
+        ],
+        "tmem_tool_calls": [
+          "tmem_expand",
+          "tmem_expand",
+          "tmem_expand"
+        ],
+        "user_messages": 5,
+        "assistant_messages": 9,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 9,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 9,
+          "step/start": 9,
+          "system/message": 1,
+          "tool/call": 12,
+          "tool/result": 12,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 5
+        },
+        "transcript_sha256": "e64df924af5f4d68a77ba6ff9a6dc13bdcd57f519787070e5adb413b1c5c2bb4",
+        "workspace_root": "/home/kent/e2e/r3/ledger-svc",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "H6_probe_a_zero",
+      "scene": "H6_probe_a_zero",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": null,
+      "rep": null,
+      "variant": null,
+      "exit_code": 0,
+      "elapsed_sec": 12.4,
+      "isolation": null,
+      "files": {
+        "capture.json": {
+          "bytes": 62,
+          "sha256": "f7d1c0ad9073fd449f715707e7f0b9ec4bb7cb7f2d66fa0c6fc1195a7acde5f5"
+        },
+        "scene.json": {
+          "bytes": 929,
+          "sha256": "889cd5cdb9780fcbf658fdea870903856179482d8e74135c7bd149055457f3ad"
+        },
+        "stderr.log": {
+          "bytes": 4009,
+          "sha256": "ef5bcdf90834075ccdda9f99bd90243e1d8617ed18000cf58411bcb400622b80"
+        },
+        "stdout.log": {
+          "bytes": 2554,
+          "sha256": "302bcb44444fb0feca20b0ce99a27c233a120be23c03cb201ee267d3c1037640"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 22205,
+          "sha256": "686e1ec7853067ecfaf1a6996b642a57879adf6fe1077d35037c5e50ed0fe3a4"
+        }
+      },
+      "trajectory": {
+        "events": 22,
+        "tool_calls": [],
+        "tmem_tool_calls": [],
+        "user_messages": 5,
+        "assistant_messages": 1,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 1,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 1,
+          "step/start": 1,
+          "system/message": 1,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 5
+        },
+        "transcript_sha256": "686e1ec7853067ecfaf1a6996b642a57879adf6fe1077d35037c5e50ed0fe3a4",
+        "workspace_root": "/home/kent/e2e/r3/ledger-svc",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "H6_probe_b_free",
+      "scene": "H6_probe_b_free",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": null,
+      "rep": null,
+      "variant": null,
+      "exit_code": 0,
+      "elapsed_sec": 89.2,
+      "isolation": null,
+      "files": {
+        "scene.json": {
+          "bytes": 809,
+          "sha256": "86630bf57c0fef8585eb1080b1364828a74d9edccc3d7cdca38c1b63bdc2f308"
+        },
+        "stderr.log": {
+          "bytes": 50931,
+          "sha256": "b5ac1a2863ce580dfc8dd00348139050e8db912affcd7e60553596fbd179bb49"
+        },
+        "stdout.log": {
+          "bytes": 6772,
+          "sha256": "18df341d384bde6ad009638e76168b5234408edcad3eb420f01da9f0f7cc0e38"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 123291,
+          "sha256": "a3a94d7a806fd1bdfa771842a50780f288b7e11652dddf19463c9135265b0ee1"
+        }
+      },
+      "trajectory": {
+        "events": 144,
+        "tool_calls": [
+          "glob",
+          "glob",
+          "read",
+          "read",
+          "read",
+          "glob",
+          "glob",
+          "glob",
+          "read",
+          "glob",
+          "read",
+          "glob",
+          "read",
+          "read",
+          "grep",
+          "grep",
+          "read",
+          "read",
+          "grep",
+          "read",
+          "glob",
+          "glob",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "grep",
+          "read",
+          "grep"
+        ],
+        "tmem_tool_calls": [],
+        "user_messages": 3,
+        "assistant_messages": 19,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 19,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 19,
+          "step/start": 19,
+          "system/message": 1,
+          "tool/call": 35,
+          "tool/result": 35,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 3
+        },
+        "transcript_sha256": "a3a94d7a806fd1bdfa771842a50780f288b7e11652dddf19463c9135265b0ee1",
+        "workspace_root": "/home/kent/e2e/r3/ledger-svc-control",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "H6_probe_b_zero",
+      "scene": "H6_probe_b_zero",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": null,
+      "rep": null,
+      "variant": null,
+      "exit_code": 0,
+      "elapsed_sec": 14.6,
+      "isolation": null,
+      "files": {
+        "scene.json": {
+          "bytes": 821,
+          "sha256": "fcf413558085cd1aeb99e3b4f77050df2b866930c492420c9527a9859e34a6ca"
+        },
+        "stderr.log": {
+          "bytes": 4743,
+          "sha256": "7cfdd0d13293768edcdf4d8513fa142d36849340d20a37d50d3640bbe0653d54"
+        },
+        "stdout.log": {
+          "bytes": 2934,
+          "sha256": "3607548d6635b0568c3c2983ce4de0b89eabf1ee93fadcbc20e3414bdb718e83"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 20980,
+          "sha256": "1bdf893b2ef63f617fa4c3ad6ed97a862d810d681582134040794f5c14216526"
+        }
+      },
+      "trajectory": {
+        "events": 20,
+        "tool_calls": [],
+        "tmem_tool_calls": [],
+        "user_messages": 3,
+        "assistant_messages": 1,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 1,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 1,
+          "step/start": 1,
+          "system/message": 1,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 3
+        },
+        "transcript_sha256": "1bdf893b2ef63f617fa4c3ad6ed97a862d810d681582134040794f5c14216526",
+        "workspace_root": "/home/kent/e2e/r3/ledger-svc-control",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "H6_probe_c_free",
+      "scene": "H6_probe_c_free",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": null,
+      "rep": null,
+      "variant": null,
+      "exit_code": 0,
+      "elapsed_sec": 40.2,
+      "isolation": null,
+      "files": {
+        "capture.json": {
+          "bytes": 62,
+          "sha256": "f7d1c0ad9073fd449f715707e7f0b9ec4bb7cb7f2d66fa0c6fc1195a7acde5f5"
+        },
+        "scene.json": {
+          "bytes": 915,
+          "sha256": "514e8dd0da2328a17fb80fc16b20650461bb022dfbd0549bda18419e760d5813"
+        },
+        "stderr.log": {
+          "bytes": 15588,
+          "sha256": "93737df23260e72a29427a5f667de706cd6315717998ceead158f742220d6dee"
+        },
+        "stdout.log": {
+          "bytes": 4036,
+          "sha256": "287b0f0c0fe9fdc6ae69cda1557b4d7c87f022d200d849e0f1eedb3aa6f36076"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 116222,
+          "sha256": "d90d0dc11ca391e3f4faa592ab8714720fbbad9309cdd4aa1a7dd6996cbf3ead"
+        }
+      },
+      "trajectory": {
+        "events": 113,
+        "tool_calls": [
+          "glob",
+          "glob",
+          "read",
+          "read",
+          "glob",
+          "glob",
+          "read",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "glob",
+          "glob",
+          "glob",
+          "read",
+          "read",
+          "read",
+          "grep",
+          "grep",
+          "read",
+          "grep",
+          "grep",
+          "read"
+        ],
+        "tmem_tool_calls": [
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search"
+        ],
+        "user_messages": 4,
+        "assistant_messages": 15,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 15,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 15,
+          "step/start": 15,
+          "system/message": 1,
+          "tool/call": 25,
+          "tool/result": 25,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 4
+        },
+        "transcript_sha256": "d90d0dc11ca391e3f4faa592ab8714720fbbad9309cdd4aa1a7dd6996cbf3ead",
+        "workspace_root": "/home/kent/e2e/r3/ledger-svc-control-c",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "H6_probe_c_zero",
+      "scene": "H6_probe_c_zero",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": null,
+      "rep": null,
+      "variant": null,
+      "exit_code": 0,
+      "elapsed_sec": 20.8,
+      "isolation": null,
+      "files": {
+        "capture.json": {
+          "bytes": 62,
+          "sha256": "f7d1c0ad9073fd449f715707e7f0b9ec4bb7cb7f2d66fa0c6fc1195a7acde5f5"
+        },
+        "scene.json": {
+          "bytes": 924,
+          "sha256": "13fa4088b2d61c9631e4004c11d1ee00cc0e90d288ac513ae62d2acf94aa1c50"
+        },
+        "stderr.log": {
+          "bytes": 6927,
+          "sha256": "6b846c2daa9fa9f08c57eff521906858dfb2d124f239169bbc6f124673d2d260"
+        },
+        "stdout.log": {
+          "bytes": 2359,
+          "sha256": "582256713a64c7fcd8b2078a91c8c3d3a2356d3aa88f835a503f8601b1a70d93"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 31768,
+          "sha256": "4ef2b66897b4e9418742c3e7d809f7e19025ef87927eef274bdefeed45b1bd51"
+        }
+      },
+      "trajectory": {
+        "events": 64,
+        "tool_calls": [
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "list_agents",
+          "job_list"
+        ],
+        "tmem_tool_calls": [
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search"
+        ],
+        "user_messages": 4,
+        "assistant_messages": 6,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 6,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 6,
+          "step/start": 6,
+          "system/message": 1,
+          "tool/call": 14,
+          "tool/result": 14,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 4
+        },
+        "transcript_sha256": "4ef2b66897b4e9418742c3e7d809f7e19025ef87927eef274bdefeed45b1bd51",
+        "workspace_root": "/home/kent/e2e/r3/ledger-svc-control-c",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "S1_baseline",
+      "scene": "S1_baseline",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": null,
+      "rep": null,
+      "variant": null,
+      "exit_code": 0,
+      "elapsed_sec": 124.6,
+      "isolation": null,
+      "files": {
+        "capture.json": {
+          "bytes": 420,
+          "sha256": "d9c4851aadf257c45797ae2fe4761b3178c3876fd45b04583031fbd4ef95a5c7"
+        },
+        "scene.json": {
+          "bytes": 1308,
+          "sha256": "5cb91598ac7dbb720b782d6666292910311d3ab3fd07e23452d51f87de121d24"
+        },
+        "stderr.log": {
+          "bytes": 39895,
+          "sha256": "e80392cbed5286591f244c10c76d397236827089a5405180fe2c17afd82fc03a"
+        },
+        "stdout.log": {
+          "bytes": 3291,
+          "sha256": "8074399ac415df6d78a2279db93d21de52c0bbf439f5ceef1c77af2ac91f93ef"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 183267,
+          "sha256": "8793208e0cd167b79e4e3e88b1c1f0ec2be3a2e899d1943053d3735f15d86b4c"
+        }
+      },
+      "trajectory": {
+        "events": 277,
+        "tool_calls": [
+          "bash",
+          "read",
+          "read",
+          "read",
+          "read",
+          "glob",
+          "bash",
+          "bash",
+          "read",
+          "bash",
+          "bash",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "bash",
+          "read",
+          "grep",
+          "skill",
+          "bash",
+          "bash",
+          "grep",
+          "read",
+          "grep",
+          "read",
+          "read",
+          "read",
+          "bash",
+          "read",
+          "write",
+          "bash",
+          "bash",
+          "edit",
+          "edit",
+          "bash",
+          "bash",
+          "bash",
+          "read",
+          "bash",
+          "grep",
+          "read",
+          "read",
+          "bash",
+          "bash",
+          "grep",
+          "edit",
+          "bash",
+          "bash",
+          "read",
+          "read"
+        ],
+        "tmem_tool_calls": [],
+        "user_messages": 4,
+        "assistant_messages": 39,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 39,
+          "job/registered": 19,
+          "job/settled": 19,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 39,
+          "step/start": 39,
+          "system/message": 1,
+          "tool/call": 52,
+          "tool/result": 52,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 4
+        },
+        "transcript_sha256": "8793208e0cd167b79e4e3e88b1c1f0ec2be3a2e899d1943053d3735f15d86b4c",
+        "workspace_root": "/home/kent/e2e/r3/ledger-svc",
+        "edited_files": [
+          "CONVENTIONS.md",
+          "README.md"
+        ]
+      }
+    },
+    {
+      "id": "S2_nan_repair",
+      "scene": "S2_nan_repair",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": null,
+      "rep": null,
+      "variant": null,
+      "exit_code": 0,
+      "elapsed_sec": 171.3,
+      "isolation": null,
+      "files": {
+        "capture.json": {
+          "bytes": 398,
+          "sha256": "7144c85ba1c2324678127d7440af92dfc2ea36fcba60114b504b3b77119fecf8"
+        },
+        "scene.json": {
+          "bytes": 1268,
+          "sha256": "4fb9ba83d63269d178864e270db6ddbf9bb01be391bd26c7764c93a1461ae28b"
+        },
+        "stderr.log": {
+          "bytes": 53056,
+          "sha256": "434a44f66b27d7957482140372caf9db25849cba22cbe119f3e28f96469ad451"
+        },
+        "stdout.log": {
+          "bytes": 3115,
+          "sha256": "01117979372d42ef6ada274709086fb50c615efd17a1ae2e7506ec7744f90c23"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 209085,
+          "sha256": "4f313d2c0fc3ea9dd37ff9ec61dd81f51d0750037d8f1f5cec9704a344a9d9f6"
+        }
+      },
+      "trajectory": {
+        "events": 354,
+        "tool_calls": [
+          "bash",
+          "read",
+          "read",
+          "read",
+          "bash",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "bash",
+          "bash",
+          "bash",
+          "read",
+          "read",
+          "read",
+          "bash",
+          "read",
+          "skill",
+          "bash",
+          "todo_write",
+          "edit",
+          "edit",
+          "edit",
+          "edit",
+          "edit",
+          "edit",
+          "edit",
+          "edit",
+          "edit",
+          "bash",
+          "todo_write",
+          "write",
+          "edit",
+          "edit",
+          "edit",
+          "edit",
+          "write",
+          "bash",
+          "bash",
+          "bash",
+          "bash",
+          "edit",
+          "edit",
+          "bash",
+          "bash",
+          "edit",
+          "edit",
+          "edit",
+          "bash",
+          "todo_write",
+          "bash",
+          "bash",
+          "read",
+          "read",
+          "bash",
+          "edit",
+          "bash",
+          "bash",
+          "bash",
+          "todo_write"
+        ],
+        "tmem_tool_calls": [],
+        "user_messages": 11,
+        "assistant_messages": 49,
+        "event_types": {
+          "agent/inbox/spliced": 14,
+          "approval/policy": 1,
+          "assistant/message": 49,
+          "job/registered": 21,
+          "job/settled": 21,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 49,
+          "step/start": 49,
+          "system/message": 1,
+          "todo/write": 4,
+          "tool/call": 62,
+          "tool/result": 62,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 11
+        },
+        "transcript_sha256": "4f313d2c0fc3ea9dd37ff9ec61dd81f51d0750037d8f1f5cec9704a344a9d9f6",
+        "workspace_root": "/home/kent/e2e/r3/ledger-svc",
+        "edited_files": [
+          "CONVENTIONS.md",
+          "README.md",
+          "src/ledger/cli.py",
+          "src/ledger/import_rows.py",
+          "src/ledger/invoicing.py",
+          "src/ledger/money.py",
+          "src/ledger/settlement.py",
+          "tests/test_cli.py",
+          "tests/test_import_rows.py",
+          "tests/test_invoicing.py",
+          "tests/test_settlement.py"
+        ]
+      }
+    },
+    {
+      "id": "S3_pagination",
+      "scene": "S3_pagination",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": null,
+      "rep": null,
+      "variant": null,
+      "exit_code": 0,
+      "elapsed_sec": 104.9,
+      "isolation": null,
+      "files": {
+        "capture.json": {
+          "bytes": 62,
+          "sha256": "f7d1c0ad9073fd449f715707e7f0b9ec4bb7cb7f2d66fa0c6fc1195a7acde5f5"
+        },
+        "scene.json": {
+          "bytes": 888,
+          "sha256": "0cd33be5207d557be40fcb94f4da2ca10610dae0acb6e5127b536e6b44a8a9f1"
+        },
+        "stderr.log": {
+          "bytes": 50923,
+          "sha256": "3aef510d585cd48d3adbd05c7ae965774b03e19b90df3e844624e664890c1265"
+        },
+        "stdout.log": {
+          "bytes": 2437,
+          "sha256": "cc498125a9854ef8782f3d0081f6682c98289543fc8ee18dc46b19e2acfa2a18"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 173549,
+          "sha256": "eb07377081163dfd3f8580f3633bd0a5ae2a7c9c63a03945cb4434f7b4688a2d"
+        }
+      },
+      "trajectory": {
+        "events": 248,
+        "tool_calls": [
+          "bash",
+          "glob",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "grep",
+          "read",
+          "grep",
+          "bash",
+          "skill",
+          "bash",
+          "read",
+          "read",
+          "bash",
+          "todo_write",
+          "write",
+          "write",
+          "edit",
+          "edit",
+          "bash",
+          "edit",
+          "bash",
+          "grep",
+          "tmem_search",
+          "todo_write",
+          "bash",
+          "edit",
+          "edit",
+          "read",
+          "edit",
+          "edit",
+          "bash",
+          "bash",
+          "bash",
+          "bash",
+          "bash",
+          "bash",
+          "read",
+          "bash",
+          "bash",
+          "read",
+          "read"
+        ],
+        "tmem_tool_calls": [
+          "tmem_search"
+        ],
+        "user_messages": 8,
+        "assistant_messages": 32,
+        "event_types": {
+          "agent/inbox/spliced": 8,
+          "approval/policy": 1,
+          "assistant/message": 32,
+          "job/registered": 15,
+          "job/settled": 15,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 32,
+          "step/start": 32,
+          "system/message": 1,
+          "todo/write": 2,
+          "tool/call": 46,
+          "tool/result": 46,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 8
+        },
+        "transcript_sha256": "eb07377081163dfd3f8580f3633bd0a5ae2a7c9c63a03945cb4434f7b4688a2d",
+        "workspace_root": "/home/kent/e2e/r3/ledger-svc",
+        "edited_files": [
+          "CONVENTIONS.md",
+          "README.md",
+          "src/ledger/pagination.py",
+          "tests/test_pagination.py"
+        ]
+      }
+    },
+    {
+      "id": "S4_rates",
+      "scene": "S4_rates",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": null,
+      "rep": null,
+      "variant": null,
+      "exit_code": 0,
+      "elapsed_sec": 200.5,
+      "isolation": null,
+      "files": {
+        "capture.json": {
+          "bytes": 623,
+          "sha256": "43f7f70bf60d194efb2e0a6f59828245c947ee42e5860f78f7b0c16782f5af6f"
+        },
+        "scene.json": {
+          "bytes": 1466,
+          "sha256": "724f1902799501afe834251229b86ca5d28de1723315bb8e6c9c5f6d283b9e35"
+        },
+        "stderr.log": {
+          "bytes": 72297,
+          "sha256": "85f45f47f5973247c048638ea450753d3a54e3cc1c8c8c9898f605528eb04fc4"
+        },
+        "stdout.log": {
+          "bytes": 2474,
+          "sha256": "56da04bb1ac15771dd3742297fa3c656db4cd93d457ea24634661aa93ce8e2a3"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 208034,
+          "sha256": "cc7d824d4a80d86b562cf0d143149bc758db3dffdd2bf70e8fe88166b08e8d8e"
+        }
+      },
+      "trajectory": {
+        "events": 276,
+        "tool_calls": [
+          "bash",
+          "grep",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "bash",
+          "grep",
+          "bash",
+          "read",
+          "read",
+          "read",
+          "read",
+          "todo_write",
+          "edit",
+          "read",
+          "edit",
+          "bash",
+          "read",
+          "bash",
+          "write",
+          "bash",
+          "read",
+          "edit",
+          "edit",
+          "edit",
+          "bash",
+          "bash",
+          "edit",
+          "edit",
+          "read",
+          "edit",
+          "read",
+          "edit",
+          "edit",
+          "todo_write",
+          "write",
+          "bash",
+          "bash",
+          "bash",
+          "write",
+          "bash",
+          "bash",
+          "bash",
+          "todo_write"
+        ],
+        "tmem_tool_calls": [],
+        "user_messages": 11,
+        "assistant_messages": 38,
+        "event_types": {
+          "agent/inbox/spliced": 14,
+          "approval/policy": 1,
+          "assistant/message": 38,
+          "job/registered": 14,
+          "job/settled": 14,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 38,
+          "step/start": 38,
+          "system/message": 1,
+          "todo/write": 3,
+          "tool/call": 47,
+          "tool/result": 47,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 11
+        },
+        "transcript_sha256": "cc7d824d4a80d86b562cf0d143149bc758db3dffdd2bf70e8fe88166b08e8d8e",
+        "workspace_root": "/home/kent/e2e/r3/ledger-svc",
+        "edited_files": [
+          ".rates_diff_check.py",
+          "CONVENTIONS.md",
+          "README.md",
+          "src/ledger/rates.py",
+          "tests/test_cli.py",
+          "tests/test_rates.py",
+          "tests/test_settlement.py"
+        ]
+      }
+    },
+    {
+      "id": "S5_recall",
+      "scene": "S5_recall",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": null,
+      "rep": null,
+      "variant": null,
+      "exit_code": 0,
+      "elapsed_sec": 16.8,
+      "isolation": null,
+      "files": {
+        "capture.json": {
+          "bytes": 62,
+          "sha256": "f7d1c0ad9073fd449f715707e7f0b9ec4bb7cb7f2d66fa0c6fc1195a7acde5f5"
+        },
+        "scene.json": {
+          "bytes": 883,
+          "sha256": "c15d70ad1ed3b97d9cc0ca34c629e46f11748a35f55a1de56901b1160e7360fa"
+        },
+        "stderr.log": {
+          "bytes": 4606,
+          "sha256": "2340b6c0ee77e76607bf29cdb8311ef6f6d52759cde90c046053f26b9eda6c3d"
+        },
+        "stdout.log": {
+          "bytes": 3622,
+          "sha256": "c173676149d35cda8f60b4d262b797f706a13e52691c59788fdb89927cce621a"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 39594,
+          "sha256": "d761b16f2370582b86621cbc11837b6df9ae6acbaeed46bbe86d90bfbf10c135"
+        }
+      },
+      "trajectory": {
+        "events": 40,
+        "tool_calls": [
+          "glob",
+          "tmem_search",
+          "tmem_search",
+          "tmem_search",
+          "read",
+          "read"
+        ],
+        "tmem_tool_calls": [
+          "tmem_search",
+          "tmem_search",
+          "tmem_search"
+        ],
+        "user_messages": 5,
+        "assistant_messages": 3,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 3,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 3,
+          "step/start": 3,
+          "system/message": 1,
+          "tool/call": 6,
+          "tool/result": 6,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 5
+        },
+        "transcript_sha256": "d761b16f2370582b86621cbc11837b6df9ae6acbaeed46bbe86d90bfbf10c135",
+        "workspace_root": "/home/kent/e2e/r3/ledger-svc",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "S6_l2_transfer",
+      "scene": "S6_l2_transfer",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": null,
+      "rep": null,
+      "variant": null,
+      "exit_code": 0,
+      "elapsed_sec": 41.5,
+      "isolation": null,
+      "files": {
+        "capture.json": {
+          "bytes": 730,
+          "sha256": "2de54cded34a404ced8fc4fd764ced42712006fbc12969112c224b4341499aa9"
+        },
+        "scene.json": {
+          "bytes": 1633,
+          "sha256": "54d57cb0dc94a7602a9693a912734496e26be848dca1c0e9c81d1f92594bd015"
+        },
+        "stderr.log": {
+          "bytes": 12407,
+          "sha256": "d1ff9d49e2013173a5ab9fda3aff2b7f361f1e2686555230830dfa8e7017c440"
+        },
+        "stdout.log": {
+          "bytes": 2571,
+          "sha256": "10c3a517b9378e53edced45b2894b806e952155d0426451ba538b174f0be371b"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 75487,
+          "sha256": "394f8a1f9edcf06c1c9757cbfaca2c1f92bc9dd3f02d8b816fd16e41a3977193"
+        }
+      },
+      "trajectory": {
+        "events": 113,
+        "tool_calls": [
+          "bash",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "bash",
+          "read",
+          "bash",
+          "grep",
+          "read",
+          "bash",
+          "read",
+          "grep",
+          "bash",
+          "grep",
+          "bash",
+          "read",
+          "grep",
+          "bash",
+          "bash"
+        ],
+        "tmem_tool_calls": [],
+        "user_messages": 5,
+        "assistant_messages": 12,
+        "event_types": {
+          "agent/inbox/spliced": 2,
+          "approval/policy": 1,
+          "assistant/message": 12,
+          "job/registered": 8,
+          "job/settled": 8,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 12,
+          "step/start": 12,
+          "system/message": 1,
+          "tool/call": 21,
+          "tool/result": 21,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 5
+        },
+        "transcript_sha256": "394f8a1f9edcf06c1c9757cbfaca2c1f92bc9dd3f02d8b816fd16e41a3977193",
+        "workspace_root": "/home/kent/e2e/r3/ledger-svc",
+        "edited_files": []
+      }
+    },
+    {
+      "id": "S6b_l2_transfer_controlled",
+      "scene": "S6b_l2_transfer_controlled",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": true,
+      "arm": null,
+      "rep": null,
+      "variant": null,
+      "exit_code": 0,
+      "elapsed_sec": 101.6,
+      "isolation": null,
+      "files": {
+        "capture.json": {
+          "bytes": 643,
+          "sha256": "b7c468e31150e1d90e80e0e7ce768fa7ddc829b2be2b5721125b149f3402ab0b"
+        },
+        "scene.json": {
+          "bytes": 1560,
+          "sha256": "c1d2f6b6fff5078e932875db6c096e6964c68803123d6c42f73459949cf96c77"
+        },
+        "stderr.log": {
+          "bytes": 35578,
+          "sha256": "caabd39d0ec68b52b402be2e5a47ea22c6cb8dba2fe7c9075707ac507fb7de83"
+        },
+        "stdout.log": {
+          "bytes": 2709,
+          "sha256": "77e62087b80cd1f80921644c1549def0d98ed4ee9e6c396ba0d5a8c1f9b01b30"
+        },
+        "session.v4.jsonl.zstd": {
+          "bytes": 155743,
+          "sha256": "6abf10745f5f4d75456629f6e49e74a435e9a64a96a37b6d64a24746a31d7560"
+        }
+      },
+      "trajectory": {
+        "events": 203,
+        "tool_calls": [
+          "bash",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "bash",
+          "bash",
+          "read",
+          "bash",
+          "read",
+          "read",
+          "read",
+          "read",
+          "todo_write",
+          "edit",
+          "write",
+          "bash",
+          "bash",
+          "bash",
+          "bash",
+          "bash",
+          "todo_write",
+          "edit",
+          "edit",
+          "edit",
+          "edit",
+          "bash",
+          "edit",
+          "edit",
+          "bash",
+          "bash",
+          "bash",
+          "todo_write"
+        ],
+        "tmem_tool_calls": [],
+        "user_messages": 7,
+        "assistant_messages": 25,
+        "event_types": {
+          "agent/inbox/spliced": 6,
+          "approval/policy": 1,
+          "assistant/message": 25,
+          "job/registered": 13,
+          "job/settled": 13,
+          "permission/preset": 1,
+          "request/context": 1,
+          "request/header": 1,
+          "sandbox/mode": 1,
+          "session": 1,
+          "session/title": 2,
+          "session/title-llm-request": 1,
+          "step/end": 25,
+          "step/start": 25,
+          "system/message": 1,
+          "todo/write": 3,
+          "tool/call": 37,
+          "tool/result": 37,
+          "turn/end": 1,
+          "turn/start": 1,
+          "user/message": 7
+        },
+        "transcript_sha256": "6abf10745f5f4d75456629f6e49e74a435e9a64a96a37b6d64a24746a31d7560",
+        "workspace_root": "/home/kent/e2e/r3/ledger-svc",
+        "edited_files": [
+          "CONVENTIONS.md",
+          "README.md",
+          "src/ledger/bulk.py",
+          "tests/test_bulk.py"
+        ]
+      }
+    },
+    {
+      "id": "S7_idempotency",
+      "scene": "S7_idempotency",
+      "source_root": "",
+      "source_set": "",
+      "has_scene_meta": false,
+      "arm": null,
+      "rep": null,
+      "variant": null,
+      "exit_code": null,
+      "elapsed_sec": null,
+      "isolation": null,
+      "files": {
+        "capture_full.err": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "capture_full.json": {
+          "bytes": 62,
+          "sha256": "f7d1c0ad9073fd449f715707e7f0b9ec4bb7cb7f2d66fa0c6fc1195a7acde5f5"
+        },
+        "capture_repeat.err": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "capture_repeat.json": {
+          "bytes": 62,
+          "sha256": "f7d1c0ad9073fd449f715707e7f0b9ec4bb7cb7f2d66fa0c6fc1195a7acde5f5"
+        },
+        "expand_raw.err": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "expand_raw.txt": {
+          "bytes": 6565,
+          "sha256": "c6096afd974c3436d7e36dac73eae94a115765cec3966133af6c36957a0d0076"
+        },
+        "s7.json": {
+          "bytes": 409,
+          "sha256": "0db50523d8b871307418bb50c798c6e3bdadfd75a0b576f5e28b028feb1c84d0"
+        },
+        "status.json": {
+          "bytes": 467,
+          "sha256": "0788ff2de3b44fc69c1a66f1c919753131dd1d0571bbe8aca3692849e867e75f"
+        },
+        "sync.json": {
+          "bytes": 191,
+          "sha256": "b583eee8fed79ef409c358911906f38a936c69267f0426d6c11f05faaeb5c949"
+        }
+      },
+      "trajectory": {}
+    }
+  ]
+}

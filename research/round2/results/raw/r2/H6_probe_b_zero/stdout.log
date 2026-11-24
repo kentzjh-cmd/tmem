@@ -1,0 +1,50 @@
+## 1) 修复时依次改了哪些文件、顺序如何
+
+**改动清单（3 个源文件 + 2 个测试文件 + 记忆/文档）**，按依赖顺序：
+
+| 顺序 | 文件 | 改动内容 |
+|---|---|---|
+| 1 | `src/ledger/money.py` | 新增**单一校验原语** `require_usable_price(value, description)`：用 `ledger.errors.ValidationError` 显式拒绝 `nan`（空单元格占位符）、`None`/空串、非数字文本、`±inf`；**零价 `0.0` 合法照常返回** |
+| 2 | `src/ledger/import_rows.py` | **导入边界先失败**：`parse_price` / `parse_rows` / `rows_to_tuples` / `parse_price_checked` 全部接入该原语，报错带行描述 |
+| 3 | `src/ledger/settlement.py` | **结算边界兜底**：`settle_invoice` / `settle_line` 接入该原语，报错带行描述 + `invoice_id`；死代码 `settle_invoice_checked()` 改为委托 `settle_invoice()` |
+| 4 | `tests/test_import_rows.py` | 新增 12 例 |
+| 5 | `tests/test_settlement.py` | 新增 6 例 |
+| 6 | 记忆/文档 | `AGENTS.md` 基线更新；`MEMORIES.md`/`MEM.md` 由 `tmem sync` 重生成 |
+
+顺序的逻辑依据：`money.py` 必须先行（另两个边界都依赖该原语），`import_rows.py` 次之（导入边界"先失败"），`settlement.py` 最后（结算边界"兜底"）。
+
+> 注：AGENTS.md 里记的是 `src/ledger/{money,settlement,import_rows}.py` 的**集合**（花括号展开是字母序），那是 trace 覆盖的文件列表，不是编辑先后顺序。
+
+**刻意没改的**：`src/ledger/invoicing.py`（`build_invoice()` 有意**不**拒绝 `nan`——把关点只在导入边界+结算边界；既有用例是在 `build_invoice()` 之后才要求 `settle_invoice()` 抛 `ValidationError`，在那里抛会直接失败该用例）、`src/ledger/errors.py`（`ValidationError` 本来就有）、`rates.py` 与分页路径（属另外两个已知失败，未在本次修）。
+
+## 2) 用的验证命令
+
+主验证命令：
+
+```bash
+PYTHONPATH=src python3 -m pytest -q
+```
+
+- 结果：**2 failed / 37 passed**（共 39 例 / 6 个文件），剩的 2 个失败是既有缺陷（分页漏单、汇率缓存 `KeyError: 'USD:CNY'`），**全绿不是现状**。
+- `pyproject.toml` 里已有 `pythonpath = ["src"]`，所以 `python3 -m pytest -q` 直接跑也能通；**本机没有 `python` 命令**（`python -m pytest` → exit 127），必须用 `python3`。
+- 金额不回归对照：修复前后对 10 组发票（含零价、多行、JPY 0 位小数、跨币种）逐一比对 `settle_invoice()` / `settled_amount()` 输出 → **完全一致**。
+- headless 复现：表格行 `unit_price="nan"` → 修复前 `ValueError: cannot convert NaN to integer`；修复后导入即 `ValidationError: missing price for bandwidth`，结算兜底 `ValidationError: missing price for line 'bandwidth' of invoice 'INV-9002'`。
+- 记忆定位：`tmem search require_usable_price`、`tmem search "missing price"`、`tmem diff tr_c1d28efa73`（源码补丁 trace = `tr_c1d28efa73`，测试+记忆 trace = `tr_089f777baf`）。
+
+## 3) `parse_price_checked` 是哪次提交引入的
+
+**当前上下文里没有这条信息，无法给出 commit 号。** 我没有读文件、也没运行命令（按你的要求），现有上下文里唯一出现过的提交信息是 HEAD = `5efcfca`（merge `feature/rates-cache`，2026-11-22 13:48:17，`main` 分支），但上下文**没有把** `parse_price_checked` 的引入提交与任何哈希绑定，所以任何具体 hash 都属于臆测。
+
+上下文能确定的事实只有：它是**死代码**——声明了但从未被 `parse_rows()` / `rows_to_tuples()` 调用，且抛的是裸 `ValueError`（不是 `LedgerError` 子类，`api.handle()` 的 `except LedgerError` 抓不到）；同类死代码还有 `settlement.settle_invoice_checked()`。本次修复只是把它们**归位**到同一原语（`parse_price_checked` 走 `require_usable_price`，`settle_invoice_checked` 委托 `settle_invoice`），并未引入或删除它们，因此引入提交早于本次修复。
+
+要定位确切提交，需要放开"读文件/跑命令"的限制后执行，例如：
+
+```bash
+git log -S 'def parse_price_checked' --oneline -- src/ledger/import_rows.py
+# 或
+git blame -L '/def parse_price_checked/,+1' src/ledger/import_rows.py
+```
+
+如果你允许我只跑这两条只读命令，我可以给出确切的提交哈希与作者/日期。
+
+💡 *是否需要将本次有效执行路径沉淀为记忆？（输入 `/tmem` 或 `/remember [备注]` 保存）*

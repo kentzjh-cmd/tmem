@@ -1,0 +1,71 @@
+我只读取了项目笔记/记忆文件（未跑测试、未跑 tmem、未改动任何文件；全程只用 read/grep/glob，另外早期为了定位笔记做过一次目录列举 `ls`，除此之外没有任何命令执行）。
+
+**证据来源**（当前工作区 `/home/kent/e2e/r2/ledger-svc-control-c` 的 `MEMORIES.md` 还是空的“无记录”状态；那次修复的记忆沉淀在同源工作区 `ledger-svc-control` 的 `.tmem/` 里）：
+- `.tmem/traces/tr_e5d3e3fdff.json`（playbook，session `session-a5013e7d-c153-47fd-84f4-080266575ede`）
+- `.tmem/raw/tr_e5d3e3fdff.raw.json`（逐步原始轨迹，含 git 输出与 pytest 输出）
+- `AGENTS.md` §3「缺失价格（NaN）修复结论（已落地，勿回退）」、`README.md`「测试基线 / 缺失价格（NaN）排查结论」
+
+---
+
+## 1) 修改的文件与顺序（共 13 个，按 L0 关键路径的 MUTATE 步骤 108→222）
+
+| # | 文件 | 改了什么 |
+|---|---|---|
+| 1 | `src/ledger/validation.py` | **新建**：价格校验唯一来源 `parse_price_value` / `ensure_finite_price` / `coerce_unit_price`，统一抛 `ledger.errors.ValidationError` |
+| 2 | `src/ledger/import_rows.py` | `parse_price` 改走 `validation.parse_price_value`，导入边界直接拒 `nan`；`parse_price_checked` 改为委托同一实现 |
+| 3 | `src/ledger/settlement.py` | `settle_invoice` / `settle_line` 在算金额**之前**整单校验，新增 `_price_label` 让报错带发票号+行描述（改了 3 次） |
+| 4 | `src/ledger/invoicing.py` | `build_invoice` 用 `coerce_unit_price`，非数字单价抛 `ValidationError`（改了 2 次） |
+| 5 | `src/ledger/cli.py` | `main` 捕获 `LedgerError` → stderr `error: ...`、退出码 2（改了 2 次） |
+| 6 | `tests/test_validation.py` | 新建，15 条校验用例 |
+| 7 | `tests/test_import_rows.py` | 新建，导入/解析路径回归用例 |
+| 8 | `tests/test_settlement.py` | 结算侧 NaN 拒绝用例 |
+| 9 | `tests/test_invoicing.py` | 装配侧用例 |
+| 10 | `tests/test_cli.py` | CLI 用例 |
+| 11 | `tests/test_api.py` | API 层用例 |
+| 12 | `README.md` | 记录测试基线 + NaN 根因/修复结论 |
+| 13 | `AGENTS.md` | 写入硬约定（整数最小单位）、存量失败清单、修复结论（改了 2 次） |
+
+顺序逻辑：先立“校验唯一来源”→ 再堵导入边界 → 再堵结算边界 → 再补装配与 CLI → 然后按模块补测试 → 最后写文档/记忆。共改 13 个文件（与 trace 记录 “edited 13 file(s)” 一致），`src/ledger/errors.py` 未动（`ValidationError` 本来就有）。
+
+## 2) 验证命令
+
+最终记录的验证命令（`l1_verification_cmds`，退出码 0）：
+
+```bash
+cd /home/kent/e2e/r2/ledger-svc-control && \
+PYTHONPATH=src python3 -m pytest -q \
+  --deselect tests/test_pagination.py::test_pagination_does_not_lose_invoices \
+  --deselect tests/test_rates.py::test_get_cached_rate_falls_back_to_rate_table
+# => 56 passed, 2 deselected, EXIT=0
+```
+
+过程里还跑过（用于对齐基线、确认失败集合没新增）：
+- 修前基线：`PYTHONPATH=src python3 -m pytest -v` → 21 项 / 18 通过 / 3 失败（含目标失败）
+- 核心修复后：`PYTHONPATH=src python3 -m pytest -q` → 19 passed / 2 failed（目标失败已消失）
+- 补完测试后：`PYTHONPATH=src python3 -m pytest -v` → 58 项 / 56 通过 / 2 存量失败（分页、汇率两项，非本次引入）
+- 端到端手工核对：`python3 - <<'PY' ... PY`（导入边界、结算边界、正常单据三条路径）+ `python3 -m ledger.cli settle --invoice-id INV-4 --amount nan` → 打印 `error: missing price ...`、退出码 2
+- 记忆沉淀：`tmem capture --agent dsh --full-session --force` → 生成 trace `tr_e5d3e3fdff`，`tmem sync` 刷新 `MEMORIES.md`
+
+注意：本机只有 `python3`（无 `python`）；`PYTHONPATH=src python3 -m pytest` 整条命令因两项存量失败退出码为 1，所以 AGENTS.md 里把“退出码 0 的验证命令”单独记成上面那条带 `--deselect` 的。
+
+## 3) `parse_price_checked` 的引入提交
+
+**`a33c3c8` — `feat(import): reject empty price cells`**
+完整 SHA：`a33c3c84f8ccbd3db3cc6de6a30e4d1fb0d14981`（e2e-bot，Sun Nov 22 13:48:16 2026 +0800），改动 `src/ledger/import_rows.py +8`、`src/ledger/invoicing.py +5`。
+
+依据是 raw trace 里记录的 `git show a33c3c8` 输出：该提交在 `import_rows.py` 末尾新增了
+
+```python
+def parse_price_checked(raw, description: str = "") -> float:
+    """Parse a price cell and reject the empty-cell placeholder."""
+    value = float(raw)
+    if value != value:  # NaN
+        raise ValueError(f"missing price for {description or 'line'}")
+    return value
+```
+
+它从落地那天起就是**死代码**：`parse_rows` / `rows_to_tuples` 都只调 `parse_price`，从没调过它；而且它抛的是裸 `ValueError` 而非项目的 `ValidationError`（AGENTS.md 里作为“旁路提醒”专门记了这一点）。同批还有 `742c0ad test(settlement): cover rows with missing prices` 引入的 `settlement.settle_invoice_checked`，同样从未被调用、同样抛裸 `ValueError`——这正是本次新建 `src/ledger/validation.py` 把校验收敛到单一来源的原因。
+
+---
+
+💡 *是否需要将本次有效执行路径沉淀为记忆？（输入 `/tmem` 或 `/remember [备注]` 保存）*

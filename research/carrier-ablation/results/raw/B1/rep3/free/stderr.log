@@ -1,0 +1,59 @@
+dsh: reasoning:
+The user asks me to consult project memory but not run any commands. I should read MEMORY.md and .tmem/ files using read/glob/grep tools (these are not commands per se... well, the user said "不要运行任何命令" — don't run any commands. Reading files via the read tool is not running a shell command; it's the prescribed way to consult project memory). I think using read/glob/grep tools is acceptable — the constraint is about not executing bash commands (like running tests). Let me use the file tools to consult memory.
+
+Let me look for MEMORY.md and .tmem/.
+dsh: reasoning:
+Only MEMORY.md. Let me read it.
+dsh: reasoning:
+The MEMORY.md gives the answers:
+
+1) Fix order: src/ledger/money.py → src/ledger/import_rows.py → src/ledger/settlement.py
+2) Verification command: `PYTHONPATH=src python3 -m pytest -q 2>&1` (and also the collect-only variant; the recorded one is the full suite). Memory records 验证命令: `do PYTHONPATH=src python3 -m pytest -q 2>&1 && PYTHONPATH=src python3 -m pytest "$f" -q 2>&1` and also `--collect-only` variant.
+3) The unified price validation entry function name: `ensure_usable_price()` in src/ledger/money.py.
+
+Let me also check whether the .tmem directory exists (glob found nothing under .tmem). The MEMORY mentions .tmem/ was used earlier. Let me check for it with glob patterns like ".tmem*" and also hidden dirs. glob with pattern "**/.tmem/**" maybe. Let me try a couple of globs — these are file tools, not commands, so allowed.
+
+Also, maybe check src/ledger/money.py to confirm the function name exists (reading files is fine, no commands). Let me do that to be accurate.
+
+Also check if there's a MEMORIES.md.
+dsh: reasoning:
+Interesting! The current `src/ledger/money.py` in the workspace does NOT contain `ensure_usable_price()`. So the workspace state appears to be the pre-fix state? Or maybe the memory's claims don't match the workspace. The user asked me to answer from project memory without running commands. I should answer from memory, but I should also be accurate/faithful.
+
+Let me check the other files: import_rows.py and settlement.py to see whether the fix is present. Reading files is allowed (not running commands). This matters because I want to note a discrepancy: memory records `ensure_usable_price()` in money.py, but the current workspace money.py doesn't have it. Let me check.
+dsh: reasoning:
+Important observation: the workspace source files are at the PRE-fix state. The memory records that the fix was applied (money.py → import_rows.py → settlement.py), with `ensure_usable_price()` in money.py, `parse_price()` delegating to it, `settle_invoice()`/`settle_line()` validating, and `settle_invoice_checked()` raising ValidationError instead of ValueError. But the current workspace shows:
+- money.py: no `ensure_usable_price`
+- import_rows.py: `parse_price()` still just `float(raw)`; `parse_price_checked()` raises ValueError
+- settlement.py: `settle_invoice()`/`settle_line()` don't validate; `settle_invoice_checked()` raises ValueError
+
+Also let me check if src/ledger/errors.py has ValidationError, and tests/test_import_rows.py / tests/test_settlement.py for new tests. This would strengthen the discrepancy note. Reading files is fine.
+
+Let me check errors.py and grep for ensure_usable_price and ValidationError.
+dsh: reasoning:
+Let me look at tests/test_settlement.py and tests/test_import_rows.py to see if the new tests exist (i.e., whether the fix's tests are present in the workspace).
+dsh: reasoning:
+So the workspace has a test `test_settle_invoice_rejects_missing_price` in tests/test_settlement.py that expects `ValidationError` from `settle_invoice` — but current settlement.py's `settle_invoice` doesn't validate and raises... let's see: unit_price = nan → Decimal(line.unit_price) → Decimal('NaN'); multiplied → NaN; total NaN; quantize → NaN; int(NaN * 100) → ValueError: cannot convert NaN to integer. So the test currently fails (it expects ValidationError but gets ValueError). This is consistent with the memory's "失败基线" state (3 failed, 18 passed in the earlier session? that was the earlier baseline for the integer-minor-units task).
+
+Also tests/test_import_rows.py doesn't exist — memory listed it as an involved file (new test file added for the fix). So the fix's test file is missing in the workspace.
+
+Interesting: The workspace seems to be a state where the fix is NOT applied, even though MEMORY.md records it as applied. The user's question asks me to answer from memory. The key answer to Q3 is `ensure_usable_price()`.
+
+But I should be faithful: the memory says the entry function is `ensure_usable_price()` in `src/ledger/money.py`. However, the current workspace does not contain it — the code appears to be at a pre-fix state. That's a notable discrepancy worth flagging (memory says the fix landed; the working tree doesn't contain the guard). Let me double-check whether there's another copy of the repo somewhere, e.g. a different directory, or git history. The user said not to run commands, so I can't run git. But I can glob for files.
+
+Let me check the workspace structure to see whether there are other copies of money.py.
+
+Actually, checking git via bash would be running a command — disallowed. Let me use glob to look for other copies.
+dsh: reasoning:
+Confirmed: only one copy, no `tests/test_import_rows.py`, and money.py lacks the guard. So the workspace is at the pre-fix state for the NaN fix (the memory records the fix as done — a discrepancy I should report).
+
+Now answer the three questions from MEMORY.md:
+
+1) Files modified in order: `src/ledger/money.py` → `src/ledger/import_rows.py` → `src/ledger/settlement.py` (plus memory/tests: `tests/test_import_rows.py`, `tests/test_settlement.py`, `MEMORY.md`).
+
+2) Verification command: `PYTHONPATH=src python3 -m pytest -q 2>&1` (the memory also records the collect-only variant: `PYTHONPATH=src python3 -m pytest --collect-only -q 2>&1` plus per-file `--collect-only` for tests/test_import_rows.py and tests/test_settlement.py).
+
+3) The unified entry function name: `ensure_usable_price()` — placed in `src/ledger/money.py` as the shared guard; `parse_price()` in import_rows.py now delegates to it, and settlement's `settle_invoice()`/`settle_line()` validate via it.
+
+Also mention the discrepancy note briefly and honestly.
+
+I'll present the answer in Chinese since the user wrote in Chinese.

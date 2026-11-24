@@ -1,0 +1,38 @@
+## 根因
+
+`nan` 不是在结算层"产生"的，而是一路**未被校验地带进去**的：
+
+| # | 位置 | 问题 |
+| :-- | :--- | :--- |
+| 1 | `import_rows.py:parse_price()` | 直接 `float(raw)`，把导出器写的空单元格占位符 `nan` 静默转成 NaN |
+| 2 | `import_rows.py:parse_rows()` / `rows_to_tuples()` | 用的就是这个未校验版本，NaN 进入 `InvoiceLine.unit_price` |
+| 3 | `invoicing.py:build_invoice()` | 只校验 `quantity`，单价仅 `float()` 强转，不校验 |
+| 4 | `settlement.py:settle_invoice()` | NaN → `Decimal('NaN')` → `quantize` 仍是 NaN → `int(settled * 10 ** exponent)` 抛裸 `ValueError`，报错点离出问题的表格行很远 |
+| 5 | `settlement.py:settle_invoice_checked()` | 历史 commit `54e1833` 加的 NaN 判断**从未接进主链路**，且抛的是裸 `ValueError` 而非项目的 `ValidationError` |
+
+## 修复
+
+新增 `money.validate_price()` 作为**唯一**单价合法性入口（NaN / 非有限 / 不可解析一律抛 `ledger.errors.ValidationError`），并在两个边界各拦一次：
+
+- **导入边界** `import_rows`：`parse_price()` / `parse_rows()` / `rows_to_tuples()` 走校验，headless 导入在出问题的行上直接失败；`parse_price_checked()` 保留为别名
+- **结算边界** `settlement`：`settle_invoice()` / `settle_line()` 在算术前逐行校验；`settle_invoice_checked()` 不再抛裸 `ValueError`
+- `build_invoice()` 只校验「能否转成 float」——**不能**在这里拒 `nan`，因为 `test_settle_invoice_rejects_missing_price` 在 `pytest.raises` 块**之外**构造发票
+- `cli.main()` 捕获 `LedgerError` → 打印 `error: missing price for hosting`、退出码 1，不再抛栈
+
+只加校验，**未动任何金额换算逻辑**——结算输出仍是 int 最小单位（已核对 CNY 30.00→3000、JPY→3000）。
+
+## 测试
+
+`tests/test_import_rows.py`（新，13 条）、`tests/test_cli.py`（新，2 条）、`tests/test_settlement.py`（+6 条）、`tests/test_invoicing.py`（+1 条），覆盖 `nan` 文本/浮点、`inf`、不可解析文本、headless 导入端到端、错误信息含行描述、`ValidationError` 而非 `ValueError`。
+
+**基线**：`3 failed, 18 passed` → **`2 failed, 42 passed`**。剩下 2 条是**独立缺陷**，本次未动：`test_pagination_does_not_lose_invoices`（游标缺 `invoice_id` 次级排序键）与 `test_get_cached_rate_falls_back_to_rate_table`（`get_cached_rate` 不回退汇率表）。
+
+## 项目记忆
+
+- `CONVENTIONS.md` 新增 **§1.2 缺失价格的处理约定**（不可回退，含各文件落点表）、**§2.2 根因链与修复说明**；失败基线表移除已修项并刷新计数，§1.1 风险点行号同步更新
+- `README.md` 补一条约定
+- `tmem capture --agent dsh` → `tr_e66fe4c00d`，`tmem sync` 已刷新 `MEMORIES.md`（新增 playbook 与 L2 修复对 `ValueError` → `money.validate_price` 链）
+
+💡 *是否需要将本次有效执行路径沉淀为记忆？（输入 `/tmem` 或 `/remember [备注]` 保存）*
+
+另外，剩余那 2 条基线失败要不要我一并修掉？

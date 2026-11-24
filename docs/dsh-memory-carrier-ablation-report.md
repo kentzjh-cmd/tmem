@@ -168,6 +168,24 @@ A2 要测的是"按需读取"这一**获取方式**，因此必须让插件在�
 | `C rep3 free`（第 1 次） | `session failed (exit=-1)`（900 秒超时，agent 长时间翻源码） | 作废并重跑 |
 | `C rep3 free`（第 2 次） | `out_of_arm_read:/home/kent`、`out_of_arm_read:/home/kent/abl2`、`out_of_arm_read:/archive`、`out_of_arm_read:/archive/pentest_work_flow`（共 9 次） | **作废，不重跑**（避免按结果挑样本） |
 
+### 4.1.2 数字 → 支撑场次（轨迹级可追溯）
+
+本报告的每个数字都能回溯到**具体的真实会话轨迹**：轨迹原文（`session.v4.jsonl.zstd`）、场景元数据（`scene.json`）、标准输出/错误、以及逐场评分记录，全部随仓归档在 `research/carrier-ablation/results/raw/`，并由 `raw_manifest.json` 记录每个文件的 sha256。`research/carrier-ablation/verify_report_numbers.py` 会**从归档轨迹重算**这些数字：工具调用序列、每场被写入的文件、工作区根、事件计数，逐场与机器判定对账；聚合块则从逐场记录重新计算（不信任预聚合的 `aggregate`）。
+
+| 已发布数字 | 值 | 支撑场次（全部含归档轨迹） | 轨迹目录 |
+| :--- | :--- | :--- | :--- |
+| A1 `free` 知识获取 token 均值 | 18 017 | `A1/rep1/free`、`A1/rep2/free`、`A1/rep3/free` | `research/carrier-ablation/results/raw/A1/rep{n}/free/` |
+| A1 `free` 注入 token 均值 | 1 388 | 同上 3 场 | 同上 |
+| B2 `free` 知识获取 token 均值 | 5 073 | `B2/rep1/free`、`B2/rep2/free`、`B2/rep3/free` | `research/carrier-ablation/results/raw/B2/rep{n}/free/` |
+| 注入/翻文件比值 `injection_only_ratio` | 0.2736 | 上两臂共 6 场 | 同上 |
+| 总成本比值 `free_variant_total_ratio` | 3.5515 | 同上 | 同上 |
+| CA-E1：A1 `zero` 命中率 | 1.000 | `A1/rep1..3/zero` | `research/carrier-ablation/results/raw/A1/rep{n}/zero/` |
+| CA-E1：C `zero` 命中率 | 0.000 | `C/rep1..3/zero` | `research/carrier-ablation/results/raw/C/rep{n}/zero/` |
+| CA-E1：B2 `zero` 命中率 | 0.000 | `B2/rep1..3/zero` | `research/carrier-ablation/results/raw/B2/rep{n}/zero/` |
+| 有效性 29/30、9 次越界读取 | — | 全部 30 场（含作废的 `C/rep3/free`） | `research/carrier-ablation/results/raw/` |
+
+**轨迹级断言的实测结果**：30 场的 `tmem_tool_calls` 序列（例如 `A1/rep1/free` = 1 次 `tmem_search` + 8 次 `tmem_expand`）与逐场记录**逐项一致**（30/30）；每场的 `exit_code`、`elapsed_sec` 与 `scene.json` 一致；`scene.json` 自记的 `stdout_bytes`/`stderr_bytes` 与归档的标准输出文件大小一致。归档脚本 `research/archive_trajectories.py` 可重跑，重复执行会重算清单并报出漂移。
+
 ### 4.2 逐臂逐变体结果
 
 | 臂 \| 变体 | n | 知识获取 token（均值, 95%CI） | 命中率（均值, 95%CI） | 每次原值 |

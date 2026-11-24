@@ -1,0 +1,48 @@
+{
+  "scene": "S6_l2_transfer",
+  "workspace": "exp",
+  "workspace_path": "/home/kent/e2e/r3/ledger-svc",
+  "intent": "L2 记忆迁移：同类错误签名在新位置复现，检验历史修复是否被注入并复用",
+  "model": true,
+  "dsh_home": "/home/kent/.dsh",
+  "exit_code": 0,
+  "elapsed_sec": 41.5,
+  "stdout_bytes": 1775,
+  "stderr_bytes": 12059,
+  "command": "dsh --profile headless --patch /home/kent/e2e/r3/ledger-svc/.dsh/tmem.patch.yml headless <task>",
+  "transcript_path": "/home/kent/.dsh/sessions/--home-kent-e2e-r3-ledger-svc--/session-af31d326-e2c3-4a61-9be3-6d76bfbd70b8/session.v4.jsonl.zstd",
+  "transcript_stats": {
+    "bytes": 75487,
+    "node_single_frame_bytes": 183,
+    "node_single_frame_lines": 1,
+    "zstd_dc_bytes": 263820,
+    "zstd_dc_lines": 113,
+    "is_multiframe": true
+  },
+  "capture_exit": 0,
+  "capture": {
+    "status": "compiled",
+    "agent": "dsh",
+    "scope": "project",
+    "episode_id": "ep_e588a52967",
+    "project_trace_id": "tr_2f0c32fc0f",
+    "raw_trace_path": "raw/tr_2f0c32fc0f.raw.json",
+    "problem_intent": "headless src/ledger/import_rows.py 的 parse_price 也要拒绝 nan 价格，否则同样会崩。请实现并让测试通过。",
+    "touched_files": [
+      "CONVENTIONS.md",
+      "README.md",
+      "src/ledger/cli.py",
+      "src/ledger/import_rows.py",
+      "src/ledger/invoicing.py",
+      "src/ledger/money.py",
+      "src/ledger/settlement.py",
+      "tests/test_cli.py",
+      "tests/test_import_rows.py"
+    ],
+    "is_trivial": false,
+    "confidence": 0.55,
+    "raw_steps": 21,
+    "sliced_steps": 1,
+    "compression_ratio": "21 -> 1"
+  }
+}

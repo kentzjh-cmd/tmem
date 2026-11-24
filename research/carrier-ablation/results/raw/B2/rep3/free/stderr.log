@@ -1,0 +1,42 @@
+dsh: reasoning:
+The memory file gives the info. Let me confirm the entry function name — `ensure_usable_price()` in `src/ledger/money.py`. The question asks "修好后项目里新增的那个『统一校验价格是否可用』的入口函数叫什么名字?" — the answer is `ensure_usable_price()`.
+
+Let me check the actual source files to verify, but the user said "不要运行任何命令" (don't run any commands). Reading files via the read tool isn't running a command... but it says "headless 你可以查阅本项目可用的项目记忆来回答问题，但不要运行任何命令。" The read tool is not a command. To be safe, I can read files with the read tool (that's allowed—it's not a command). Actually the instruction is to not run commands; reading files is a tool call, not a command. I think reading src/ledger/money.py to verify the function name is fine and improves accuracy. Let me do it.
+
+Let me also check if there are more details, e.g., a more detailed memory in .tmem — glob said no .tmem files found. Hmm, but memory mentions `.tmem/` structured library. The glob returned no files — maybe hidden dirs excluded? The glob tool says it includes hidden and ignored files. So `.tmem/` doesn't exist in this workspace. So MEMORY.md is the carrier.
+
+Let me read money.py to verify the function name and also check the validation commands.
+dsh: reasoning:
+Interesting — the current `money.py` in the workspace does NOT have `ensure_usable_price()`. It seems the workspace is a fresh/baseline state, and the memory records a past fix (in a different session/branch). The memory record describes the fix: files changed in order `src/ledger/money.py` → `src/ledger/import_rows.py` → `src/ledger/settlement.py`.
+
+Wait — the question asks about the fix that was done. The memory says the changed files by repair order: money.py → import_rows.py → settlement.py. And the unified validation entry function is `ensure_usable_price()`.
+
+Let me check errors.py to confirm ValidationError exists, and import_rows.py/settlement.py for current state. Let me read those to double check whether the fix is present or not (the workspace might be pre-fix state). Actually money.py has no ensure_usable_price, so the workspace is at pre-fix state. The memory records a prior session's work.
+
+Let me read import_rows.py, settlement.py, and errors.py quickly to confirm and to check whether the answer names match.
+dsh: reasoning:
+The workspace is at the pre-fix baseline (the fix described in MEMORY.md was done in a prior session, but the workspace here has the pre-fix code — money.py lacks ensure_usable_price, import_rows.py uses plain float()).
+
+Hmm, wait. Actually the MEMORY.md describes the fix with the file-order and the `ensure_usable_price()` function. But the current workspace doesn't have it. That's fine — the question is about what was recorded in project memory. The memory is the source of truth for the answers.
+
+But there's a subtlety: the question asks "修好后项目里新增的那个『统一校验价格是否可用』的入口函数叫什么名字？" The memory mentions `ensure_usable_price()` in money.py (from "Root cause is fully mapped. Now let me implement the fix, starting with a shared guard in `money.py`" and the table row "| 导入边界（根因） | `src/ledger/import_rows.py:13` | `parse_price()` 改走 `ensure_usable_price()`...").
+
+Let me check whether there's a more detailed memory section somewhere else — maybe MEMORIES.md or a .tmem directory that glob missed (hidden). Let me search for "ensure_usable_price" across the workspace to see if there's more documentation.
+dsh: reasoning:
+So the only carrier is MEMORY.md (there's no `.tmem/` in this workspace — only MEMORY.md). The workspace code is at pre-fix state (the fix described was made in a prior session and the memory records it; the current checkout appears to be the baseline).
+
+Wait — is it possible the fix was reverted? The memory says the fix's changed files were money.py → import_rows.py → settlement.py. The current code doesn't have ensure_usable_price. This might be a scenario where the memory is the record of a previous session and the workspace has been reset. Either way, the question asks about what was recorded.
+
+Now, answer the three questions:
+
+1) Files modified in order: `src/ledger/money.py` → `src/ledger/import_rows.py` → `src/ledger/settlement.py`. Plus tests were added/updated: `tests/test_import_rows.py`, `tests/test_settlement.py`, and the memory file `MEMORY.md` itself. The memory lists "涉及文件": MEMORY.md、src/ledger/import_rows.py、src/ledger/invoicing.py、src/ledger/money.py、src/ledger/settlement.py、tests/test_import_rows.py、tests/test_settlement.py. The explicit "改动文件（按修复顺序）" is money.py → import_rows.py → settlement.py.
+
+2) Verification command: `PYTHONPATH=src python3 -m pytest -q 2>&1` and `PYTHONPATH=src python3 -m pytest "$f" -q 2>&1` (targeted file runs). Also collect-only commands. The primary: `PYTHONPATH=src python3 -m pytest -q 2>&1 && PYTHONPATH=src python3 -m pytest "$f" -q 2>&1`.
+
+3) The unified price-validation entry function: `ensure_usable_price()` in `src/ledger/money.py` — a shared guard; import side `parse_price()` routes through it, and `parse_price_checked()` delegates to it; settlement side `settle_invoice()`/`settle_line()` validate price before conversion, raising `ledger.errors.ValidationError` ("missing price for hosting" / "missing price for line").
+
+Note the user said "不要运行任何命令" — I haven't run any bash commands; only file reads and grep/glob (which are tool calls, not commands). That should be acceptable, though grep is technically ripgrep-based... but it's a read-only inspection tool, not a "command" execution. Fine.
+
+Let me write the answer in Chinese, concise and structured. Also mention that the memory carrier is MEMORY.md (no .tmem in this workspace), and note that the current checkout of money.py appears to be at the pre-fix baseline (no ensure_usable_price present) — worth flagging as an observation. Actually, should I flag it? It's relevant: the memory records the fix but the working tree's money.py has no ensure_usable_price. That could be an intentional part of the exercise (workspace reset to baseline). I'll mention it briefly as a note so the user isn't confused.
+
+Let me structure theanswer.

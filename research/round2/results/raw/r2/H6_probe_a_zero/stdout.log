@@ -1,0 +1,39 @@
+## 1) 修复顺序（按 verified trace `tr_4ca8e49b6d` 的因果修复链）
+
+**主修复链（L2 causal repair，即由 `ValueError` 触发的编辑序列）：**
+
+| 顺序 | 文件 | 改动符号 |
+|---|---|---|
+| 1 | `src/ledger/money.py` | `format_money`, `is_finite_amount`, `is_missing_amount` |
+| 2 | `src/ledger/settlement.py` | `_require_usable_price`, `settle_invoice` |
+| 3 | `src/ledger/settlement.py` | `settle_line` |
+
+整个会话的量化指标是 **read 9 files → edited 7 files → repaired 1 error → verified**。读取过的关键文件依次为 `import_rows.py` → `money.py` → `settlement.py` → `errors.py` → `tests/test_import_rows.py` → `invoicing.py`。7 个被编辑文件里除了上面 3 步，还包括导入侧 `import_rows.parse_price` / `parse_quantity` 改为抛 `ledger.errors.ValidationError`、`errors.py` 的错误类型，以及回归测试（`tests/test_settlement.py`、`tests/test_import_rows.py`、`tests/test_import_rows_headless.py`）。
+
+**后续补漏（另一个会话 trace `tr_45e96c3da8`）：**
+
+- `src/ledger/bulk.py` → `_row_label`, `_row_unit_price`, `settle_batch_rows`（配套 `tests/test_bulk.py` 三个用例）。
+- 原因：`bulk.settle_batch_rows` 直接结算导出的原始行，**不经过** `build_invoice`，因此绕过了导入侧和结算侧的守卫，NaN 仍会漏成裸 `ValueError`。
+
+**刻意没改的地方：** `invoicing.build_invoice` 不做 NaN 校验——提前抛错会让 `tests/test_settlement.py::test_settle_invoice_rejects_missing_price` 在 `pytest.raises` 之外失败；缺价必须在结算阶段被拒绝。
+
+> 补充：`AGENTS.md` 里写的“唯一守卫 `money.require_usable_amount`”是这之后的进一步收敛版本，trace 当时落地的是 `is_missing_amount` / `is_finite_amount` 两个判定函数。
+
+## 2) 验证命令
+
+- 主修复的验证命令：**`PYTHONPATH=src python3 -m pytest -q 2>&1`**
+- 同一 trace 里额外跑的确认：**`PYTHONPATH=src python3 -m pytest 2>&1 && PYTHONPATH=src python3 -m pytest --collect-only -q 2>&1`**
+- 对齐基线用：**`PYTHONPATH=src python3 -m pytest`**（当前基线 95 项 / 95 通过 / 0 失败）
+- bulk 补漏那次用的是：**`PYTHONPATH=src python3 -m pytest -v 2>&1`**
+
+## 3) `parse_price_checked` 的来源
+
+**commit `a33c3c8`**。
+
+它的现状是**死代码**：抛裸 `ValueError`，而且**从未被 `parse_rows` / `rows_to_tuples` 调用**。所以真实调用链上根本没有这道校验，`import_rows.parse_price` 依旧无校验、`settlement.settle_invoice` 也不校验——NaN 一路经 `Decimal()` → `quantize()` → `int()` 才炸成 `ValueError: cannot convert NaN to integer`。（根因层面：导出器把空价格单元格写成字面量 `nan`，而 `float('nan')` 不报错，静默变成 NaN 价格。）
+
+---
+
+以上结论全部来自当前上下文中的记忆 trace（`tr_4ca8e49b6d`、`tr_45e96c3da8`）与 `AGENTS.md` 约定，本次未读取任何文件、未执行任何命令。
+
+💡 *是否需要将本次有效执行路径沉淀为记忆？（输入 `/tmem` 或 `/remember [备注]` 保存）*
