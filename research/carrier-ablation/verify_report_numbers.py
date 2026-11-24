@@ -133,6 +133,8 @@ def main() -> int:
         if metrics["gates"][key]["pass"] != val:
             failures.append(f"gate {key}: published {metrics['gates'][key]['pass']} != recomputed {val}")
 
+    failures += check_round3()
+
     if failures:
         print("FAIL — the published numbers do not all reproduce:")
         for f in failures:
@@ -144,7 +146,61 @@ def main() -> int:
     print(f"  gate verdicts            : {len(recomputed)} recomputed and equal")
     print(f"  validity                : {n_valid}/{n_total} valid, {n_out} out-of-arm reads")
     print("  threshold drift         : none (v1.2 == v1.1 on prompts/keypoints/metrics/gates)")
+    print("  round-3 cross-check     : 7/9 (clean) vs 6/9 (dirty tree) verified, stale wording absent")
     return 0
+
+
+# ---------------------------------------------------------------- round 3 part
+def check_round3() -> list[str]:
+    """Cross-check the MAIN report against the archived Round 3 verdicts.
+
+    The Round 3 numbers live in the main report (docs/dsh-independent-e2e-report.md);
+    this module lives under the carrier-ablation apparatus, so the check is done
+    here to keep one single "does the prose match the machine" entry point.
+    """
+    fails: list[str] = []
+    r3_dir = REPO / "research" / "round3" / "results"
+    clean = json.loads((r3_dir / "metrics-r3-recheck-clean-tree.json").read_text(encoding="utf-8"))
+    dirty = json.loads((r3_dir / "metrics-r3-first-pass-dirty-tree.json").read_text(encoding="utf-8"))
+    main = MAIN_REPORT.read_text(encoding="utf-8")
+
+    def gate(doc: dict, gid: str) -> dict:
+        for x in doc["gates"]:
+            if (x.get("gate") or x.get("id")) == gid:
+                return x
+        return {}
+
+    n_clean = sum(1 for x in clean["gates"] if x.get("pass"))
+    n_dirty = sum(1 for x in dirty["gates"] if x.get("pass"))
+    if (n_clean, n_dirty) != (7, 6):
+        fails.append(f"round3 gate counts: clean={n_clean} (want 7), dirty={n_dirty} (want 6)")
+    if gate(dirty, "G9").get("pass") is not False or gate(clean, "G9").get("pass") is not True:
+        fails.append("round3: the archived pair must show G9 FAIL (dirty tree) and PASS (clean tree)")
+
+    g6 = gate(clean, "G6").get("value", {})
+    g3 = gate(clean, "G3").get("value", {})
+    g8 = gate(clean, "G8").get("value", {})
+    for value in (f"{g6.get('lookup')}", f"{g6.get('search')}"):
+        if value not in main:
+            fails.append(f"round3 G6 value '{value}' not in the main report")
+    if f"{g3.get('precision')}" not in main:
+        fails.append(f"round3 G3 precision '{g3.get('precision')}' not in the main report")
+    tel = g8.get("l2_injected_telemetry_events")
+    if f"遥测 **{tel} 次**" not in main and f"遥测 {tel} 次" not in main:
+        fails.append(f"round3 G8 telemetry '{tel}' not in the main report")
+
+    # stale / retracted wording must NOT reappear
+    forbidden = [
+        ("遥测 11 次", "stale G8 telemetry figure (the verdict says %s)" % tel),
+        ("30/30 场有效", "stale validity claim (the verdict says 29/30)"),
+        ("零越界读取", "stale isolation claim (one session had 9 out-of-arm reads)"),
+        ("归因清晰可指认", "retracted causal wording for the confounded cross-round G6 delta"),
+    ]
+    for text in (main, REPORT.read_text(encoding="utf-8"), PROTOCOL.read_text(encoding="utf-8")):
+        for needle, why in forbidden:
+            if needle in text:
+                fails.append(f"forbidden phrase '{needle}' present -- {why}")
+    return fails
 
 
 if __name__ == "__main__":
