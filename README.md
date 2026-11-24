@@ -1,6 +1,59 @@
-# `tmem` — 给 DeepSeek Harness (`dsh`) 用的“防失忆”记忆插件
+# `tmem` — 给 DeepSeek Harness (`dsh`) 用的“防失忆”记忆插件（已下线归档）
+
+> **项目状态：已下线归档（Archived / Sunset，2026-11-24）**
+> 本项目已停止开发与维护，仅作为技术实验与工程复盘留档。在完成**独立真实端到端实验（Round 1–3）**与**容器隔离载体消融实验（Phase-1b，30 场真实会话）**后，实测结果证伪了本项目“通用防失忆且比 Markdown 更省上下文 Token”的核心假设——**真实使用中它比直接维护纯文本 `MEMORY.md` 更费 Token（3.55×）、更占磁盘（478×），且记忆提取质量不稳定**。建议直接利用项目内原生 Markdown 文档（`AGENTS.md` / `MEMORY.md` / `CONVENTIONS.md`）配合轻量注入替代本方案。
 
 **中文文档** | [English](./README_EN.md)
+
+---
+
+## 零、下线复盘：真实 E2E 实测为何证伪了这套设计？
+
+`tmem` 在离线/半合成基准上曾跑出非常漂亮的指标（见[第四节](#四实测效果所有测试都能本地复现)），但在外部 Python 账本服务 `ledger-svc` 上运行多轮真实 DSH 会话（MiniMax 模型驱动，无人工干预）与容器隔离消融后，核心卖点在真实场景下全面失效。
+
+### 1. 核心实测对比（Phase-1b 容器隔离消融 + 存储实测 + Round 3）
+
+| 实验维度 | `tmem` 插件方案 | 散文 `MEMORY.md` 对照 | 无记忆裸跑 (`C`) | 结论 |
+| :--- | :---: | :---: | :---: | :--- |
+| **正常自由查阅 (`free`) 总获取成本** | `A1` 自动注入：**18,016.7** tok<br>`A2` 按需检索：**14,250.3** tok | `B2` 按需读取：**5,073.0** tok<br>`B1` 插件全量注入：**7,112.3** tok | **8,775.0** tok | ❌ **更贵**：`tmem` 是纯 MD 的 **3.55×**，比无记忆还贵 **2.05×**（CA-1 / CA-1b / CA-4 全 FAIL） |
+| **禁止工具调用 (`zero`) 命中率** | Phase-1b `A1_zero`：**1.000**<br>Round 3 `A_zero`：**0.333** | `B1_zero`（200 行注入插件）：**1.000**<br>`B2_zero`（无注入）：**0.000** | **0.000** | ⚠️ **非独占且不稳定**：200 行散文注入器也能拿 `1.000`，Round 3 `tmem` 自身跌到 `0.333` |
+| **常规项目知识边际收益 (`G7`)** | Round 1–3 命中 `1.0` | 无插件对照同样 `1.0` | — | ❌ **连续三轮 FAIL**：agent 自己就会记 `CONVENTIONS.md` / 读代码，插件无边际增益 |
+| **磁盘存储与 Git 足迹** | `.tmem/`：**2,934.3 KB**（单条轨迹均占 **991.4 KB**，77.7% 为 SQLite 索引） | `MEMORY.md`：**6.1 KB** | **0** | ❌ **存储暴涨 478.2×**（剔除可重建缓存仍 **102.1×**），且 `raw/` 默认进 Git |
+
+### 2. 复盘到的四个根本问题
+
+1. **「渐进式披露 + L0 漂移告警」在实战中沦为 Token 爆炸机**
+   - 正常注入切片本身只有 `1,388` tokens（是 `B2` 的 `0.2736×`），甚至已经包含了问题答案；
+   - 但 [`tmem/guards.mjs`](./tmem/guards.mjs) 只要检测到当前分支尚未包含历史修复符号，就会在注入块里输出大段 `Note: L0 concrete paths drifted (...); degraded to structural/causal invariants`，同时 [`tmem/dsh_tools.mjs`](./tmem/dsh_tools.mjs) 的系统提示引导模型调用允许高达 `20,000` 字符的 `tmem_expand(level="turn"|"raw")`。
+   - **真实后果**：模型看到漂移警告后恐慌性连发 6–8 次 `tmem_expand` 拉回整段原始对话，把 `carrier` 类输出拉爆到均值 **16,169 tokens**（最高单场 19,577 tokens），彻底反超直接看全量 `MEMORY.md`（2,168 tokens）。
+
+2. **零 LLM 总结的静态编译器产出了高噪音「脏记忆」**
+   - 从 Round 3 `H6_probe_a_zero` 的真实注入块（`tr_e66fe4c00d`）看，不经过语义整理的规则裁剪极易失真：
+     - `Verification Command` 误把 400 多字的 `tmem capture --agent dsh --intent "..." --full-session --force` 捕获命令本身当成验证命令；
+     - `Root Cause` 漏掉了关键的收口文件 `settlement.py`；
+     - `Semantic Summary` 被截断成半句废话（`Now updating the failure baseline section:`），`L0` 路径里还混入了模型的思考口水话。
+   - 这直接导致了 Round 3 同一套探针在 `zero` 模式下命中率从 `1.000` 骤降至 `0.333`。
+
+3. **错把「可工程化的复杂性」当成「产品壁垒」**
+   - 我们投入了 SQLite 8 维度倒排索引、多语言 AST 签名守卫、多帧 zstd 解析与防污染遥测，甚至在真实集成中踩出了“工作区安装半挂载覆盖全局安装（N12）”“2 字中文查询 0 命中（N1）”等一系列复杂 Bug；
+   - 但最终容器隔离消融证明：**一个不到 200 行的极简插件（[`md_carrier_plugin.mjs`](./research/carrier-ablation/md_carrier_plugin.mjs)）每轮注入一份人工/模型维护的 `MEMORY.md`，在命中率上追平 `tmem`，在 Token 成本上省 2.53×–3.55×，在磁盘上省 478×**。
+
+4. **唯一有潜力的窄场景尚不足以支撑整个产品形态**
+   - 真实 E2E 中真正体现出钩子价值的只有两项：**报错瞬间同源 `L2` 修复链的跨位置迁移（Round 3 `G8` PASS）**与**历史共变文件提醒（`G5` PASS）**；
+   - 而**常规会话捕获率（`G1 = 0.833`）、自然语言检索（`G6 search = 0.625`）、以及最核心的“降低同类 Bug 复发率（`CA-2`） / 压缩后长会话恢复（`CA-6–CA-9`）”**，要么未达预期，要么仍在待验证的 Phase-2。与其继续维护一套高耦合、重存储、易诱发 Token 膨胀的记忆引擎，不如及时止损下线，将完整证据链归档于此。
+
+### 3. 完整复盘报告与原始证据链
+
+所有真实 E2E 原始轨迹（`.jsonl.zstd`）、预注册 Oracle、容器隔离脚本与防数值漂移校验器均已完整归档在本仓库中，可随时第三方复算：
+
+- **独立 E2E 实测主报告（Round 1–3）**：[`docs/dsh-independent-e2e-report.md`](./docs/dsh-independent-e2e-report.md)（[Round 3 判定归档](./research/round3/README.md)）
+- **载体消融课题（tmem vs 散文 MD vs 无记忆）**：[`docs/dsh-memory-carrier-ablation-report.md`](./docs/dsh-memory-carrier-ablation-report.md) 与 [实验协议](./docs/dsh-memory-carrier-ablation.md)（[装置与 30 场会话归档](./research/carrier-ablation/README.md)）
+- **存储资源开销实测**：[`docs/dsh-tmem-storage-overhead.md`](./docs/dsh-tmem-storage-overhead.md)
+- **一键校验报告与原始轨迹一致性**：`python3 research/carrier-ablation/verify_report_numbers.py`
+
+---
+
+> 以下一至五节为归档前的原始设计与离线评测记录，保留作历史参考。
 
 <p align="center">
   <img src="./docs/assets/tmem-demo.gif" alt="tmem 工作全流程动画演示：压缩顺手存档、按需翻找历史、报错秒救与防毒记忆体检" width="100%" />

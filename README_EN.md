@@ -1,6 +1,58 @@
-# `tmem` — The Anti-Amnesia Memory Plugin for DeepSeek Harness (`dsh`)
+# `tmem` — The Anti-Amnesia Memory Plugin for DeepSeek Harness (`dsh`) (Archived)
+
+> **Project Status: Sunset & Archived (2026-11-24)**
+> This project is no longer actively developed or maintained and is preserved solely as a technical experiment and engineering post-mortem. After running **multi-round real-world E2E evaluations (Rounds 1–3)** and a **container-isolated carrier ablation study (Phase-1b, 30 real sessions)**, empirical evidence refuted our core hypothesis that `tmem` beats plain Markdown on context token cost and general amnesia prevention: **in realistic sessions, `tmem` costs 3.55× more tokens and 478× more disk space than maintaining a plain `MEMORY.md`, while suffering from noisy trace compilation.** For practical workflows, stick to concise native Markdown docs (`AGENTS.md` / `MEMORY.md` / `CONVENTIONS.md`).
 
 [中文文档](./README.md) | **English**
+
+---
+
+## 0. Sunset Post-Mortem: Why Real-World E2E Refuted the Design
+
+While `tmem` achieved strong numbers on offline and semi-synthetic benchmarks (preserved in [Section 4](#4-empirical-benchmarks)), real-world DSH runs on an external Python service (`ledger-svc`) and container-isolated ablation revealed that the design fails to deliver net value in practice.
+
+### 1. Head-to-Head Real-World Results (Phase-1b Ablation + Storage Audit + Round 3)
+
+| Dimension | `tmem` Plugin | Prose `MEMORY.md` Control | No Memory (`C`) | Verdict |
+| :--- | :---: | :---: | :---: | :--- |
+| **Total Knowledge Acquisition Cost (`free` mode)** | `A1` auto-inject: **18,016.7** tok<br>`A2` on-demand: **14,250.3** tok | `B2` on-demand read: **5,073.0** tok<br>`B1` 200-line injector: **7,112.3** tok | **8,775.0** tok | ❌ **3.55× worse** than plain MD; **2.05× worse** than no memory (CA-1 / CA-1b / CA-4 FAIL) |
+| **Zero-Tool Recall (`zero` mode)** | Phase-1b `A1_zero`: **1.000**<br>Round 3 `A_zero`: **0.333** | `B1_zero` (200-line injector): **1.000**<br>`B2_zero` (no injection): **0.000** | **0.000** | ⚠️ **Not unique & unstable**: a 200-line MD injector matches `1.000`, and `tmem` dropped to `0.333` in Round 3 |
+| **Routine Knowledge Consumption (`G7`)** | `1.0` | `1.0` (no plugin) | — | ❌ **FAIL × 3 rounds**: agents already write `CONVENTIONS.md` and read source files |
+| **Disk & Git Footprint** | `.tmem/`: **2,934.3 KB** (**991.4 KB/trace**, 77.7% SQLite index) | `MEMORY.md`: **6.1 KB** | **0** | ❌ **478.2× disk overhead** (`102.1×` even without rebuildable cache); `raw/` tracked in git by default |
+
+### 2. Four Root Lessons Learned
+
+1. **"Progressive Disclosure" + `L0 drifted` Warnings Triggered a Token Explosion**
+   - The injected slice itself was compact (`1,388` tokens, `0.2736×` of `B2`) and already contained all required answers.
+   - However, whenever current workspace code lacked the prior fix symbols, [`tmem/guards.mjs`](./tmem/guards.mjs) emitted a verbose `Note: L0 concrete paths drifted (...); degraded to structural/causal invariants` block, while [`tmem/dsh_tools.mjs`](./tmem/dsh_tools.mjs) encouraged expanding `turn`/`raw` logs up to `20,000` chars per call.
+   - Seeing the drift warning, models reflexively fired 6–8 consecutive `tmem_expand` calls—pulling an average of **16,169 tokens** (up to 19,577 tokens) of raw logs and erasing every supposed savings.
+
+2. **Zero-LLM Static Compilation Produced Dirty, Fragile Traces**
+   - Inspecting the actual injected payload in Round 3 `H6_probe_a_zero` (`tr_e66fe4c00d`) exposed severe noise:
+     - `Verification Command` captured a 400-char `tmem capture --agent dsh --intent "..." --full-session --force` invocation instead of the test command;
+     - `Root Cause` dropped `settlement.py` from the repair chain;
+     - `Semantic Summary` clipped mid-sentence (`Now updating the failure baseline section:`), and `L0` paths leaked raw assistant chatter.
+   - This directly drove Round 3 `A_zero` down from `1.000` to `0.333`.
+
+3. **Mistaking Engineering Complexity for Product Moat**
+   - Maintaining an 8-role SQLite inverted index, multi-language AST guards, multi-frame zstd decoding, and telemetry introduced real integration failures (half-mounted workspace plugins overriding global installs, 2-char CJK lookup misses) while losing across the board to a 200-line Markdown injector ([`md_carrier_plugin.mjs`](./research/carrier-ablation/md_carrier_plugin.mjs)) in cost, simplicity, and reliability.
+
+4. **Narrow Remaining Signal Did Not Justify the Heavy Architecture**
+   - The only capabilities genuinely hard to replicate with static Markdown were **runtime `L2` error-signature repair transfer (Round 3 `G8` PASS)** and **co-change partner hints (`G5` PASS)**.
+   - Meanwhile, session capture rate (`G1 = 0.833`), natural-language search (`G6 search = 0.625`), recurrence reduction (`CA-2`), and post-compaction recovery (`CA-6–CA-9`) either fell short or remained unproven in Phase-2. Rather than keeping a bloated, negative-ROI engine alive, we chose to sunset and archive the repository cleanly.
+
+### 3. Archived Reports & Reproducible Evidence
+
+All raw `.jsonl.zstd` trajectories, pre-registered oracles, container isolation scripts, and anti-drift verifiers remain archived in-repo:
+
+- **Independent E2E Report (Rounds 1–3)**: [`docs/dsh-independent-e2e-report.md`](./docs/dsh-independent-e2e-report.md) ([Round 3 archive](./research/round3/README.md))
+- **Carrier Ablation Study (`tmem` vs. Prose MD vs. No Memory)**: [`docs/dsh-memory-carrier-ablation-report.md`](./docs/dsh-memory-carrier-ablation-report.md) & [Protocol](./docs/dsh-memory-carrier-ablation.md) ([Apparatus & 30 sessions](./research/carrier-ablation/README.md))
+- **Storage Overhead Audit**: [`docs/dsh-tmem-storage-overhead.md`](./docs/dsh-tmem-storage-overhead.md)
+- **Automated Number & Trajectory Verifier**: `python3 research/carrier-ablation/verify_report_numbers.py`
+
+---
+
+> Sections 1–5 below preserve the pre-archival design documentation and offline benchmarks for historical reference.
 
 <p align="center">
   <img src="./docs/assets/tmem-demo.gif" alt="tmem Animated Workflow Demo: Compaction Capture, On-Demand History Recall, Error Rescue & AST Guard" width="100%" />
