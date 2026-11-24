@@ -209,6 +209,12 @@ def check_round3() -> list[str]:
         ("30/30 场有效", "stale validity claim (the verdict says 29/30)"),
         ("零越界读取", "stale isolation claim (one session had 9 out-of-arm reads)"),
         ("归因清晰可指认", "retracted causal wording for the confounded cross-round G6 delta"),
+        # retracted carrier claims: the `zero` regime is experimenter-imposed and
+        # favours tmem (it bans the prose arm's only access path), and it never
+        # banned tool calls -- so "zero retrieval" overstates what was measured
+        ("tmem 的优势在\"零检索可得\"", "retracted headline: the zero regime is imposed and favours tmem"),
+        ("模型不需要任何检索动作就能用上记忆", "retracted: the zero prompt bans file reads, not tool calls"),
+        ("本课题稳健确立了 tmem 载体在效果上优于散文载体", "retracted: carriers tie on effect in the free variant"),
     ]
     for text in (main, REPORT.read_text(encoding="utf-8"), PROTOCOL.read_text(encoding="utf-8")):
         for needle, why in forbidden:

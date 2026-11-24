@@ -138,6 +138,12 @@ def cases() -> list[tuple[str, str, callable]]:
 
         edit_json(restore(dest, R3_VERDICT), fn)
 
+    def retracted_zero_headline(dest: Path) -> None:
+        append(restore(dest, ABL), '**tmem 的优势在"零检索可得"，不在"总 token 更少"。**')
+
+    def retracted_carrier_claim(dest: Path) -> None:
+        append(restore(dest, MAIN), "本课题稳健确立了 tmem 载体在效果上优于散文载体。")
+
     return [
         ("contradicting figure in the prose", "gate table G6", prose_contradiction),
         ("stale telemetry figure", "遥测 11 次", prose_stale_telemetry),
@@ -147,6 +153,8 @@ def cases() -> list[tuple[str, str, callable]]:
         ("pre-aggregated block vs sessions", "aggregate A1|free", aggregate_mismatch),
         ("Round-2 column vs archived verdict", "gate table G6", round2_column_mismatch),
         ("edited files vs verdict", "files edited per the transcript", edited_files_mismatch),
+        ("retracted zero-regime headline", "forbidden phrase", retracted_zero_headline),
+        ("retracted carrier claim", "forbidden phrase", retracted_carrier_claim),
     ]
 
 
